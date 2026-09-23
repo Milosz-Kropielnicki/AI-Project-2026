@@ -18,5 +18,67 @@
     <ClCompile Include="main.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="display.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="world.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="battle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="mech.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="firmware.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="data_mechs.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="data_weapons.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="data_chips.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_battle.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_team.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_menu.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_debug.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_sprites.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="display.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="world.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="battle.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="mech.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="firmware.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="stats.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
