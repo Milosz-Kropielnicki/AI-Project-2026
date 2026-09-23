@@ -1,166 +1,165 @@
 ﻿  main.c
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(796,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(796,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(798,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(798,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(801,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(801,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(803,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(803,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(805,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(805,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(808,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(808,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(813,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(813,55): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(815,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(815,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(818,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(818,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(820,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(820,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(822,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(822,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(825,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(825,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(835,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(835,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(837,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(837,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(840,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(840,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(842,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(842,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(844,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(844,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(847,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(847,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(925,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(943,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(943,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(945,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(945,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(948,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(948,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(950,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(950,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(952,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(952,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(955,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(955,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(963,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(963,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(965,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(965,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(968,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(968,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(970,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(970,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(972,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(972,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(975,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(975,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(990,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(994,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1003,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1003,55): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1005,13): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1005,20): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1008,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1008,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1013,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1013,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1015,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1015,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1018,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1018,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1020,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1020,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1022,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1022,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1025,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1025,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1027,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1027,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1029,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1029,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1032,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1032,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1034,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1034,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1036,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1036,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1039,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1039,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1042,50): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1043,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1047,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1048,41): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1056,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1062,51): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1074,38): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1074,51): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1076,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1076,30): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1079,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1079,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1084,38): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1084,52): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1086,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1086,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1089,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1089,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1197,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1197,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1198,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1198,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1199,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1199,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1211,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1211,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1238,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1238,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1239,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1239,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1240,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1240,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1246,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1246,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1247,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1247,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1248,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1248,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1276,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1276,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1321,32): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1321,40): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1322,32): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1322,40): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1326,39): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1326,53): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1326,69): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1336,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1336,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1337,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1337,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1338,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1338,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1325,41): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1353,26): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1353,36): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1454,35): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1603,48): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1607,53): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1611,53): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1613,57): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1614,57): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1636,42): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1946,14): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\main.c(1946,36): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
-LINK : warning LNK4098: defaultlib 'MSVCRT' conflicts with use of other libs; use /NODEFAULTLIB:library
-raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-raylib.lib(rglfw.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rglfw.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-raylib.lib(rshapes.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rshapes.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-raylib.lib(rtext.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtext.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-raylib.lib(rtextures.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtextures.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-  Project.vcxproj -> C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\Project.exe
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(949,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(949,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(951,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(951,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(954,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(954,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(956,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(956,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(958,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(958,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(961,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(961,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(966,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(966,55): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(968,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(968,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(971,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(971,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(973,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(973,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(975,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(975,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(978,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(978,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(988,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(988,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(990,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(990,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(993,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(993,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(995,42): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(995,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(997,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(997,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1000,21): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1000,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1078,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1096,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1096,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1098,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1098,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1101,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1101,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1103,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1103,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1105,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1105,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1108,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1108,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1116,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1116,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1118,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1118,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1121,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1121,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1123,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1123,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1125,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1125,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1128,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1128,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1143,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1147,65): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1156,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1156,55): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1158,13): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1158,20): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1161,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1161,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1166,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1166,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1168,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1168,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1171,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1171,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1173,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1173,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1175,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1175,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1178,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1178,34): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1180,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1180,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1182,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1182,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1185,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1185,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1187,37): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1187,56): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1189,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1189,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1192,16): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1192,35): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1195,50): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1196,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1200,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1201,41): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1209,49): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1215,51): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1227,38): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1227,51): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1229,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1229,30): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1232,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1232,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1237,38): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1237,52): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1239,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1239,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1242,17): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1242,31): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1350,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1350,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1351,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1351,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1352,27): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1352,34): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1364,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1364,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1391,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1391,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1392,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1392,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1393,35): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1393,46): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1399,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1399,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1400,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1400,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1401,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1401,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1429,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1429,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1474,32): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1474,40): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1475,32): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1475,40): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1479,39): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1479,53): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1479,69): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1489,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1489,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1490,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1490,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1491,33): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1491,42): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1478,41): warning C4244: 'initializing': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1506,26): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1506,36): warning C4244: 'function': conversion from 'float' to 'int', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1620,35): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1769,48): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1773,53): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1777,53): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1779,57): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1780,57): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(1802,42): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(2269,14): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\main.c(2269,36): warning C4244: '=': conversion from 'int' to 'float', possible loss of data
+raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rglfw.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rglfw.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rshapes.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rshapes.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rtext.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtext.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rtextures.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtextures.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+  Project.vcxproj -> C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\Project.exe

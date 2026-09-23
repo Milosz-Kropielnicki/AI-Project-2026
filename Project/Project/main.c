@@ -5,9 +5,13 @@
 #include <math.h>
 
 // ============ CONFIG ============
+// SCREEN_W is the width of the fixed-layout screens (battle, team, menus).
+// The actual canvas is SCREEN_H tall and screenW wide, depending on aspect ratio.
 #define SCREEN_W 800
 #define SCREEN_H 600
 #define TILE_SIZE 40
+#define MOVE_TIME 0.14f   // seconds to walk one tile
+#define SETTINGS_FILE "settings.cfg"
 #define MAP_W 40
 #define MAP_H 30
 
@@ -17,7 +21,7 @@
 
 enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE };
 enum { T_GRID, T_RUINS, T_BLOCK, T_PLASMA, T_PAD, T_BUNKER, T_TERMINAL };
-enum { STATE_OVERWORLD, STATE_BATTLE, STATE_LEVELUP, STATE_TEAM };
+enum { STATE_OVERWORLD, STATE_BATTLE, STATE_LEVELUP, STATE_TEAM, STATE_MENU, STATE_SETTINGS };
 
 enum { DLG_NONE = 0, DLG_INTRO, DLG_DEFEAT };
 
@@ -187,6 +191,155 @@ static int activeTrainerIdx = -1;
 
 static int dialoguePhase = DLG_NONE;
 static char dialogueText[256] = { 0 };
+
+// ============ OVERWORLD MOVEMENT ============
+static int moving = 0;           // walking between two tiles
+static float moveT = 0;          // 0..1 progress of the current step
+static float moveFromX, moveFromY;
+static int lastDir = -1;         // most recently pressed direction (facing convention)
+
+// ============ MENUS ============
+static int menuSel = 0, settingsSel = 0, teamSel = 0;
+static int gameStarted = 0;
+static int quitRequested = 0;
+
+// ============ DISPLAY ============
+// Everything is drawn to an offscreen canvas SCREEN_H pixels tall whose width follows
+// the aspect ratio, then scaled to the window. Fixed-layout screens are centered in it.
+typedef struct { const char* label; int aw, ah, winW, winH; } AspectPreset;
+#define NUM_ASPECTS 4
+static AspectPreset aspects[NUM_ASPECTS] = {
+    { "4:3",    4,  3,  800, 600 },
+    { "16:9",  16,  9, 1280, 720 },
+    { "16:10", 16, 10, 1280, 800 },
+    { "21:9",  21,  9, 1680, 720 },
+};
+static int settingFullscreen = 0;
+static int settingAspect = 0;
+static int screenW = SCREEN_W;
+static RenderTexture2D canvas;
+static float canvasScale = 1.0f;
+static Vector2 canvasOffset;
+
+// Horizontal offset that centers a SCREEN_W-wide layout on the canvas
+static float layoutX(void) { return (float)((screenW - SCREEN_W) / 2); }
+
+static Camera2D layoutCamera(void) {
+    Camera2D c = { 0 };
+    c.offset = (Vector2){ layoutX(), 0 };
+    c.zoom = 1.0f;
+    return c;
+}
+
+static void updateCanvasTransform(void) {
+    float sw = (float)GetScreenWidth(), sh = (float)GetScreenHeight();
+    canvasScale = fminf(sw / screenW, sh / SCREEN_H);
+    canvasOffset = (Vector2){ (sw - screenW * canvasScale) / 2, (sh - SCREEN_H * canvasScale) / 2 };
+}
+
+static void applyDisplaySettings(void) {
+    int mon = GetCurrentMonitor();
+    int mw = GetMonitorWidth(mon), mh = GetMonitorHeight(mon);
+    Vector2 mpos = GetMonitorPosition(mon);
+    int borderless = IsWindowState(FLAG_BORDERLESS_WINDOWED_MODE);
+    int newW;
+    if (settingFullscreen) {
+        if (!borderless) ToggleBorderlessWindowed();
+        newW = SCREEN_H * mw / mh;
+    }
+    else {
+        if (borderless) ToggleBorderlessWindowed();
+        AspectPreset* a = &aspects[settingAspect];
+        int w = a->winW, h = a->winH;
+        // Shrink the window if it would not fit on this monitor
+        if (w > mw * 9 / 10 || h > mh * 9 / 10) {
+            float s = fminf(mw * 0.9f / w, mh * 0.9f / h);
+            w = (int)(w * s); h = (int)(h * s);
+        }
+        SetWindowSize(w, h);
+        SetWindowPosition((int)mpos.x + (mw - w) / 2, (int)mpos.y + (mh - h) / 2);
+        newW = SCREEN_H * a->aw / a->ah;
+    }
+    if (canvas.id == 0 || newW != screenW) {
+        if (canvas.id != 0) UnloadRenderTexture(canvas);
+        screenW = newW;
+        canvas = LoadRenderTexture(screenW, SCREEN_H);
+        SetTextureFilter(canvas.texture, TEXTURE_FILTER_BILINEAR);
+    }
+    updateCanvasTransform();
+}
+
+static void loadSettings(void) {
+    FILE* f = fopen(SETTINGS_FILE, "r");
+    if (!f) return;
+    int fs = 0, asp = 0;
+    if (fscanf(f, "fullscreen=%d aspect=%d", &fs, &asp) == 2) {
+        settingFullscreen = fs ? 1 : 0;
+        if (asp >= 0 && asp < NUM_ASPECTS) settingAspect = asp;
+    }
+    fclose(f);
+}
+
+static void saveSettings(void) {
+    FILE* f = fopen(SETTINGS_FILE, "w");
+    if (!f) return;
+    fprintf(f, "fullscreen=%d\naspect=%d\n", settingFullscreen, settingAspect);
+    fclose(f);
+}
+
+// ============ INPUT ============
+// Once an input has triggered something this frame, it is consumed so the same
+// key press / click can't also trigger whatever screen comes next.
+static int inputConsumed = 0;
+static void consumeInput(void) { inputConsumed = 1; }
+
+static int confirmPressed(void) {
+    return !inputConsumed && (IsKeyPressed(KEY_Z) || IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER));
+}
+static int clickPressed(void) { return !inputConsumed && IsMouseButtonPressed(MOUSE_BUTTON_LEFT); }
+
+// Mouse position in fixed-layout (SCREEN_W x SCREEN_H) coordinates
+static Vector2 layoutMouse(void) {
+    Vector2 m = GetMousePosition();
+    return (Vector2){ (m.x - canvasOffset.x) / canvasScale - layoutX(), (m.y - canvasOffset.y) / canvasScale };
+}
+static int mouseOver(Rectangle r) { return CheckCollisionPointRec(layoutMouse(), r); }
+static int mouseMoved(void) { Vector2 d = GetMouseDelta(); return d.x != 0 || d.y != 0; }
+static int clickedOn(Rectangle r) { return clickPressed() && mouseOver(r); }
+
+// Directions use the facing convention: 0 = down, 1 = up, 2 = left, 3 = right
+static int dirDown(int d) {
+    switch (d) {
+    case 0: return IsKeyDown(KEY_DOWN) || IsKeyDown(KEY_S);
+    case 1: return IsKeyDown(KEY_UP) || IsKeyDown(KEY_W);
+    case 2: return IsKeyDown(KEY_LEFT) || IsKeyDown(KEY_A);
+    default: return IsKeyDown(KEY_RIGHT) || IsKeyDown(KEY_D);
+    }
+}
+static int dirPressed(int d) {
+    switch (d) {
+    case 0: return IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_S);
+    case 1: return IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_W);
+    case 2: return IsKeyPressed(KEY_LEFT) || IsKeyPressed(KEY_A);
+    default: return IsKeyPressed(KEY_RIGHT) || IsKeyPressed(KEY_D);
+    }
+}
+#define DOWN_PRESSED  dirPressed(0)
+#define UP_PRESSED    dirPressed(1)
+#define LEFT_PRESSED  dirPressed(2)
+#define RIGHT_PRESSED dirPressed(3)
+
+static void drawButton(Rectangle r, const char* label, int fontSize, int selected, int enabled) {
+    int hot = selected || mouseOver(r);
+    Color edge = !enabled ? (Color) { 70, 80, 100, 255 }
+        : hot ? (Color) { 120, 240, 255, 255 } : (Color) { 60, 120, 180, 220 };
+    Color fill = hot && enabled ? (Color) { 40, 90, 130, 200 } : (Color) { 15, 25, 45, 220 };
+    Color text = enabled ? (hot ? WHITE : (Color) { 190, 220, 240, 255 }) : (Color) { 100, 110, 130, 255 };
+    DrawRectangleRec(r, fill);
+    DrawRectangleLinesEx(r, hot ? 2.0f : 1.0f, edge);
+    int tw = MeasureText(label, fontSize);
+    DrawText(label, (int)(r.x + r.width / 2 - tw / 2), (int)(r.y + r.height / 2 - fontSize / 2), fontSize, text);
+}
 
 // Which move effect to use in caught mech battles
 static int moveEffectForSpecies(int sp) {
@@ -1371,6 +1524,15 @@ static void drawDamageNums(void) {
     }
 }
 
+// ============ BATTLE UI LAYOUT ============
+static Rectangle moveButtonRect(int i) {
+    int col = i % 2, row = i / 2;
+    return (Rectangle) { 35.0f + col * 380, SCREEN_H - 135.0f + row * 58, 350, 48 };
+}
+static Rectangle catchButtonRect(void) { return (Rectangle) { 460, SCREEN_H - 157, 130, 20 }; }
+static Rectangle endTurnButtonRect(void) { return (Rectangle) { 600, SCREEN_H - 157, 170, 20 }; }
+static int canCatchNow(void) { return !inTrainerBattle && teamSize < MAX_TEAM; }
+
 // ============ BATTLE DRAW ============
 static void drawBattle(void) {
     float sx = 0, sy = 0;
@@ -1379,8 +1541,9 @@ static void drawBattle(void) {
         sy = (float)GetRandomValue(-100, 100) / 100.0f * shakeAmount;
     }
     ClearBackground((Color) { 10, 12, 22, 255 });
-    for (int i = 0; i < 60; i++) {
-        int stx = (i * 137) % SCREEN_W;
+    int starCount = 60 * screenW / SCREEN_W;
+    for (int i = 0; i < starCount; i++) {
+        int stx = (i * 137) % screenW;
         int sty = (i * 91) % SCREEN_H;
         float t = glowTimer * 30 + i;
         int bright = 40 + (int)(30 * (sinf(t * 0.1f) * 0.5f + 0.5f));
@@ -1389,12 +1552,15 @@ static void drawBattle(void) {
     for (int i = 0; i < 20; i++) {
         int y = 180 + i * 12;
         unsigned char a = (unsigned char)(80 - i * 3);
-        DrawLine(0, y, SCREEN_W, y, (Color) { 30, 60, 100, a });
+        DrawLine(0, y, screenW, y, (Color) { 30, 60, 100, a });
     }
-    for (int i = -10; i <= 10; i++) {
-        int x = SCREEN_W / 2 + i * 40;
+    int fanLines = screenW / 80 + 1;
+    for (int i = -fanLines; i <= fanLines; i++) {
+        int x = screenW / 2 + i * 40;
         DrawLine(x, 180, x + i * 30, SCREEN_H, (Color) { 30, 60, 100, 60 });
     }
+
+    BeginMode2D(layoutCamera());
 
     // Draw mechs by species
     drawSpeciesBattle(enemyBattler.m.speciesIdx, (int)(enemyMechPos.x + sx), (int)(enemyMechPos.y + sy), 14, 1);
@@ -1466,8 +1632,8 @@ static void drawBattle(void) {
     if (battleState == 0 && dialoguePhase == DLG_NONE) {
         DrawText(">> SELECT WEAPON <<", 30, SCREEN_H - 155, 14, (Color) { 100, 240, 255, 255 });
         for (int i = 0; i < playerBattler.moves.numMoves; i++) {
-            int col = i % 2, row = i / 2;
-            int bx = 40 + col * 380, by = SCREEN_H - 130 + row * 58;
+            Rectangle mr = moveButtonRect(i);
+            int bx = (int)mr.x + 5, by = (int)mr.y + 5;
             int cost = playerBattler.moves.moveCost[i];
             int affordable = (cost <= playerEnergy) && (playerBattler.moves.pp[i] > 0);
             int selected = (i == battleMenuSel);
@@ -1491,14 +1657,10 @@ static void drawBattle(void) {
             }
             if (cost == 0) DrawText("FREE", bx + 290, by + 5, 12, (Color) { 120, 255, 180, 255 });
         }
-        if (!inTrainerBattle && teamSize < MAX_TEAM) {
-            DrawText("[Z] DEPLOY   [C] CATCH   [X] END TURN",
-                30, SCREEN_H - 22, 16, (Color) { 100, 240, 255, 255 });
-        }
-        else {
-            DrawText("[Z] DEPLOY   [X] END TURN",
-                30, SCREEN_H - 22, 16, (Color) { 100, 240, 255, 255 });
-        }
+        drawButton(catchButtonRect(), "CATCH [C]", 12, 0, canCatchNow());
+        drawButton(endTurnButtonRect(), "END TURN [X]", 12, 0, 1);
+        DrawText("[Z/ENTER/CLICK] DEPLOY   [WASD/ARROWS] SELECT",
+            30, SCREEN_H - 18, 14, (Color) { 100, 240, 255, 255 });
     }
     else {
         DrawText(">> SYS LOG <<", 30, SCREEN_H - 155, 14, (Color) { 100, 240, 255, 255 });
@@ -1506,12 +1668,12 @@ static void drawBattle(void) {
 
         if (battleState == 3 && dialoguePhase == DLG_NONE) {
             if (inTrainerBattle)
-                DrawText(">> VICTORY! [Z] TO CONTINUE <<", 35, SCREEN_H - 75, 20,
+                DrawText(">> VICTORY! [Z/CLICK] TO CONTINUE <<", 35, SCREEN_H - 75, 20,
                     (Color) {
                 255, 220, 100, 255
             });
             else
-                DrawText(">> TARGET DESTROYED! [Z] TO CONTINUE <<", 35, SCREEN_H - 75, 20,
+                DrawText(">> TARGET DESTROYED! [Z/CLICK] <<", 35, SCREEN_H - 75, 20,
                     (Color) {
                 120, 255, 180, 255
             });
@@ -1521,7 +1683,7 @@ static void drawBattle(void) {
             });
         }
         if (battleState == 4 && dialoguePhase == DLG_NONE)
-            DrawText(">> MECH DISABLED! [Z] TO CONTINUE <<", 35, SCREEN_H - 75, 20,
+            DrawText(">> MECH DISABLED! [Z/CLICK] TO CONTINUE <<", 35, SCREEN_H - 75, 20,
                 (Color) {
             255, 100, 100, 255
         });
@@ -1541,24 +1703,28 @@ static void drawBattle(void) {
                     35, SCREEN_H - 252, 14, (Color) { 255, 220, 100, 255 });
             }
             DrawText(dialogueText, 40, SCREEN_H - 225, 22, (Color) { 255, 240, 220, 255 });
-            DrawText("[Z] to continue", SCREEN_W - 180, SCREEN_H - 180, 16,
+            DrawText("[Z/CLICK] to continue", SCREEN_W - 220, SCREEN_H - 180, 16,
                 (Color) {
                 150, 200, 255, 255
             });
         }
     }
+
+    EndMode2D();
 }
 
 // ============ LEVELUP SCREEN ============
 static void drawLevelUpScreen(void) {
     ClearBackground((Color) { 5, 8, 18, 255 });
-    for (int i = 0; i < 120; i++) {
-        int stx = (i * 137 + (int)(glowTimer * 40)) % SCREEN_W;
+    int starCount = 120 * screenW / SCREEN_W;
+    for (int i = 0; i < starCount; i++) {
+        int stx = (i * 137 + (int)(glowTimer * 40)) % screenW;
         int sty = (i * 91) % SCREEN_H;
         float t = glowTimer * 20 + i;
         int bright = 60 + (int)(80 * (sinf(t * 0.2f) * 0.5f + 0.5f));
         DrawPixel(stx, sty, (Color) { bright, bright, (unsigned char)(bright + 60), 255 });
     }
+    BeginMode2D(layoutCamera());
     if (levelUpSubState == 0) {
         const char* title = "LEVEL UP!";
         int tw = MeasureText(title, 48);
@@ -1592,7 +1758,7 @@ static void drawLevelUpScreen(void) {
             DrawText("+1 DEF", 400, 360, 22, (Color) { 150, 180, 255, (unsigned char)(255 * a) });
             DrawText("+1 SPD", 400, 395, 22, (Color) { 255, 220, 120, (unsigned char)(255 * a) });
         }
-        DrawText("[Z] to continue", 300, 550, 20, (Color) { 100, 240, 255, 255 });
+        DrawText("[Z/CLICK] to continue", 290, 550, 20, (Color) { 100, 240, 255, 255 });
     }
     else {
         Mech* m = &team[0]; // evolution always for slot 0
@@ -1628,7 +1794,7 @@ static void drawLevelUpScreen(void) {
         DrawText(TextFormat("+%d DEF", s->defBonus), 280, 490, 20, (Color) { 150, 180, 255, 255 });
         DrawText(TextFormat("+%d SPD", s->spdBonus), 280, 515, 20, (Color) { 255, 220, 120, 255 });
         if (glowTimer - levelUpTimer > 0.5f)
-            DrawText("[Z] to continue", 300, 555, 20, (Color) { 100, 240, 255, 255 });
+            DrawText("[Z/CLICK] to continue", 290, 555, 20, (Color) { 100, 240, 255, 255 });
         if (GetRandomValue(0, 100) < 60) {
             Vector2 pos = { (float)(SCREEN_W / 2 + GetRandomValue(-140, 140)),
                             (float)(220 + GetRandomValue(-140, 140)) };
@@ -1636,24 +1802,34 @@ static void drawLevelUpScreen(void) {
                 0.9f, (playerStage == 2) ? 4 : 3, accent);
         }
     }
+    EndMode2D();
 }
 
 // ============ TEAM SCREEN ============
+static Rectangle teamSlotRect(int i) {
+    int col = i % 2, row = i / 2;
+    return (Rectangle) { 40.0f + col * 380, 90.0f + row * 160, 340, 140 };
+}
+static Rectangle teamCloseButtonRect(void) { return (Rectangle) { 30, SCREEN_H - 42, 200, 30 }; }
+
 static void drawTeamScreen(void) {
     ClearBackground((Color) { 8, 12, 22, 255 });
-    DrawRectangle(0, 0, SCREEN_W, 60, (Color) { 15, 25, 45, 255 });
-    DrawRectangleLines(0, 0, SCREEN_W, 60, (Color) { 100, 200, 255, 220 });
+    DrawRectangle(0, 0, screenW, 60, (Color) { 15, 25, 45, 255 });
+    DrawRectangleLines(0, 0, screenW, 60, (Color) { 100, 200, 255, 220 });
+    BeginMode2D(layoutCamera());
     DrawText(">> MECH TEAM", 30, 18, 26, (Color) { 150, 220, 255, 255 });
     DrawText(TextFormat("%d / %d", teamSize, MAX_TEAM), SCREEN_W - 100, 22, 20, WHITE);
 
     for (int i = 0; i < teamSize; i++) {
-        int col = i % 2, row = i / 2;
-        int bx = 40 + col * 380;
-        int by = 90 + row * 160;
+        Rectangle slot = teamSlotRect(i);
+        int bx = (int)slot.x;
+        int by = (int)slot.y;
         int sp = team[i].speciesIdx;
 
         // Slot panel
         DrawRectangle(bx, by, 340, 140, (Color) { 20, 30, 50, 230 });
+        if (i == teamSel)
+            DrawRectangleLinesEx((Rectangle) { bx - 4.0f, by - 4.0f, 348, 148 }, 2, (Color) { 120, 240, 255, 255 });
         DrawRectangleLines(bx, by, 340, 140,
             i == activeTeamSlot ? (Color) { 255, 220, 100, 255 }
         : (Color) { 80, 140, 200, 200 });
@@ -1686,11 +1862,12 @@ static void drawTeamScreen(void) {
     if (teamSize == 0)
         DrawText("NO MECHS IN TEAM", SCREEN_W / 2 - 120, SCREEN_H / 2, 24, (Color) { 150, 150, 150, 255 });
 
-    DrawText("[TAB / ESC] Close", 30, SCREEN_H - 34, 18, (Color) { 100, 240, 255, 255 });
-    DrawText("[Z] Set as active", SCREEN_W - 260, SCREEN_H - 34, 18,
+    drawButton(teamCloseButtonRect(), "CLOSE [TAB/ESC]", 16, 0, 1);
+    DrawText("[Z/ENTER/CLICK] Set as active", SCREEN_W - 330, SCREEN_H - 34, 18,
         (Color) {
         255, 220, 100, 255
     });
+    EndMode2D();
 }
 
 // ============ BATTLE UPDATE ============
@@ -1764,7 +1941,8 @@ static void updateBattle(float dt) {
     updateEffects(dt);
 
     if (dialoguePhase != DLG_NONE) {
-        if (IsKeyPressed(KEY_Z)) {
+        if (confirmPressed() || clickPressed()) {
+            consumeInput();
             int wasPhase = dialoguePhase;
             dialoguePhase = DLG_NONE;
             if (wasPhase == DLG_DEFEAT) finishBattleAndReturn();
@@ -1780,13 +1958,21 @@ static void updateBattle(float dt) {
         if (battleMenuSel < 0) battleMenuSel = 0;
         if (battleMenuSel >= playerBattler.moves.numMoves) battleMenuSel = playerBattler.moves.numMoves - 1;
 
-        if (IsKeyPressed(KEY_RIGHT)) battleMenuSel = (battleMenuSel + 1) % playerBattler.moves.numMoves;
-        if (IsKeyPressed(KEY_LEFT))  battleMenuSel = (battleMenuSel + playerBattler.moves.numMoves - 1) % playerBattler.moves.numMoves;
-        if (IsKeyPressed(KEY_DOWN))  battleMenuSel = (battleMenuSel + 2) % playerBattler.moves.numMoves;
-        if (IsKeyPressed(KEY_UP))    battleMenuSel = (battleMenuSel + playerBattler.moves.numMoves - 2) % playerBattler.moves.numMoves;
+        if (RIGHT_PRESSED) battleMenuSel = (battleMenuSel + 1) % playerBattler.moves.numMoves;
+        if (LEFT_PRESSED)  battleMenuSel = (battleMenuSel + playerBattler.moves.numMoves - 1) % playerBattler.moves.numMoves;
+        if (DOWN_PRESSED)  battleMenuSel = (battleMenuSel + 2) % playerBattler.moves.numMoves;
+        if (UP_PRESSED)    battleMenuSel = (battleMenuSel + playerBattler.moves.numMoves - 2) % playerBattler.moves.numMoves;
+
+        // Mouse: hovering selects a weapon, clicking fires it
+        int clickedMove = 0;
+        for (int i = 0; i < playerBattler.moves.numMoves; i++) {
+            if (mouseMoved() && mouseOver(moveButtonRect(i))) battleMenuSel = i;
+            if (clickedOn(moveButtonRect(i))) { battleMenuSel = i; clickedMove = 1; }
+        }
 
         // ---- CATCH ----
-        if (IsKeyPressed(KEY_C) && !inTrainerBattle && teamSize < MAX_TEAM) {
+        if ((IsKeyPressed(KEY_C) || clickedOn(catchButtonRect())) && canCatchNow()) {
+            consumeInput();
             // Catching costs your whole turn
             if (tryCatch()) {
                 Mech caught = enemyBattler.m;
@@ -1819,14 +2005,16 @@ static void updateBattle(float dt) {
             }
         }
 
-        if (IsKeyPressed(KEY_X)) {
+        if (IsKeyPressed(KEY_X) || clickedOn(endTurnButtonRect())) {
+            consumeInput();
             playerEndedTurn = 1; battleState = 2; battleTimer = 0;
             queueEnemyActions(); pendingEnemyIdx = 0;
             snprintf(battleLog, sizeof(battleLog), "Ending turn. Enemy taking action...");
             return;
         }
 
-        if (IsKeyPressed(KEY_Z)) {
+        if (confirmPressed() || clickedMove) {
+            consumeInput();
             int mv = battleMenuSel;
             int cost = playerBattler.moves.moveCost[mv];
             if (playerBattler.moves.pp[mv] <= 0) {
@@ -1932,10 +2120,145 @@ static void triggerTrainerEncounter(int trainerIdx) {
     snprintf(dialogueText, sizeof(dialogueText), "\"%s\"", t->introLine);
 }
 
+// ============ MAIN MENU / SETTINGS ============
+#define NUM_MENU_ITEMS 3
+#define NUM_SETTINGS_ITEMS 3   // display mode, aspect ratio, back
+
+static Rectangle menuButtonRect(int i) { return (Rectangle) { SCREEN_W / 2 - 140.0f, 290.0f + i * 70, 280, 52 }; }
+static Rectangle settingsRowRect(int i) { return (Rectangle) { SCREEN_W / 2 - 250.0f, 190.0f + i * 90, 500, 56 }; }
+
+static void drawTextCentered(const char* text, int y, int size, Color c) {
+    DrawText(text, SCREEN_W / 2 - MeasureText(text, size) / 2, y, size, c);
+}
+static Rectangle settingsArrowRect(int i, int right) {
+    Rectangle r = settingsRowRect(i);
+    return (Rectangle) { right ? r.x + r.width - 50 : r.x + 230, r.y + 8, 40, 40 };
+}
+
+static void drawMenuBackground(void) {
+    ClearBackground((Color) { 6, 8, 18, 255 });
+    // Scrolling neon grid
+    float scroll = fmodf(glowTimer * 30, TILE_SIZE);
+    for (int x = 0; x <= screenW / TILE_SIZE + 1; x++)
+        DrawLine(x * TILE_SIZE, 0, x * TILE_SIZE, SCREEN_H, (Color) { 30, 50, 90, 90 });
+    for (int y = -1; y <= SCREEN_H / TILE_SIZE + 1; y++)
+        DrawLine(0, (int)(y * TILE_SIZE + scroll), screenW, (int)(y * TILE_SIZE + scroll), (Color) { 30, 50, 90, 90 });
+    int starCount = 80 * screenW / SCREEN_W;
+    for (int i = 0; i < starCount; i++) {
+        int stx = (i * 137) % screenW;
+        int sty = (i * 91) % SCREEN_H;
+        int bright = 60 + (int)(80 * (sinf(glowTimer * 2 + i) * 0.5f + 0.5f));
+        DrawPixel(stx, sty, (Color) { bright, bright, (unsigned char)(bright + 60), 255 });
+    }
+}
+
+static void drawMenuTitle(const char* title, const char* subtitle) {
+    int tw = MeasureText(title, 56);
+    DrawText(title, SCREEN_W / 2 - tw / 2 + 3, 63, 56, (Color) { 20, 60, 120, 255 });
+    DrawText(title, SCREEN_W / 2 - tw / 2, 60, 56, (Color) { 120, 230, 255, 255 });
+    int sw = MeasureText(subtitle, 20);
+    DrawText(subtitle, SCREEN_W / 2 - sw / 2, 124, 20, (Color) { 255, 120, 200, 255 });
+}
+
+static void updateMenu(int* state) {
+    if (UP_PRESSED)   menuSel = (menuSel + NUM_MENU_ITEMS - 1) % NUM_MENU_ITEMS;
+    if (DOWN_PRESSED) menuSel = (menuSel + 1) % NUM_MENU_ITEMS;
+    int activate = confirmPressed();
+    for (int i = 0; i < NUM_MENU_ITEMS; i++) {
+        if (mouseMoved() && mouseOver(menuButtonRect(i))) menuSel = i;
+        if (clickedOn(menuButtonRect(i))) { menuSel = i; activate = 1; }
+    }
+    // ESC resumes a game in progress
+    if (IsKeyPressed(KEY_ESCAPE) && gameStarted) { *state = STATE_OVERWORLD; return; }
+    if (!activate) return;
+    consumeInput();
+    if (menuSel == 0) { gameStarted = 1; *state = STATE_OVERWORLD; }
+    else if (menuSel == 1) { settingsSel = 0; *state = STATE_SETTINGS; }
+    else quitRequested = 1;
+}
+
+static void drawMenu(void) {
+    drawMenuBackground();
+    BeginMode2D(layoutCamera());
+    drawMenuTitle("MECH PILOT", "- NEON WASTELAND -");
+    drawSpeciesBattle(0, SCREEN_W / 2, 215, 8, 0);
+    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "CONTINUE" : "START", "SETTINGS", "EXIT" };
+    for (int i = 0; i < NUM_MENU_ITEMS; i++)
+        drawButton(menuButtonRect(i), labels[i], 24, i == menuSel, 1);
+    drawTextCentered("[WASD/ARROWS] Navigate   [Z/ENTER/CLICK] Select", SCREEN_H - 30, 16,
+        (Color) { 150, 220, 255, 200 });
+    EndMode2D();
+}
+
+// Change a setting by +1 / -1 and apply it immediately
+static void changeSetting(int row, int delta) {
+    if (row == 0) settingFullscreen = !settingFullscreen;
+    else if (row == 1) {
+        if (settingFullscreen) return;   // aspect ratio only applies in windowed mode
+        settingAspect = (settingAspect + delta + NUM_ASPECTS) % NUM_ASPECTS;
+    }
+    else return;
+    applyDisplaySettings();
+    saveSettings();
+}
+
+static void updateSettings(int* state) {
+    if (UP_PRESSED)   settingsSel = (settingsSel + NUM_SETTINGS_ITEMS - 1) % NUM_SETTINGS_ITEMS;
+    if (DOWN_PRESSED) settingsSel = (settingsSel + 1) % NUM_SETTINGS_ITEMS;
+    if (LEFT_PRESSED)  changeSetting(settingsSel, -1);
+    if (RIGHT_PRESSED) changeSetting(settingsSel, +1);
+
+    int activate = confirmPressed();
+    for (int i = 0; i < NUM_SETTINGS_ITEMS; i++) {
+        if (mouseMoved() && mouseOver(settingsRowRect(i))) settingsSel = i;
+        if (i < 2 && clickedOn(settingsArrowRect(i, 0))) { settingsSel = i; changeSetting(i, -1); consumeInput(); }
+        else if (clickedOn(settingsRowRect(i))) { settingsSel = i; activate = 1; }
+    }
+    if (IsKeyPressed(KEY_ESCAPE) || (activate && settingsSel == 2)) {
+        consumeInput();
+        *state = STATE_MENU;
+        return;
+    }
+    if (activate) { consumeInput(); changeSetting(settingsSel, +1); }
+}
+
+static void drawSettings(void) {
+    drawMenuBackground();
+    BeginMode2D(layoutCamera());
+    drawMenuTitle("SETTINGS", "- DISPLAY -");
+
+    const char* names[2] = { "DISPLAY MODE", "ASPECT RATIO" };
+    const char* values[2] = { settingFullscreen ? "FULLSCREEN" : "WINDOWED", aspects[settingAspect].label };
+    for (int i = 0; i < 2; i++) {
+        Rectangle r = settingsRowRect(i);
+        int enabled = !(i == 1 && settingFullscreen);
+        drawButton(r, "", 20, i == settingsSel, enabled);
+        Color text = enabled ? (Color) { 220, 240, 255, 255 } : (Color) { 100, 110, 130, 255 };
+        DrawText(names[i], (int)r.x + 20, (int)r.y + 18, 20, text);
+        drawButton(settingsArrowRect(i, 0), "<", 24, 0, enabled);
+        drawButton(settingsArrowRect(i, 1), ">", 24, 0, enabled);
+        Rectangle left = settingsArrowRect(i, 0), right = settingsArrowRect(i, 1);
+        const char* val = values[i];
+        int vw = MeasureText(val, 20);
+        int mid = (int)((left.x + left.width + right.x) / 2);
+        DrawText(val, mid - vw / 2, (int)r.y + 18, 20, enabled ? (Color) { 120, 240, 255, 255 } : text);
+    }
+    if (settingFullscreen)
+        drawTextCentered("Aspect ratio follows your monitor in fullscreen.", 342, 16, (Color) { 150, 170, 200, 220 });
+    drawButton(settingsRowRect(2), "BACK", 22, settingsSel == 2, 1);
+
+    drawTextCentered("[W/S] Select   [A/D] Change   [Z/ENTER/CLICK] Toggle   [ESC] Back", SCREEN_H - 30, 16,
+        (Color) { 150, 220, 255, 200 });
+    EndMode2D();
+}
+
 // ============ MAIN ============
 int main(void) {
     InitWindow(SCREEN_W, SCREEN_H, "MECH PILOT - Neon Wasteland");
+    SetExitKey(KEY_NULL);   // ESC opens menus; quit via the EXIT button
     SetTargetFPS(60);
+    loadSettings();
+    applyDisplaySettings();
 
     genMap();
     initTrainers();
@@ -1945,36 +2268,69 @@ int main(void) {
     px = 15; py = 16; facing = 0;
     pxF = px * TILE_SIZE; pyF = py * TILE_SIZE;
 
-    int state = STATE_OVERWORLD;
-    int prevState = STATE_OVERWORLD;
+    int state = STATE_MENU;
 
     Camera2D camera = { 0 };
-    camera.offset = (Vector2){ SCREEN_W / 2.0f, SCREEN_H / 2.0f };
     camera.zoom = 1.0f;
 
     playerMechPos = (Vector2){ 160, 300 };
     enemyMechPos = (Vector2){ 520, 150 };
 
-    while (!WindowShouldClose()) {
+    while (!WindowShouldClose() && !quitRequested) {
         float dt = GetFrameTime();
         glowTimer += dt;
+        inputConsumed = 0;
+        updateCanvasTransform();
 
-        if (state == STATE_OVERWORLD) {
-            // Open team screen
+        // Only the screen that was active at the start of the frame gets updated,
+        // so a key press that changes screens isn't handled twice.
+        int frameState = state;
+
+        if (frameState == STATE_MENU) {
+            updateMenu(&state);
+        }
+        else if (frameState == STATE_SETTINGS) {
+            updateSettings(&state);
+        }
+        else if (frameState == STATE_OVERWORLD) {
             if (IsKeyPressed(KEY_TAB)) {
-                prevState = STATE_OVERWORLD;
+                teamSel = activeTeamSlot;
                 state = STATE_TEAM;
             }
+            else if (IsKeyPressed(KEY_ESCAPE)) {
+                menuSel = 0;
+                state = STATE_MENU;
+            }
 
-            if (messageTimer > 0) messageTimer -= dt;
-            else {
-                int dx = 0, dy = 0;
-                if (IsKeyPressed(KEY_RIGHT)) { dx = 1; facing = 3; }
-                else if (IsKeyPressed(KEY_LEFT)) { dx = -1; facing = 2; }
-                else if (IsKeyPressed(KEY_DOWN)) { dy = 1; facing = 0; }
-                else if (IsKeyPressed(KEY_UP)) { dy = -1; facing = 1; }
+            // Advance the current step between tiles
+            int arrived = 0;
+            float carry = 0;   // leftover step progress, so continuous walking doesn't stutter
+            if (moving && state == STATE_OVERWORLD) {
+                moveT += dt / MOVE_TIME;
+                if (moveT >= 1) {
+                    carry = moveT - 1;
+                    moveT = 1;
+                    moving = 0;
+                    arrived = 1;
+                }
+                pxF = moveFromX + (px * TILE_SIZE - moveFromX) * moveT;
+                pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
+            }
 
-                if (IsKeyPressed(KEY_Z)) {
+            if (state != STATE_OVERWORLD) {
+                // switched to the team screen / menu this frame
+            }
+            else if (arrived && map[py][px] == T_RUINS && rand() % 100 < encounterChance) {
+                startWildBattle();
+                state = STATE_BATTLE;
+            }
+            else if (messageTimer > 0) {
+                messageTimer -= dt;
+                if (confirmPressed() || clickPressed()) { messageTimer = 0; consumeInput(); }
+            }
+            else if (!moving) {
+                if (confirmPressed()) {
+                    consumeInput();
                     int fx = px, fy = py;
                     if (facing == 0) fy++;
                     else if (facing == 1) fy--;
@@ -1988,47 +2344,78 @@ int main(void) {
                             break;
                         }
                     }
+                    if (state == STATE_OVERWORLD && fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H &&
+                        map[fy][fx] == T_TERMINAL)
+                        showMessage("[TERMINAL] LOG: Catch mechs to grow your team!", 3.5f);
                 }
 
-                if (dx != 0 || dy != 0) {
+                // Pick a direction: the most recently pressed one wins while it is held
+                for (int d = 0; d < 4; d++) if (dirPressed(d)) lastDir = d;
+                int dir = -1;
+                if (lastDir >= 0 && dirDown(lastDir)) dir = lastDir;
+                else for (int d = 0; d < 4; d++) if (dirDown(d)) { dir = d; break; }
+
+                if (dir >= 0 && state == STATE_OVERWORLD && messageTimer <= 0) {
+                    // Bumping into things only reacts to a fresh press or walking into them,
+                    // not to a key that is still held from before (e.g. after a battle).
+                    int fresh = dirPressed(dir) || arrived;
+                    int dx = (dir == 3) - (dir == 2);
+                    int dy = (dir == 0) - (dir == 1);
                     int nx = px + dx, ny = py + dy;
+                    facing = dir;
+
                     int blocked = 0;
                     for (int i = 0; i < NUM_TRAINERS; i++) {
                         if (trainers[i].x == nx && trainers[i].y == ny) {
-                            triggerTrainerEncounter(i);
-                            if (!trainers[i].defeated || dialoguePhase == DLG_INTRO)
-                                state = STATE_BATTLE;
                             blocked = 1;
+                            if (fresh) {
+                                triggerTrainerEncounter(i);
+                                if (!trainers[i].defeated || dialoguePhase == DLG_INTRO)
+                                    state = STATE_BATTLE;
+                            }
                             break;
                         }
                     }
                     if (!blocked) {
                         if (isSolid(nx, ny)) {
-                            if (map[ny][nx] == T_TERMINAL)
+                            if (fresh && map[ny][nx] == T_TERMINAL)
                                 showMessage("[TERMINAL] LOG: Catch mechs to grow your team!", 3.5f);
                         }
                         else {
+                            moveFromX = (float)(px * TILE_SIZE);
+                            moveFromY = (float)(py * TILE_SIZE);
                             px = nx; py = ny;
-                            if (map[py][px] == T_RUINS && rand() % 100 < encounterChance) {
-                                startWildBattle();
-                                state = STATE_BATTLE;
-                            }
+                            moving = 1;
+                            moveT = carry;
+                            pxF = moveFromX + (px * TILE_SIZE - moveFromX) * moveT;
+                            pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
                         }
                     }
                 }
             }
-            pxF += (px * TILE_SIZE - pxF) * fminf(1, dt * 14);
-            pyF += (py * TILE_SIZE - pyF) * fminf(1, dt * 14);
+            camera.offset = (Vector2){ screenW / 2.0f, SCREEN_H / 2.0f };
             camera.target = (Vector2){ pxF + TILE_SIZE / 2, pyF + TILE_SIZE / 2 };
         }
-
-        if (state == STATE_BATTLE) {
+        else if (frameState == STATE_BATTLE) {
             updateBattle(dt);
+
+            int cont = confirmPressed() || clickPressed();
+            if (battleState == 3 && dialoguePhase == DLG_NONE && cont) {
+                consumeInput();
+                finishBattleAndReturn();
+            }
+            if (battleState == 4 && dialoguePhase == DLG_NONE && cont) {
+                consumeInput();
+                // Heal active mech on defeat
+                team[activeTeamSlot].hp = team[activeTeamSlot].maxHP;
+                inTrainerBattle = 0;
+                activeTrainerIdx = -1;
+                state = STATE_OVERWORLD;
+            }
 
             if (pendingPlayerMove == -100) {
                 pendingPlayerMove = -1;
                 state = STATE_LEVELUP;
-                continue;
             }
             if (pendingPlayerMove == -101) {
                 pendingPlayerMove = -1;
@@ -2036,33 +2423,16 @@ int main(void) {
                 inTrainerBattle = 0;
                 activeTrainerIdx = -1;
                 state = STATE_OVERWORLD;
-                continue;
-            }
-
-            if (battleState == 3 && dialoguePhase == DLG_NONE && IsKeyPressed(KEY_Z)) {
-                finishBattleAndReturn();
-            }
-            if (battleState == 4 && dialoguePhase == DLG_NONE && IsKeyPressed(KEY_Z)) {
-                // Heal active mech on defeat
-                team[activeTeamSlot].hp = team[activeTeamSlot].maxHP;
-                inTrainerBattle = 0;
-                activeTrainerIdx = -1;
-                state = STATE_OVERWORLD;
             }
         }
-
-        if (state == STATE_LEVELUP) {
+        else if (frameState == STATE_LEVELUP) {
             levelUpTimer += dt;
             updateEffects(dt);
-            if (IsKeyPressed(KEY_Z)) {
-                if (levelUpSubState == 0) {
-                    if (evolvedThisBattle) { levelUpSubState = 1; levelUpTimer = 0; }
-                    else {
-                        team[activeTeamSlot].hp = playerBattler.m.hp;
-                        inTrainerBattle = 0;
-                        activeTrainerIdx = -1;
-                        state = STATE_OVERWORLD;
-                    }
+            if (confirmPressed() || clickPressed()) {
+                consumeInput();
+                if (levelUpSubState == 0 && evolvedThisBattle) {
+                    levelUpSubState = 1;
+                    levelUpTimer = 0;
                 }
                 else {
                     team[activeTeamSlot].hp = playerBattler.m.hp;
@@ -2072,37 +2442,39 @@ int main(void) {
                 }
             }
         }
-
-        if (state == STATE_TEAM) {
-            if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_ESCAPE)) {
-                state = prevState;
+        else if (frameState == STATE_TEAM) {
+            if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_ESCAPE) || clickedOn(teamCloseButtonRect())) {
+                consumeInput();
+                state = STATE_OVERWORLD;
             }
             // Navigate & set active
-            if (teamSize > 0) {
-                static int teamSel = 0;
-                if (IsKeyPressed(KEY_RIGHT)) teamSel = (teamSel + 1) % teamSize;
-                if (IsKeyPressed(KEY_LEFT))  teamSel = (teamSel + teamSize - 1) % teamSize;
-                if (IsKeyPressed(KEY_DOWN))  teamSel = (teamSel + 2) % teamSize;
-                if (IsKeyPressed(KEY_UP))    teamSel = (teamSel + teamSize - 2) % teamSize;
-                if (IsKeyPressed(KEY_Z)) {
-                    if (activeTeamSlot != teamSel) {
-                        activeTeamSlot = teamSel;
-                        // Sync active mech hp
-                    }
+            else if (teamSize > 0) {
+                if (teamSel >= teamSize) teamSel = 0;
+                if (RIGHT_PRESSED) teamSel = (teamSel + 1) % teamSize;
+                if (LEFT_PRESSED)  teamSel = (teamSel + teamSize - 1) % teamSize;
+                if (DOWN_PRESSED)  teamSel = (teamSel + 2) % teamSize;
+                if (UP_PRESSED)    teamSel = (teamSel + teamSize - 2) % teamSize;
+                int activate = confirmPressed();
+                for (int i = 0; i < teamSize; i++) {
+                    if (mouseMoved() && mouseOver(teamSlotRect(i))) teamSel = i;
+                    if (clickedOn(teamSlotRect(i))) { teamSel = i; activate = 1; }
                 }
-                (void)teamSel; // suppress warning; we render highlights via activeTeamSlot
+                if (activate) {
+                    consumeInput();
+                    activeTeamSlot = teamSel;
+                }
             }
         }
 
         // ===== DRAW =====
-        BeginDrawing();
+        BeginTextureMode(canvas);
         ClearBackground((Color) { 8, 10, 20, 255 });
 
         if (state == STATE_OVERWORLD) {
             BeginMode2D(camera);
-            int startX = (int)((camera.target.x - SCREEN_W / 2) / TILE_SIZE) - 1;
+            int startX = (int)((camera.target.x - screenW / 2) / TILE_SIZE) - 1;
             int startY = (int)((camera.target.y - SCREEN_H / 2) / TILE_SIZE) - 1;
-            int endX = startX + SCREEN_W / TILE_SIZE + 3;
+            int endX = startX + screenW / TILE_SIZE + 3;
             int endY = startY + SCREEN_H / TILE_SIZE + 3;
             if (startX < 0) startX = 0;
             if (startY < 0) startY = 0;
@@ -2147,22 +2519,22 @@ int main(void) {
             // Trainer tracker
             int defeated = 0;
             for (int i = 0; i < NUM_TRAINERS; i++) if (trainers[i].defeated) defeated++;
-            DrawRectangle(SCREEN_W - 200, 10, 190, 60, (Color) { 15, 25, 45, 200 });
-            DrawRectangleLines(SCREEN_W - 200, 10, 190, 60, (Color) { 255, 200, 100, 180 });
-            DrawText("IRON LEGION", SCREEN_W - 190, 16, 14, (Color) { 255, 220, 100, 255 });
+            DrawRectangle(screenW - 200, 10, 190, 60, (Color) { 15, 25, 45, 200 });
+            DrawRectangleLines(screenW - 200, 10, 190, 60, (Color) { 255, 200, 100, 180 });
+            DrawText("IRON LEGION", screenW - 190, 16, 14, (Color) { 255, 220, 100, 255 });
             DrawText(TextFormat("Defeated: %d / %d", defeated, NUM_TRAINERS),
-                SCREEN_W - 190, 36, 14, WHITE);
-            DrawText(TextFormat("SECTOR %02d-%02d", px, py), SCREEN_W - 190, 54, 12,
+                screenW - 190, 36, 14, WHITE);
+            DrawText(TextFormat("SECTOR %02d-%02d", px, py), screenW - 190, 54, 12,
                 (Color) {
                 150, 200, 255, 200
             });
 
-            DrawText("[ARROWS] Move   [Z] Talk   [TAB] Team",
+            DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk   [TAB] Team   [ESC] Menu",
                 10, SCREEN_H - 28, 16, (Color) { 150, 220, 255, 220 });
 
             if (messageTimer > 0) {
-                DrawRectangle(40, SCREEN_H - 130, SCREEN_W - 80, 90, (Color) { 15, 25, 45, 240 });
-                DrawRectangleLines(40, SCREEN_H - 130, SCREEN_W - 80, 90, (Color) { 80, 220, 255, 220 });
+                DrawRectangle(40, SCREEN_H - 130, screenW - 80, 90, (Color) { 15, 25, 45, 240 });
+                DrawRectangleLines(40, SCREEN_H - 130, screenW - 80, 90, (Color) { 80, 220, 255, 220 });
                 DrawText(">> COMMS", 55, SCREEN_H - 122, 13, (Color) { 100, 240, 255, 255 });
                 DrawText(message, 55, SCREEN_H - 100, 20, (Color) { 200, 240, 255, 255 });
             }
@@ -2176,10 +2548,25 @@ int main(void) {
         else if (state == STATE_TEAM) {
             drawTeamScreen();
         }
+        else if (state == STATE_MENU) {
+            drawMenu();
+        }
+        else if (state == STATE_SETTINGS) {
+            drawSettings();
+        }
+        EndTextureMode();
 
+        // Scale the canvas to the window, letterboxed if the aspect ratios differ
+        BeginDrawing();
+        ClearBackground(BLACK);
+        DrawTexturePro(canvas.texture,
+            (Rectangle) { 0, 0, (float)canvas.texture.width, -(float)canvas.texture.height },
+            (Rectangle) { canvasOffset.x, canvasOffset.y, screenW * canvasScale, SCREEN_H * canvasScale },
+            (Vector2) { 0, 0 }, 0, WHITE);
         EndDrawing();
     }
 
+    UnloadRenderTexture(canvas);
     CloseWindow();
     return 0;
 }
