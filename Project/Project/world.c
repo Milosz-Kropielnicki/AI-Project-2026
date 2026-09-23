@@ -285,11 +285,11 @@ static void drawHud(void) {
     DrawText(TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)), 20, 30, 20, WHITE);
     DrawText(TextFormat("%s %s  -  %s", model->designation, model->name, roleNames[model->role]),
         20, 52, 12, (Color) { 180, 200, 220, 255 });
-    int maxI = mechMaxIntegrity(m), maxA = mechMaxArmor(m);
-    drawIntegrityBar(20, 68, 280, 12, m->integrity, maxI);
-    DrawText(TextFormat("INT %d/%d", m->integrity, maxI), 20, 82, 11, WHITE);
-    drawArmorBar(20, 96, 280, 6, m->armor, maxA);
-    DrawText(TextFormat("ARM %d/%d", m->armor, maxA), 160, 82, 11, (Color) { 150, 190, 240, 255 });
+    const MechStats* s = &m->stats;
+    drawIntegrityBar(20, 68, 280, 12, s->integrity, s->maxIntegrity);
+    DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), 20, 82, 11, WHITE);
+    drawArmorBar(20, 96, 280, 6, s->armor, s->maxArmor);
+    DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), 160, 82, 11, (Color) { 150, 190, 240, 255 });
     drawDataBar(20, 110, 280, 6, m->fw.data, firmwareDataToNext(m->fw.revision));
     DrawText(TextFormat("DATA %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)),
         20, 119, 10, (Color) { 200, 170, 255, 255 });

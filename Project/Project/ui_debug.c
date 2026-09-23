@@ -52,11 +52,6 @@ static int isBattleEnemy(const Mech* m) { return returnState == STATE_BATTLE && 
 void uiDebugUpdate(GameState* state) {
     if (IsKeyPressed(KEY_F1) || IsKeyPressed(KEY_ESCAPE)) {
         consumeInput();
-        // Refits / revisions made here must reach the live battle numbers
-        if (returnState == STATE_BATTLE) {
-            mechStats(battle.player.mech, &battle.player.stats);
-            mechStats(battle.enemy.mech, &battle.enemy.stats);
-        }
         *state = returnState;
         return;
     }
@@ -78,6 +73,7 @@ void uiDebugUpdate(GameState* state) {
     if (IsKeyPressed(KEY_R) && m->fw.revision < MAX_REVISION) {
         firmwareAddData(&m->fw, firmwareDataToNext(m->fw.revision) - m->fw.data);
         firmwareAutoSpend(&m->fw);
+        mechRefreshStats(m);
     }
     if (IsKeyPressed(KEY_T)) mechRepair(m);
 }
@@ -149,28 +145,29 @@ static void drawFirmware(const Mech* m, int x, int y) {
     if (line == 0) text("no chips installed", x, y + 40, 10, colDim);
 }
 
-static void drawAttack(const Mech* a, const Stats* as, int mount, const Mech* d, const Stats* ds, int x, int y) {
-    const WeaponDef* w = mechWeapon(a, mount);
+static void drawAttack(const Mech* a, int mount, const Mech* d, int x, int y) {
+    const Weapon* w = mechWeapon(a, mount);
     if (!w) {
         text(TextFormat("[%d] -- empty mount --", mount + 1), x, y, 10, colDim);
         return;
     }
-    AttackContext ctx = attackContextBaseline(as, &a->fw, ds, &d->fw, d->armor);
+    AttackContext ctx = attackContextBaseline(a, d);
     AttackPreview p;
-    attackPreview(as, &a->fw, w, ds, &d->fw, &ctx, &p);
+    attackPreview(a, w, d, &ctx, &p);
 
-    text(TextFormat("[%d] %s  %s / %s   COST %d   HEAT +%d   AMMO %s", mount + 1, w->name, platformNames[w->platform],
-        munitionNames[w->munition], w->energyCost, p.heat, w->ammo > 0 ? TextFormat("%d", w->ammo) : "INF"),
+    text(TextFormat("[%d] %s  %s / %s / %s   COST %d   HEAT +%d   AMMO %s", mount + 1, w->name, platformNames[w->platform],
+        munitionNames[w->munition], targetingNames[w->targeting], p.energyCost, p.heat, w->ammo > 0 ? TextFormat("%d", w->ammo) : "INF"),
         x, y, 10, munitionColor(w->munition));
-    text(TextFormat("HIT  %.0f%% x ACC %.0f/100=%.2f x (1 - MOB %.0f/200)=%.2f = %.1f%%  x spoof %.2f  -> clamp %.1f%%",
-        p.weaponAcc, ctx.attackerAccuracy, p.accMod, ctx.targetMobility, p.evasionMod, p.hitUnclamped * 100, p.spoofMod,
+    text(TextFormat("HIT  %d%% x ACC %d/100=%.2f x (1 - MOB %d/200)=%.3f = %.1f%%  x spoof %.2f  -> clamp 5-95%% = %.1f%%",
+        p.weaponAcc, p.accuracy, p.accMod, p.mobility, p.evasionMod, p.hitUnclamped * 100, p.spoofMod,
         p.hitChance * 100), x + 12, y + 12, 10, colText);
-    text(TextFormat("DMG  %.0f x PWR %.2f = %.1f  x mod %.2f = %.1f   pen %.0f%% -> ARM %.1f (x%.2f breach)  INT %.1f",
-        p.baseDamage, p.power, p.raw, p.damageMod, p.modified, p.pen * 100, p.toArmor, p.breachMod, p.toIntegrity),
+    text(TextFormat("RAW  %d x PWR %.2f = %.2f   PEN %d%%: INT = %.2f x %.2f = %.2f   ARM = %.2f x %.2f = %.2f",
+        p.baseDamage, p.power, p.raw, p.pen, p.raw, p.pen / 100.0f, p.split.toIntegrity, p.raw, 1 - p.pen / 100.0f, p.split.toArmor),
         x + 12, y + 24, 10, colText);
     float expected = (p.armorDamage + p.integrityDamage) * p.hitChance;
-    text(TextFormat("vs ARMOR %d: absorbed %d, spill %d -> ARM -%d  INT -%d   expected %.1f/shot%s",
-        p.armorBefore, p.armorDamage, p.spill, p.armorDamage, p.integrityDamage, expected,
+    text(TextFormat("vs ARMOR %d: absorbed %d%s, spill %d -> ARM -%d  INT -%d   expected %.1f/shot%s",
+        p.armorBefore, p.split.armorDamage, p.breachBonus > 0 ? TextFormat(" +%d breach", p.breachBonus) : "",
+        p.split.spill, p.armorDamage, p.integrityDamage, expected,
         p.scramble > 0 ? TextFormat("   SCRAMBLE %d resist %.1f%%", p.scramble, p.resist * 100) : ""),
         x + 12, y + 36, 10, colGood);
 }
@@ -180,17 +177,16 @@ void uiDebugDraw(void) {
     BeginMode2D(layoutCamera());
     Mech* a = pool[subject];
     Mech* d = pool[target];
-    Stats as, ds;
-    mechStats(a, &as);
-    mechStats(d, &ds);
+    const MechStats* as = &a->stats;
+    const MechStats* ds = &d->stats;
 
     text("DEBUG // STATS & FORMULAS", 20, 8, 18, colHead);
-    text(TextFormat("[A/D] SUBJECT  %s  %s  (%s %s)  INT %d/%d  ARM %d/%d", poolTag[subject], a->name,
-        mechModel(a)->designation, roleNames[mechModel(a)->role], a->integrity, (int)as.v[STAT_INTEGRITY], a->armor,
-        (int)as.v[STAT_ARMOR]), 20, 32, 10, WHITE);
-    text(TextFormat("[W/S] TARGET   %s  %s  (%s %s)  INT %d/%d  ARM %d/%d", poolTag[target], d->name,
-        mechModel(d)->designation, roleNames[mechModel(d)->role], d->integrity, (int)ds.v[STAT_INTEGRITY], d->armor,
-        (int)ds.v[STAT_ARMOR]), 20, 45, 10, colDim);
+    text(TextFormat("[A/D] SUBJECT  %s  %s  (%s %s)  INT %d/%d  ARM %d/%d  EN %d/%d  HEAT %d/%d", poolTag[subject], a->name,
+        mechModel(a)->designation, roleNames[mechModel(a)->role], as->integrity, as->maxIntegrity, as->armor, as->maxArmor,
+        as->energy, as->maxEnergy, as->heat, as->maxHeat), 20, 32, 10, WHITE);
+    text(TextFormat("[W/S] TARGET   %s  %s  (%s %s)  INT %d/%d  ARM %d/%d  MOB %d%%  STB %d%%", poolTag[target], d->name,
+        mechModel(d)->designation, roleNames[mechModel(d)->role], ds->integrity, ds->maxIntegrity, ds->armor, ds->maxArmor,
+        ds->mobility, ds->stability), 20, 45, 10, colDim);
 
     drawStatTable(a, 20, 64);
     drawRefit(a, 20, 212);
@@ -198,19 +194,18 @@ void uiDebugDraw(void) {
 
     int wy = 290;
     text(TextFormat("ATTACK RESOLUTION: %s -> %s  (first attack of a round; chips included)", a->name, d->name), 20, wy, 10, colHead);
-    for (int i = 0; i < MAX_WEAPONS; i++) drawAttack(a, &as, i, d, &ds, 20, wy + 14 + i * 50);
+    for (int i = 0; i < MAX_WEAPONS; i++) drawAttack(a, i, d, 20, wy + 14 + i * 50);
 
     int my = wy + 14 + MAX_WEAPONS * 50 + 2;
-    float maxI = ds.v[STAT_INTEGRITY];
     int rarity = mechModel(d)->rarity < 1 ? 3 : mechModel(d)->rarity;
-    text(TextFormat("HACK %s: 0.25 + (1 - %d/%.0f) x 0.55 - (rarity %d - 1) x 0.08 - (STB %.0f - 60) x 0.003 = %.1f%%",
-        d->name, d->integrity, maxI, rarity, ds.v[STAT_STABILITY], hackChance(d, &ds) * 100), 20, my, 10, colText);
-    float stab = as.v[STAT_STABILITY] + firmwareChipTotal(&a->fw, CFX_COUNTER_INTRUSION);
-    text(TextFormat("SCRAMBLE RESIST %s: STB %.0f / (STB + STR)   str 40: %.1f%%   70: %.1f%%   100: %.1f%%", a->name, stab,
+    text(TextFormat("HACK %s: 0.25 + (1 - %d/%d) x 0.55 - (rarity %d - 1) x 0.08 - (STB %d - 60) x 0.003 = %.1f%%",
+        d->name, ds->integrity, ds->maxIntegrity, rarity, ds->stability, hackChance(d) * 100), 20, my, 10, colText);
+    int stab = as->stability + (int)firmwareChipTotal(&a->fw, CFX_COUNTER_INTRUSION);
+    text(TextFormat("SCRAMBLE RESIST %s: STB %d / (STB + STR)   str 40: %.1f%%   70: %.1f%%   100: %.1f%%", a->name, stab,
         formulaScrambleResist(stab, 40) * 100, formulaScrambleResist(stab, 70) * 100, formulaScrambleResist(stab, 100) * 100),
         20, my + 13, 10, colText);
-    text(TextFormat("DATA for scrapping %s: wild 10 + rev %d x 4 + rand(0-3)   trainer 15 + rev x 5 + tier x 8 + rand(0-4)  ENERGY %d/round  COOLING %d/round",
-        d->name, d->fw.revision, (int)as.v[STAT_ENERGY], (int)as.v[STAT_COOLING]), 20, my + 26, 10, colText);
+    text(TextFormat("HEAT %s: +weapon heat per shot, capacity %d, cooling max(0, heat - %d) each turn.  ENERGY refills to %d each turn.",
+        a->name, as->maxHeat, as->cooling, as->maxEnergy), 20, my + 26, 10, colText);
 
     text("[A/D] subject  [W/S] target  [1-4] refit  [R] revision  [T] repair  [F1/ESC] close", 20, SCREEN_H - 18, 12, colHead);
     EndMode2D();

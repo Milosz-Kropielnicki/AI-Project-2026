@@ -5,6 +5,8 @@
 // The machine attributes from the design doc (section 3), plus Cooling from the
 // Body refit. Stored as an indexed array so every layer (role, model, refit,
 // firmware, chips) can be summed, clamped and printed with the same loop.
+// The final layer sum is copied into a mech's live MechStats (mech.h) by
+// mechRefreshStats; combat reads MechStats, never this array.
 typedef enum {
     STAT_INTEGRITY,   // 0-200     health pool
     STAT_POWER,       // 0.5-2.0x  damage multiplier

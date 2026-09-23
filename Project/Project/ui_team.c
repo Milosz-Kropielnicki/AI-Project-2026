@@ -55,7 +55,7 @@ static int stepOption(int cur, int dir, int count) {
 }
 
 static void cycleWeapon(Mech* m, int mount, int dir) {
-    mechSetWeapon(m, mount, stepOption(m->weapons[mount].def, dir, NUM_WEAPON_DEFS));
+    mechSetWeapon(m, mount, stepOption(m->weapons[mount].weapon, dir, NUM_WEAPONS));
 }
 
 static void cycleChip(Mech* m, int socket, int dir) {
@@ -64,7 +64,7 @@ static void cycleChip(Mech* m, int socket, int dir) {
         c = stepOption(c, dir, NUM_CHIPS);
         if (c < 0 || ((chipAvailable(c) > 0 || c == cur) && firmwareCanInstall(&m->fw, socket, c))) {
             firmwareInstall(&m->fw, socket, c);
-            mechClampPools(m);
+            mechRefreshStats(m);
             return;
         }
     }
@@ -153,8 +153,7 @@ static void drawTeamGrid(void) {
         int bx = (int)slot.x, by = (int)slot.y;
         Mech* m = &team[i];
         const MechModel* model = mechModel(m);
-        Stats s;
-        mechStats(m, &s);
+        const MechStats* s = &m->stats;
 
         DrawRectangleRec(slot, (Color) { 20, 30, 50, 230 });
         if (i == teamSel)
@@ -172,16 +171,14 @@ static void drawTeamGrid(void) {
         DrawText(TextFormat("%s / %s", classNames[mechClass(m)], roleNames[model->role]), bx + 110, by + 58, 10,
             (Color) { 150, 170, 190, 220 });
 
-        int maxI = (int)s.v[STAT_INTEGRITY], maxA = (int)s.v[STAT_ARMOR];
-        drawIntegrityBar(bx + 110, by + 74, 180, 9, m->integrity, maxI);
-        DrawText(TextFormat("%d/%d", m->integrity, maxI), bx + 294, by + 74, 10, WHITE);
-        drawArmorBar(bx + 110, by + 87, 180, 6, m->armor, maxA);
-        DrawText(TextFormat("%d/%d", m->armor, maxA), bx + 294, by + 85, 10, (Color) { 150, 190, 240, 255 });
+        drawIntegrityBar(bx + 110, by + 74, 180, 9, s->integrity, s->maxIntegrity);
+        DrawText(TextFormat("%d/%d", s->integrity, s->maxIntegrity), bx + 294, by + 74, 10, WHITE);
+        drawArmorBar(bx + 110, by + 87, 180, 6, s->armor, s->maxArmor);
+        DrawText(TextFormat("%d/%d", s->armor, s->maxArmor), bx + 294, by + 85, 10, (Color) { 150, 190, 240, 255 });
 
-        DrawText(TextFormat("PWR %s  MOB %s  EN %d", statFormat(STAT_POWER, s.v[STAT_POWER]),
-            statFormat(STAT_MOBILITY, s.v[STAT_MOBILITY]), (int)s.v[STAT_ENERGY]), bx + 110, by + 102, 12, (Color) { 255, 190, 150, 255 });
-        DrawText(TextFormat("ACC %s  STB %s", statFormat(STAT_ACCURACY, s.v[STAT_ACCURACY]),
-            statFormat(STAT_STABILITY, s.v[STAT_STABILITY])), bx + 110, by + 118, 12, (Color) { 150, 190, 255, 255 });
+        DrawText(TextFormat("PWR %.2fx  MOB %d%%  EN %d  HEAT %d", s->power, s->mobility, s->maxEnergy, s->maxHeat),
+            bx + 110, by + 102, 12, (Color) { 255, 190, 150, 255 });
+        DrawText(TextFormat("ACC %d%%  STB %d%%", s->accuracy, s->stability), bx + 110, by + 118, 12, (Color) { 150, 190, 255, 255 });
         int installed = 0;
         for (int k = 0; k < firmwareSockets(&m->fw); k++) if (m->fw.chips[k] >= 0) installed++;
         DrawText(TextFormat("CHIPS %d/%d", installed, firmwareSockets(&m->fw)), bx + 110, by + 132, 10, (Color) { 200, 170, 255, 255 });
@@ -229,7 +226,7 @@ static void drawLoadout(void) {
             drawRating((int)(r.x + r.width) - 80, (int)r.y + 8, refitRating(m, mod));
         }
         else if (i < ROW_SOCKET) {
-            const WeaponDef* w = mechWeapon(m, i - ROW_WEAPON);
+            const Weapon* w = mechWeapon(m, i - ROW_WEAPON);
             value = w ? TextFormat("%s  (%d EN)", w->name, w->energyCost) : "-- EMPTY --";
             if (w) valueCol = munitionColor(w->munition);
         }
@@ -243,8 +240,9 @@ static void drawLoadout(void) {
 
     // Right panel: stats + firmware + selected item description
     int px = 490, py = 70;
-    Stats s;
-    mechStats(m, &s);
+    StatBreakdown b;
+    mechStatBreakdown(m, &b);
+    Stats s = b.final;
     DrawRectangle(px, py, 290, 470, (Color) { 15, 25, 45, 220 });
     DrawRectangleLines(px, py, 290, 470, (Color) { 80, 160, 220, 200 });
     DrawText("ATTRIBUTES", px + 10, py + 8, 14, (Color) { 150, 220, 255, 255 });
@@ -270,12 +268,12 @@ static void drawLoadout(void) {
             (int)roundf(refitRatingFactor(rating) * 100)), px + 10, dy + 36, 10, (Color) { 180, 200, 220, 255 });
     }
     else if (loadoutRow < ROW_SOCKET) {
-        const WeaponDef* w = mechWeapon(m, loadoutRow - ROW_WEAPON);
+        const Weapon* w = mechWeapon(m, loadoutRow - ROW_WEAPON);
         if (w) {
             DrawText(TextFormat("%s  -  %s / %s", w->name, platformNames[w->platform], munitionNames[w->munition]),
                 px + 10, dy, 10, WHITE);
             DrawText(TextFormat("DMG %d  ACC %d%%  PEN %d%%  COST %d EN", w->baseDamage, w->accuracy,
-                (int)roundf(w->armorPen * 100), w->energyCost), px + 10, dy + 18, 10, (Color) { 180, 200, 220, 255 });
+                w->armorPen, w->energyCost), px + 10, dy + 18, 10, (Color) { 180, 200, 220, 255 });
             DrawText(TextFormat("HEAT +%d  SCRAMBLE %d  AMMO %s  RANGE %d", w->heat, w->scramble,
                 w->ammo > 0 ? TextFormat("%d", w->ammo) : "INF", w->range), px + 10, dy + 34, 10, (Color) { 180, 200, 220, 255 });
         }

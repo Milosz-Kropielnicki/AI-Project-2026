@@ -74,53 +74,65 @@ void mechStatBreakdown(const Mech* m, StatBreakdown* out) {
     for (int s = 0; s < NUM_STATS; s++) out->final.v[s] = statClamp((StatId)s, out->sum.v[s]);
 }
 
-void mechStats(const Mech* m, Stats* out) {
+// Rebuild maximums and fixed attributes from the stat layers, keeping the
+// current pools (clamped to their new maximums).
+void mechRefreshStats(Mech* m) {
     StatBreakdown b;
     mechStatBreakdown(m, &b);
-    *out = b.final;
+    const float* v = b.final.v;
+    MechStats* s = &m->stats;
+    s->maxIntegrity = (int)v[STAT_INTEGRITY];
+    s->maxArmor = (int)v[STAT_ARMOR];
+    s->power = v[STAT_POWER];
+    s->mobility = (int)v[STAT_MOBILITY];
+    s->maxEnergy = (int)v[STAT_ENERGY];
+    s->maxHeat = (int)v[STAT_HEAT];
+    s->cooling = (int)v[STAT_COOLING];
+    s->accuracy = (int)v[STAT_ACCURACY];
+    s->stability = (int)v[STAT_STABILITY];
+    if (s->integrity > s->maxIntegrity) s->integrity = s->maxIntegrity;
+    if (s->armor > s->maxArmor) s->armor = s->maxArmor;
+    if (s->heat > s->maxHeat) s->heat = s->maxHeat;
 }
-
-int mechMaxIntegrity(const Mech* m) { Stats s; mechStats(m, &s); return (int)s.v[STAT_INTEGRITY]; }
-int mechMaxArmor(const Mech* m) { Stats s; mechStats(m, &s); return (int)s.v[STAT_ARMOR]; }
 
 void mechRepair(Mech* m) {
-    m->integrity = mechMaxIntegrity(m);
-    m->armor = mechMaxArmor(m);
+    mechRefreshStats(m);
+    m->stats.integrity = m->stats.maxIntegrity;
+    m->stats.armor = m->stats.maxArmor;
+    m->stats.energy = m->stats.maxEnergy;
+    m->stats.heat = 0;
 }
 
-void mechReplate(Mech* m) { m->armor = mechMaxArmor(m); }
-
-void mechClampPools(Mech* m) {
-    int maxI = mechMaxIntegrity(m), maxA = mechMaxArmor(m);
-    if (m->integrity > maxI) m->integrity = maxI;
-    if (m->armor > maxA) m->armor = maxA;
+void mechReplate(Mech* m) {
+    mechRefreshStats(m);
+    m->stats.armor = m->stats.maxArmor;
 }
 
 void mechReloadWeapons(Mech* m) {
     for (int i = 0; i < MAX_WEAPONS; i++)
-        m->weapons[i].ammo = m->weapons[i].def >= 0 ? weaponDefs[m->weapons[i].def].ammo : 0;
+        m->weapons[i].ammo = m->weapons[i].weapon >= 0 ? weaponTable[m->weapons[i].weapon].ammo : 0;
 }
 
-void mechSetWeapon(Mech* m, int mount, int def) {
+void mechSetWeapon(Mech* m, int mount, int weapon) {
     if (mount < 0 || mount >= MAX_WEAPONS) return;
-    m->weapons[mount].def = def;
-    m->weapons[mount].ammo = def >= 0 ? weaponDefs[def].ammo : 0;
+    m->weapons[mount].weapon = weapon;
+    m->weapons[mount].ammo = weapon >= 0 ? weaponTable[weapon].ammo : 0;
 }
 
 void mechSetRefit(Mech* m, RefitSlot slot, int module) {
     if (module < 0 || module >= NUM_REFIT_MODULES || refitModules[module].slot != slot) return;
     m->refit[slot] = module;
-    mechClampPools(m);
+    mechRefreshStats(m);
 }
 
-const WeaponDef* mechWeapon(const Mech* m, int mount) {
-    if (mount < 0 || mount >= MAX_WEAPONS || m->weapons[mount].def < 0) return NULL;
-    return &weaponDefs[m->weapons[mount].def];
+const Weapon* mechWeapon(const Mech* m, int mount) {
+    if (mount < 0 || mount >= MAX_WEAPONS || m->weapons[mount].weapon < 0) return NULL;
+    return &weaponTable[m->weapons[mount].weapon];
 }
 
 int mechNumWeapons(const Mech* m) {
     int n = 0;
-    for (int i = 0; i < MAX_WEAPONS; i++) if (m->weapons[i].def >= 0) n++;
+    for (int i = 0; i < MAX_WEAPONS; i++) if (m->weapons[i].weapon >= 0) n++;
     return n;
 }
 
@@ -146,7 +158,7 @@ void rosterInit(void) {
     team[0] = mechCreate(MODEL_NOVA, 0);
     strncpy(team[0].name, "NOVA-7", sizeof(team[0].name) - 1);
     firmwareInstall(&team[0].fw, 0, CHIP_PREDICTIVE_TARGETING);
-    mechRepair(&team[0]);
+    mechRepair(&team[0]);   // also picks up the chip's stat bonus
     teamSize = 1;
     activeTeamSlot = 0;
 }

@@ -9,8 +9,10 @@ const char* munitionNames[NUM_MUNITIONS] = {
     "BALLISTIC", "ENERGY", "THERMAL", "ELECTROMAGNETIC", "EXPLOSIVE", "CHEMICAL",
 };
 
-Color munitionColor(Munition m) {
-    switch (m) {
+const char* targetingNames[4] = { "SINGLE", "AREA", "CONE", "LINE" };
+
+Color munitionColor(int munition) {
+    switch (munition) {
     case MUN_BALLISTIC:       return (Color) { 255, 220, 140, 255 };
     case MUN_ENERGY:          return (Color) { 100, 220, 255, 255 };
     case MUN_THERMAL:         return (Color) { 255, 130, 60, 255 };
@@ -22,19 +24,19 @@ Color munitionColor(Munition m) {
 
 // Temporary numbers, scaled to the 65-200 Integrity range of the role table.
 // Thermal / Chemical status effects and splash damage are not simulated yet.
-const WeaponDef weaponDefs[NUM_WEAPON_DEFS] = {
-    //  name              platform               munition            dmg cost acc  pen    mod  rng targeting      heat scr ammo fx
-    { "MACHINE GUN",      PLAT_MACHINE_GUN,      MUN_BALLISTIC,       14, 1,  90, 0.10f, 1.0f, 3, TARGET_SINGLE,   8,  0,  0, FX_PULSE },
-    { "SHOTGUN",          PLAT_SHOTGUN,          MUN_BALLISTIC,       22, 1,  75, 0.20f, 1.0f, 1, TARGET_CONE,    10,  0,  0, FX_PULSE },
-    { "RAILGUN",          PLAT_RAILGUN,          MUN_BALLISTIC,       30, 2,  95, 0.60f, 1.0f, 5, TARGET_LINE,    28,  0,  0, FX_BEAM },
-    { "AA MISSILE",       PLAT_MISSILE,          MUN_EXPLOSIVE,       26, 2,  85, 0.80f, 1.0f, 4, TARGET_SINGLE,  18,  0,  6, FX_MISSILE },
-    { "ROCKET POD",       PLAT_ROCKET_POD,       MUN_EXPLOSIVE,       34, 2,  70, 0.35f, 1.0f, 3, TARGET_AREA,    22,  0,  4, FX_MISSILE },
-    { "PULSE LASER",      PLAT_LASER,            MUN_ENERGY,          16, 1, 100, 0.05f, 1.0f, 4, TARGET_LINE,    15,  0,  0, FX_BEAM },
-    { "FLAMER",           PLAT_FLAMETHROWER,     MUN_THERMAL,         20, 1,  85, 0.05f, 1.0f, 1, TARGET_CONE,    20,  0,  0, FX_BEAM },
-    { "PLASMA BLADE",     PLAT_BLADE,            MUN_ENERGY,          24, 1,  90, 0.25f, 1.0f, 1, TARGET_SINGLE,  12,  0,  0, FX_BLADE },
-    { "GRENADE LAUNCHER", PLAT_GRENADE_LAUNCHER, MUN_EXPLOSIVE,       20, 1,  80, 0.30f, 1.0f, 3, TARGET_AREA,    12,  0,  8, FX_MISSILE },
-    { "SIEGE MORTAR",     PLAT_GRENADE_LAUNCHER, MUN_EXPLOSIVE,       44, 3,  70, 0.40f, 1.0f, 6, TARGET_AREA,    40,  0,  3, FX_NOVA },
-    { "ARC EMITTER",      PLAT_EMITTER,          MUN_ELECTROMAGNETIC,  8, 1,  95, 0.00f, 1.0f, 2, TARGET_SINGLE,   8, 45,  0, FX_ARC },
-    { "JAMMER",           PLAT_EMITTER,          MUN_ELECTROMAGNETIC,  0, 1, 100, 0.00f, 1.0f, 4, TARGET_SINGLE,   5, 80,  0, FX_JAM },
-    { "CORROSIVE SPRAY",  PLAT_FLAMETHROWER,     MUN_CHEMICAL,        12, 1,  85, 0.10f, 1.0f, 1, TARGET_CONE,    10,  0,  0, FX_PULSE },
+const Weapon weaponTable[NUM_WEAPONS] = {
+    //  name               dmg cost acc rng pen targeting      heat munition             platform               scr ammo fx
+    { "MACHINE GUN",       14, 1,  90, 3, 10, TARGET_SINGLE,   8, MUN_BALLISTIC,       PLAT_MACHINE_GUN,       0,  0, FX_PULSE },
+    { "SHOTGUN",           22, 1,  75, 1, 20, TARGET_CONE,    10, MUN_BALLISTIC,       PLAT_SHOTGUN,           0,  0, FX_PULSE },
+    { "RAILGUN",           30, 2,  95, 5, 60, TARGET_LINE,    28, MUN_BALLISTIC,       PLAT_RAILGUN,           0,  0, FX_BEAM },
+    { "AA MISSILE",        26, 2,  85, 4, 80, TARGET_SINGLE,  18, MUN_EXPLOSIVE,       PLAT_MISSILE,           0,  6, FX_MISSILE },
+    { "ROCKET POD",        34, 2,  70, 3, 35, TARGET_AREA,    22, MUN_EXPLOSIVE,       PLAT_ROCKET_POD,        0,  4, FX_MISSILE },
+    { "PULSE LASER",       16, 1, 100, 4,  5, TARGET_LINE,    15, MUN_ENERGY,          PLAT_LASER,             0,  0, FX_BEAM },
+    { "FLAMER",            20, 1,  85, 1,  5, TARGET_CONE,    20, MUN_THERMAL,         PLAT_FLAMETHROWER,      0,  0, FX_BEAM },
+    { "PLASMA BLADE",      24, 1,  90, 1, 25, TARGET_SINGLE,  12, MUN_ENERGY,          PLAT_BLADE,             0,  0, FX_BLADE },
+    { "GRENADE LAUNCHER",  20, 1,  80, 3, 30, TARGET_AREA,    12, MUN_EXPLOSIVE,       PLAT_GRENADE_LAUNCHER,  0,  8, FX_MISSILE },
+    { "SIEGE MORTAR",      44, 3,  70, 6, 40, TARGET_AREA,    40, MUN_EXPLOSIVE,       PLAT_GRENADE_LAUNCHER,  0,  3, FX_NOVA },
+    { "ARC EMITTER",        8, 1,  95, 2,  0, TARGET_SINGLE,   8, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          45,  0, FX_ARC },
+    { "JAMMER",             0, 1, 100, 4,  0, TARGET_SINGLE,   5, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          80,  0, FX_JAM },
+    { "CORROSIVE SPRAY",   12, 1,  85, 1, 10, TARGET_CONE,    10, MUN_CHEMICAL,        PLAT_FLAMETHROWER,      0,  0, FX_PULSE },
 };

@@ -47,35 +47,36 @@ typedef enum { TARGET_SINGLE, TARGET_AREA, TARGET_CONE, TARGET_LINE } Targeting;
 enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE };
 
 typedef struct {
-    const char* name;
-    WeaponPlatform platform;
-    Munition munition;
+    char name[32];
     int baseDamage;
     int energyCost;     // action points
-    int accuracy;       // base hit chance %
-    float armorPen;     // 0..1 share of damage that bypasses Armor
-    float damageMod;    // step 4 of attack resolution
+    int accuracy;       // 0-100, weapon's base hit chance
     int range;
-    Targeting targeting;
+    int armorPen;       // 0-100, % of raw damage that bypasses Armor
+    int targeting;      // Targeting
     int heat;           // heat generated per use
+    int munition;       // Munition
+    // prototype extras beyond the core profile
+    int platform;       // WeaponPlatform
     int scramble;       // scramble strength (0 = none)
     int ammo;           // uses per battle, 0 = unlimited
-    int fx;
-} WeaponDef;
+    int fx;             // battle visual
+} Weapon;
 
 enum {
     W_MACHINE_GUN, W_SHOTGUN, W_RAILGUN, W_AA_MISSILE, W_ROCKET_POD, W_PULSE_LASER, W_FLAMER,
     W_PLASMA_BLADE, W_GRENADE_LAUNCHER, W_SIEGE_MORTAR, W_ARC_EMITTER, W_JAMMER, W_CORROSIVE_SPRAY,
-    NUM_WEAPON_DEFS
+    NUM_WEAPONS
 };
-extern const WeaponDef weaponDefs[NUM_WEAPON_DEFS];   // data_weapons.c
+extern const Weapon weaponTable[NUM_WEAPONS];   // data_weapons.c
 extern const char* platformNames[NUM_PLATFORMS];
 extern const char* munitionNames[NUM_MUNITIONS];
-Color munitionColor(Munition m);
+extern const char* targetingNames[4];
+Color munitionColor(int munition);
 
 // A weapon mounted on a specific machine
 typedef struct {
-    int def;        // index into weaponDefs[], -1 = empty mount
+    int weapon;     // index into weaponTable[], -1 = empty mount
     int ammo;       // remaining uses this battle
 } WeaponInstance;
 
@@ -96,7 +97,7 @@ typedef struct {
 
 enum {
     MODEL_NOVA, MODEL_BULWARK, MODEL_WISP, MODEL_RAZOR, MODEL_HAVOC, MODEL_OBLIVION,
-    MODEL_HOUND, MODEL_STATIC,
+    MODEL_HOUND, MODEL_STATIC, MODEL_DUMMY,
     NUM_MODELS
 };
 extern const MechModel mechModels[NUM_MODELS];    // data_mechs.c
@@ -124,17 +125,33 @@ extern const RefitModule refitModules[NUM_REFIT_MODULES];   // data_mechs.c
 extern const char* refitSlotNames[NUM_REFIT_SLOTS];
 float refitRatingFactor(int rating);    // how much of a module's upside survives
 
+// ============ MECH STATS ============
+// The live attribute block of a machine (design doc section 3). Maximums and
+// fixed attributes are rebuilt from the stat layers by mechRefreshStats; the
+// current pools (integrity, armor, energy, heat) change during play.
+typedef struct {
+    int integrity, maxIntegrity;
+    int armor, maxArmor;
+    float power;            // 0.50-2.00
+    int mobility;           // 0-100
+    int energy, maxEnergy;  // 1-5
+    int heat, maxHeat;      // 0-200
+    int cooling;            // heat removed at the start of each turn (Body refit)
+    int accuracy;           // 0-100
+    int stability;          // 0-100
+} MechStats;
+
 // ============ MECH ============
 typedef struct {
     char name[32];
     int model;                          // index into mechModels[]
-    int integrity, armor;               // current pools
+    MechStats stats;
     WeaponInstance weapons[MAX_WEAPONS];
     int refit[NUM_REFIT_SLOTS];         // module index per slot
     Firmware fw;
 } Mech;
 
-// Every layer that feeds a mech's final stats, for the debug screen
+// Every layer that feeds a mech's attributes, for the debug screen
 typedef enum { LAYER_ROLE, LAYER_MODEL, LAYER_REFIT, LAYER_FIRMWARE, LAYER_CHIPS, NUM_STAT_LAYERS } StatLayer;
 typedef struct {
     Stats layer[NUM_STAT_LAYERS];   // LAYER_ROLE is absolute, the rest are deltas
@@ -146,18 +163,15 @@ extern const char* statLayerNames[NUM_STAT_LAYERS];
 Mech mechCreate(int model, int revision);
 const MechModel* mechModel(const Mech* m);
 MechClass mechClass(const Mech* m);
-void mechStats(const Mech* m, Stats* out);
 void mechStatBreakdown(const Mech* m, StatBreakdown* out);
-int mechMaxIntegrity(const Mech* m);
-int mechMaxArmor(const Mech* m);
-void mechRepair(Mech* m);           // restore Integrity and Armor
+void mechRefreshStats(Mech* m);     // rebuild maximums/attributes after refit, firmware or chip changes
+void mechRepair(Mech* m);           // restore Integrity and Armor, vent Heat
 void mechReplate(Mech* m);          // restore Armor only
-void mechClampPools(Mech* m);       // after max values change
 void mechReloadWeapons(Mech* m);
-void mechSetWeapon(Mech* m, int mount, int def);
+void mechSetWeapon(Mech* m, int mount, int weapon);
 void mechSetRefit(Mech* m, RefitSlot slot, int module);
 int refitRating(const Mech* m, int module);
-const WeaponDef* mechWeapon(const Mech* m, int mount);   // NULL if empty mount
+const Weapon* mechWeapon(const Mech* m, int mount);   // NULL if empty mount
 int mechNumWeapons(const Mech* m);
 
 // ============ ROSTER ============

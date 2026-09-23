@@ -9,84 +9,113 @@ Battle battle;
 
 static float frand(void) { return (float)rand() / ((float)RAND_MAX + 1.0f); }
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
+static int clampi(int v, int lo, int hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
 // ============ FORMULAS ============
-float formulaAccuracyMod(float accuracy) { return accuracy / 100.0f; }
-float formulaEvasionMod(float mobility) { return 1.0f - mobility / 200.0f; }
-
-float formulaHitChance(float weaponAcc, float accuracy, float mobility) {
-    float h = weaponAcc / 100.0f * formulaAccuracyMod(accuracy) * formulaEvasionMod(mobility);
-    return clampf(h, HIT_CHANCE_MIN, HIT_CHANCE_MAX);
+float formulaHitUnclamped(int weaponAcc, int accuracy, int mobility) {
+    return (weaponAcc / 100.0f) * (accuracy / 100.0f) * (1.0f - mobility / 200.0f);
 }
 
-float formulaScrambleResist(float stability, float strength) {
+float formulaHitChance(int weaponAcc, int accuracy, int mobility) {
+    return clampf(formulaHitUnclamped(weaponAcc, accuracy, mobility), HIT_CHANCE_MIN, HIT_CHANCE_MAX);
+}
+
+float formulaRawDamage(int baseDamage, float power) { return baseDamage * power; }
+
+DamageSplit formulaDamageSplit(float raw, int penPercent, int currentArmor) {
+    DamageSplit s;
+    float pen = clampi(penPercent, 0, 100) / 100.0f;
+    s.toIntegrity = raw * pen;
+    s.toArmor = raw * (1.0f - pen);
+    int armorHit = (int)roundf(s.toArmor);
+    s.armorDamage = armorHit < currentArmor ? armorHit : currentArmor;
+    s.spill = armorHit - s.armorDamage;
+    s.integrityDamage = (int)roundf(s.toIntegrity) + s.spill;
+    return s;
+}
+
+int formulaHeatAfterCooling(int heat, int cooling) { return heat > cooling ? heat - cooling : 0; }
+
+float formulaScrambleResist(int stability, int strength) {
     if (stability + strength <= 0) return 1.0f;
-    return stability / (stability + strength);
+    return (float)stability / (float)(stability + strength);
 }
 
-void attackPreview(const Stats* atk, const Firmware* atkFw, const WeaponDef* w,
-                   const Stats* def, const Firmware* defFw, const AttackContext* ctx, AttackPreview* out) {
+static float chipTotal(const Mech* m, ChipEffect e) { return firmwareChipTotal(&m->fw, e); }
+
+static int weaponHeat(const Mech* m, const Weapon* w) {
+    float heat = (float)w->heat;
+    if (w->munition == MUN_ENERGY) heat *= 1.0f - chipTotal(m, CFX_ENERGY_HEAT_CUT);   // Thermal Optimization
+    return (int)roundf(heat);
+}
+
+static int weaponCost(const Mech* m, const Weapon* w, int firstAction) {
+    if (firstAction && chipTotal(m, CFX_FIRST_ACTION_FREE) > 0) return 0;   // Efficient Power Distribution
+    return w->energyCost;
+}
+
+void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
+                   const AttackContext* ctx, AttackPreview* out) {
+    const MechStats* atk = &attacker->stats;
+    const MechStats* def = &target->stats;
     memset(out, 0, sizeof(*out));
 
-    // Step 1 - hit chance
-    out->weaponAcc = (float)w->accuracy;
-    out->accMod = formulaAccuracyMod(ctx->attackerAccuracy);
-    out->evasionMod = formulaEvasionMod(ctx->targetMobility);
-    out->hitUnclamped = out->weaponAcc / 100.0f * out->accMod * out->evasionMod;
-    out->spoofMod = ctx->spoofActive ? 1.0f - firmwareChipTotal(defFw, CFX_TARGETING_SPOOF) : 1.0f;
+    // Hit chance
+    out->weaponAcc = w->accuracy;
+    out->accuracy = ctx->attackerAccuracy;
+    out->mobility = ctx->targetMobility;
+    out->accMod = out->accuracy / 100.0f;
+    out->evasionMod = 1.0f - out->mobility / 200.0f;
+    out->hitUnclamped = formulaHitUnclamped(w->accuracy, out->accuracy, out->mobility);
+    out->spoofMod = ctx->spoofActive ? 1.0f - chipTotal(target, CFX_TARGETING_SPOOF) : 1.0f;
     out->hitChance = clampf(out->hitUnclamped * out->spoofMod, HIT_CHANCE_MIN, HIT_CHANCE_MAX);
 
-    // Steps 3-4 - raw damage and weapon modifier
-    out->baseDamage = (float)w->baseDamage;
-    out->power = atk->v[STAT_POWER];
-    out->raw = out->baseDamage * out->power;
-    out->damageMod = w->damageMod;
-    out->modified = out->raw * out->damageMod;
-
-    // Step 5 - split between Armor and Integrity; armor damage beyond current armor spills
+    // Raw damage and armor split
+    out->baseDamage = w->baseDamage;
+    out->power = atk->power;
+    out->raw = formulaRawDamage(w->baseDamage, atk->power);
     out->pen = w->armorPen;
-    if (ctx->targetArmor > ARMORED_THRESHOLD) out->pen += firmwareChipTotal(atkFw, CFX_PEN_VS_ARMORED);
-    out->pen = clampf(out->pen, 0, 1);
-    out->breachMod = (ctx->breachReady && ctx->targetArmor > 0) ? 1.0f + firmwareChipTotal(atkFw, CFX_ARMOR_BREACH) : 1.0f;
-    float armorShare = out->modified * (1.0f - out->pen);
-    out->toArmor = armorShare * out->breachMod;
-    out->toIntegrity = out->modified * out->pen;
-    out->armorBefore = ctx->targetArmor;
-    int armorHit = (int)roundf(out->toArmor);
-    out->armorDamage = armorHit < ctx->targetArmor ? armorHit : ctx->targetArmor;
-    int spill = (int)roundf(armorShare) - ctx->targetArmor;   // the breach bonus never spills
-    out->spill = spill > 0 ? spill : 0;
-    out->integrityDamage = (int)roundf(out->toIntegrity) + out->spill;
+    if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(chipTotal(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
+    out->pen = clampi(out->pen, 0, 100);
+    out->armorBefore = def->armor;
+    out->split = formulaDamageSplit(out->raw, out->pen, def->armor);
+    if (ctx->breachReady && def->armor > 0) {   // Armor Breach Routine
+        int bonus = (int)roundf(out->split.toArmor * chipTotal(attacker, CFX_ARMOR_BREACH));
+        int room = def->armor - out->split.armorDamage;
+        out->breachBonus = bonus < room ? bonus : room;
+    }
+    out->armorDamage = out->split.armorDamage + out->breachBonus;
+    out->integrityDamage = out->split.integrityDamage;
 
-    // Heat and scramble
-    float heat = (float)w->heat;
-    if (w->munition == MUN_ENERGY) heat *= 1.0f - firmwareChipTotal(atkFw, CFX_ENERGY_HEAT_CUT);
-    out->heat = (int)roundf(heat);
+    // Resources and scramble
+    out->energyCost = weaponCost(attacker, w, ctx->firstAction);
+    out->energyBefore = atk->energy;
+    out->heat = weaponHeat(attacker, w);
+    out->heatBefore = atk->heat;
+    out->maxHeat = atk->maxHeat;
     out->scramble = w->scramble;
     out->resist = w->scramble > 0
-        ? formulaScrambleResist(def->v[STAT_STABILITY] + firmwareChipTotal(defFw, CFX_COUNTER_INTRUSION), (float)w->scramble)
+        ? formulaScrambleResist(def->stability + (int)chipTotal(target, CFX_COUNTER_INTRUSION), w->scramble)
         : 1.0f;
 }
 
-// Conditions for the first attack of a fresh round, used by the debug screen
-AttackContext attackContextBaseline(const Stats* atk, const Firmware* atkFw,
-                                    const Stats* def, const Firmware* defFw, int targetArmor) {
+AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     AttackContext c;
-    c.attackerAccuracy = atk->v[STAT_ACCURACY] + firmwareChipTotal(atkFw, CFX_PRECISION_STRIKE);
-    c.targetMobility = def->v[STAT_MOBILITY];
-    c.targetArmor = targetArmor;
-    c.spoofActive = firmwareChipTotal(defFw, CFX_TARGETING_SPOOF) > 0;
-    c.breachReady = firmwareChipTotal(atkFw, CFX_ARMOR_BREACH) > 0;
+    c.attackerAccuracy = clampi(attacker->stats.accuracy + (int)chipTotal(attacker, CFX_PRECISION_STRIKE), 0, 100);
+    c.targetMobility = target->stats.mobility;
+    c.spoofActive = chipTotal(target, CFX_TARGETING_SPOOF) > 0;
+    c.breachReady = chipTotal(attacker, CFX_ARMOR_BREACH) > 0;
+    c.firstAction = 1;
     return c;
 }
 
 // Hacking (capture): easier on damaged, common, low-Stability machines
-float hackChance(const Mech* target, const Stats* targetStats) {
-    float maxI = targetStats->v[STAT_INTEGRITY];
-    float damage = maxI > 0 ? 1.0f - target->integrity / maxI : 0;
+float hackChance(const Mech* target) {
+    const MechStats* s = &target->stats;
+    float damage = s->maxIntegrity > 0 ? 1.0f - (float)s->integrity / s->maxIntegrity : 0;
     int rarity = mechModel(target)->rarity;
     if (rarity < 1) rarity = 3;
-    float chance = 0.25f + damage * 0.55f - (rarity - 1) * 0.08f - (targetStats->v[STAT_STABILITY] - 60) * 0.003f;
+    float chance = 0.25f + damage * 0.55f - (rarity - 1) * 0.08f - (s->stability - 60) * 0.003f;
     return clampf(chance, 0.05f, 0.95f);
 }
 
@@ -94,43 +123,41 @@ int revisionDataForWild(const Mech* enemy) { return 10 + enemy->fw.revision * 4 
 int revisionDataForTrainer(const Mech* enemy, int tier) { return 15 + enemy->fw.revision * 5 + tier * 8 + rand() % 5; }
 
 // ============ COMBATANTS ============
-static float chipTotal(const Combatant* c, ChipEffect e) { return firmwareChipTotal(&c->mech->fw, e); }
-
 static int integrityBelow(const Combatant* c, float fraction) {
-    return c->mech->integrity < c->stats.v[STAT_INTEGRITY] * fraction;
+    return c->mech->stats.integrity < c->mech->stats.maxIntegrity * fraction;
 }
 
-float combatAccuracy(const Combatant* c) {
-    float acc = c->stats.v[STAT_ACCURACY] - c->accPenalty;
-    if (c->actionsThisTurn == 0) acc += chipTotal(c, CFX_PRECISION_STRIKE);
-    return clampf(acc, 0, 100);
+int combatAccuracy(const Combatant* c) {
+    int acc = c->mech->stats.accuracy - c->accPenalty;
+    if (c->actionsThisTurn == 0) acc += (int)chipTotal(c->mech, CFX_PRECISION_STRIKE);
+    return clampi(acc, 0, 100);
 }
 
-float combatMobility(const Combatant* c) {
-    float mob = c->stats.v[STAT_MOBILITY] + c->evasiveBonus;
-    if (integrityBelow(c, 0.25f)) mob += chipTotal(c, CFX_EMERGENCY_EVASION);
-    return clampf(mob, 0, 100);
+int combatMobility(const Combatant* c) {
+    int mob = c->mech->stats.mobility + c->evasiveBonus;
+    if (integrityBelow(c, 0.25f)) mob += (int)chipTotal(c->mech, CFX_EMERGENCY_EVASION);
+    return clampi(mob, 0, 100);
 }
 
-static int effectiveCost(const Combatant* c, const WeaponDef* w) {
-    if (c->actionsThisTurn == 0 && chipTotal(c, CFX_FIRST_ACTION_FREE) > 0) return 0;
-    return w->energyCost;
-}
-
-static int shotHeat(const Combatant* c, const WeaponDef* w) {
-    float heat = (float)w->heat;
-    if (w->munition == MUN_ENERGY) heat *= 1.0f - chipTotal(c, CFX_ENERGY_HEAT_CUT);
-    return (int)roundf(heat);
+static AttackContext liveContext(const Combatant* a, const Combatant* d) {
+    AttackContext ctx;
+    ctx.attackerAccuracy = combatAccuracy(a);
+    ctx.targetMobility = combatMobility(d);
+    ctx.spoofActive = !d->attackedThisRound && chipTotal(d->mech, CFX_TARGETING_SPOOF) > 0;
+    ctx.breachReady = !a->breachUsed && chipTotal(a->mech, CFX_ARMOR_BREACH) > 0;
+    ctx.firstAction = a->actionsThisTurn == 0;
+    return ctx;
 }
 
 static int canFire(const Combatant* c, int mount, const char** reason) {
     const char* r = NULL;
-    const WeaponDef* w = mechWeapon(c->mech, mount);
+    const MechStats* s = &c->mech->stats;
+    const Weapon* w = mechWeapon(c->mech, mount);
     if (!w) r = "EMPTY MOUNT";
     else if (mount == c->disabledWeapon) r = "WEAPON SCRAMBLED";
     else if (w->ammo > 0 && c->mech->weapons[mount].ammo <= 0) r = "NO AMMO";
-    else if (effectiveCost(c, w) > c->energy) r = "INSUFFICIENT ENERGY";
-    else if (c->heat + shotHeat(c, w) > c->stats.v[STAT_HEAT]) r = "THERMAL LIMIT";
+    else if (weaponCost(c->mech, w, c->actionsThisTurn == 0) > s->energy) r = "INSUFFICIENT ENERGY";
+    else if (s->heat + weaponHeat(c->mech, w) > s->maxHeat) r = "THERMAL LIMIT";
     if (reason) *reason = r;
     return r == NULL;
 }
@@ -143,26 +170,27 @@ static int anyFireable(const Combatant* c) {
 static void initCombatant(Combatant* c, Mech* m) {
     memset(c, 0, sizeof(*c));
     c->mech = m;
-    mechStats(m, &c->stats);
     c->disabledWeapon = -1;
     c->nextDisabledWeapon = -1;
+    mechRefreshStats(m);
+    m->stats.heat = 0;
     mechReloadWeapons(m);
 }
 
-// Start of this side's turn: refresh Energy, dissipate Heat, apply queued scrambles
+// Start of this side's turn: refill Energy, cool Heat, apply queued scrambles
 static void turnStart(Combatant* c) {
-    c->energy = (int)c->stats.v[STAT_ENERGY] - c->nextEnergyLoss;
-    if (!c->emergencyPowerUsed && integrityBelow(c, 0.25f) && chipTotal(c, CFX_EMERGENCY_POWER) > 0) {
-        c->energy += (int)chipTotal(c, CFX_EMERGENCY_POWER);
+    MechStats* s = &c->mech->stats;
+    s->energy = s->maxEnergy - c->nextEnergyLoss;
+    if (!c->emergencyPowerUsed && integrityBelow(c, 0.25f) && chipTotal(c->mech, CFX_EMERGENCY_POWER) > 0) {
+        s->energy += (int)chipTotal(c->mech, CFX_EMERGENCY_POWER);
         c->emergencyPowerUsed = 1;
     }
-    if (!c->lastStandUsed && integrityBelow(c, 0.10f) && chipTotal(c, CFX_LAST_STAND) > 0) {
-        c->energy += (int)chipTotal(c, CFX_LAST_STAND);
+    if (!c->lastStandUsed && integrityBelow(c, 0.10f) && chipTotal(c->mech, CFX_LAST_STAND) > 0) {
+        s->energy += (int)chipTotal(c->mech, CFX_LAST_STAND);
         c->lastStandUsed = 1;
     }
-    if (c->energy < 0) c->energy = 0;
-    c->heat -= (int)c->stats.v[STAT_COOLING];
-    if (c->heat < 0) c->heat = 0;
+    if (s->energy < 0) s->energy = 0;
+    s->heat = formulaHeatAfterCooling(s->heat, s->cooling);
     c->accPenalty = c->nextAccPenalty;
     c->disabledWeapon = c->nextDisabledWeapon;
     c->skipTurn = c->nextSkipTurn;
@@ -197,12 +225,20 @@ static float fxDuration(int fx) {
 }
 
 // ============ ACTIONS ============
+int battlePreviewPlayer(int mount, AttackPreview* out) {
+    const Weapon* w = mechWeapon(battle.player.mech, mount);
+    if (!w) return 0;
+    AttackContext ctx = liveContext(&battle.player, &battle.enemy);
+    attackPreview(battle.player.mech, w, battle.enemy.mech, &ctx, out);
+    return 1;
+}
+
 // Scramble outcome depends on strength (design doc 4.6); it hits the victim's next turn
 static const char* applyScramble(Combatant* d, int strength) {
     if (strength >= 100) { d->nextSkipTurn = 1; return "TURN LOST"; }
     if (strength >= 70) {
         int mounts[MAX_WEAPONS], n = 0;
-        for (int i = 0; i < MAX_WEAPONS; i++) if (d->mech->weapons[i].def >= 0) mounts[n++] = i;
+        for (int i = 0; i < MAX_WEAPONS; i++) if (d->mech->weapons[i].weapon >= 0) mounts[n++] = i;
         if (n > 0) { d->nextDisabledWeapon = mounts[rand() % n]; return "WEAPON DISABLED"; }
     }
     if (strength >= 40) { d->nextAccPenalty = 15; return "ACCURACY -15"; }
@@ -210,33 +246,17 @@ static const char* applyScramble(Combatant* d, int strength) {
     return "ENERGY -1";
 }
 
-static AttackContext liveContext(const Combatant* a, const Combatant* d) {
-    AttackContext ctx;
-    ctx.attackerAccuracy = combatAccuracy(a);
-    ctx.targetMobility = combatMobility(d);
-    ctx.targetArmor = d->mech->armor;
-    ctx.spoofActive = !d->attackedThisRound && chipTotal(d, CFX_TARGETING_SPOOF) > 0;
-    ctx.breachReady = !a->breachUsed && chipTotal(a, CFX_ARMOR_BREACH) > 0;
-    return ctx;
-}
-
-int battlePreviewPlayer(int mount, AttackPreview* out) {
-    const WeaponDef* w = mechWeapon(battle.player.mech, mount);
-    if (!w) return 0;
-    AttackContext ctx = liveContext(&battle.player, &battle.enemy);
-    attackPreview(&battle.player.stats, &battle.player.mech->fw, w, &battle.enemy.stats, &battle.enemy.mech->fw, &ctx, out);
-    return 1;
-}
-
 static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
-    const WeaponDef* w = mechWeapon(a->mech, mount);
+    const Weapon* w = mechWeapon(a->mech, mount);
     AttackContext ctx = liveContext(a, d);
     AttackPreview p;
-    attackPreview(&a->stats, &a->mech->fw, w, &d->stats, &d->mech->fw, &ctx, &p);
+    attackPreview(a->mech, w, d->mech, &ctx, &p);
 
-    a->energy -= effectiveCost(a, w);
+    MechStats* as = &a->mech->stats;
+    MechStats* ds = &d->mech->stats;
+    as->energy -= p.energyCost;
+    as->heat += p.heat;
     if (w->ammo > 0) a->mech->weapons[mount].ammo--;
-    a->heat += p.heat;
     a->actionsThisTurn++;
     d->attackedThisRound = 1;
 
@@ -245,17 +265,15 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
     int total = 0;
     char extra[96] = "";
     if (hit) {
-        d->mech->armor -= p.armorDamage;
-        d->mech->integrity -= p.integrityDamage;
-        if (d->mech->integrity < 0) d->mech->integrity = 0;
-        if (p.breachMod > 1.0f) a->breachUsed = 1;
+        ds->armor -= p.armorDamage;
+        ds->integrity -= p.integrityDamage;
+        if (ds->integrity < 0) ds->integrity = 0;
+        if (p.breachBonus > 0) a->breachUsed = 1;
         total = p.armorDamage + p.integrityDamage;
-        if (p.scramble > 0 && d->mech->integrity > 0) {
+        if (p.scramble > 0 && ds->integrity > 0) {
             if (frand() < p.resist) {
-                float heal = chipTotal(d, CFX_SYSTEM_RECOVERY);
-                int maxI = (int)d->stats.v[STAT_INTEGRITY];
-                d->mech->integrity += (int)heal;
-                if (d->mech->integrity > maxI) d->mech->integrity = maxI;
+                int heal = (int)chipTotal(d->mech, CFX_SYSTEM_RECOVERY);
+                ds->integrity = clampi(ds->integrity + heal, 0, ds->maxIntegrity);
                 snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
             }
             else snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p.scramble));
@@ -266,9 +284,10 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
         else
             snprintf(battle.log, sizeof(battle.log), "%s activated %s.%s", who, w->name, extra);
     }
-    else snprintf(battle.log, sizeof(battle.log), "%s fired %s... MISSED!", who, w->name);
+    else snprintf(battle.log, sizeof(battle.log), "%s fired %s... MISSED! (%d%% to hit)", who, w->name,
+        (int)roundf(p.hitChance * 100));
 
-    a->evasiveBonus = (int)chipTotal(a, CFX_EVASIVE_MANEUVER);
+    a->evasiveBonus = (int)chipTotal(a->mech, CFX_EVASIVE_MANEUVER);
     pushEvent(w->fx, isPlayer, total, hit, munitionColor(w->munition));
     battle.animTimer = fxDuration(w->fx);
     battle.outcomePending = 1;
@@ -280,7 +299,7 @@ static void awardData(int amount) {
     int gained = firmwareAddData(&m->fw, amount);
     if (gained > 0) {
         battle.revisionsGained += gained;
-        mechStats(m, &battle.player.stats);
+        mechRefreshStats(m);
     }
 }
 
@@ -289,7 +308,7 @@ static void beginEnemyTurn(void) {
     battle.phase = BP_ENEMY_TURN;
     if (battle.enemy.skipTurn) {
         snprintf(battle.log, sizeof(battle.log), "Enemy %s is scrambled and loses its turn!", battle.enemyMech.name);
-        battle.enemy.energy = 0;
+        battle.enemyMech.stats.energy = 0;
         battle.animTimer = 1.2f;
     }
 }
@@ -298,7 +317,8 @@ static void beginPlayerTurn(void) {
     battle.round++;
     turnStart(&battle.player);
     battle.phase = BP_PLAYER_TURN;
-    snprintf(battle.log, sizeof(battle.log), "REACTOR RECHARGED: %d EN. Round %d.", battle.player.energy, battle.round);
+    snprintf(battle.log, sizeof(battle.log), "REACTOR RECHARGED: %d EN, heat vented to %d. Round %d.",
+        battle.player.mech->stats.energy, battle.player.mech->stats.heat, battle.round);
     if (battle.player.skipTurn) {
         snprintf(battle.log, sizeof(battle.log), "SYSTEMS SCRAMBLED! %s loses its turn.", battle.player.mech->name);
         beginEnemyTurn();
@@ -321,6 +341,7 @@ static int enemyChooseWeapon(void) {
 static void beginBattle(void) {
     battle.phase = BP_PLAYER_TURN;
     battle.dialogue = DLG_NONE;
+    battle.testRange = 0;
     battle.round = 0;
     battle.animTimer = 0;
     battle.outcomePending = 0;
@@ -351,7 +372,7 @@ void battleStartWild(void) {
     battle.enemyMech = mechCreate(model, rand() % 4);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "HOSTILE %s detected! Reactor online (%d energy).",
-        battle.enemyMech.name, battle.player.energy);
+        battle.enemyMech.name, battle.player.mech->stats.energy);
 }
 
 void battleStartTrainer(int trainerIdx) {
@@ -366,8 +387,43 @@ void battleStartTrainer(int trainerIdx) {
     snprintf(battle.dialogueText, sizeof(battle.dialogueText), "\"%s\"", t->introLine);
 }
 
+void battleResetDummy(void) {
+    battle.enemyMech = mechCreate(MODEL_DUMMY, 0);
+    snprintf(battle.enemyMech.name, sizeof(battle.enemyMech.name), "TARGET DUMMY");
+    initCombatant(&battle.enemy, &battle.enemyMech);
+}
+
+void battleStartTestRange(void) {
+    Mech* m = rosterActive();
+    battle.savedIntegrity = m->stats.integrity;
+    battle.savedArmor = m->stats.armor;
+    battle.trainer = -1;
+    battle.dummyKills = 0;
+    battleResetDummy();
+    beginBattle();
+    battle.testRange = 1;
+    snprintf(battle.log, sizeof(battle.log), "TEST RANGE: %s vs TARGET DUMMY. The dummy never fires back.", m->name);
+}
+
+void battleEndTestRange(void) {
+    Mech* m = rosterActive();
+    mechRefreshStats(m);
+    m->stats.integrity = battle.savedIntegrity < m->stats.maxIntegrity ? battle.savedIntegrity : m->stats.maxIntegrity;
+    m->stats.armor = battle.savedArmor < m->stats.maxArmor ? battle.savedArmor : m->stats.maxArmor;
+    m->stats.heat = 0;
+    m->stats.energy = m->stats.maxEnergy;
+    mechReloadWeapons(m);
+    battle.testRange = 0;
+}
+
 // ============ OUTCOME ============
 static void enemyScrapped(void) {
+    if (battle.testRange) {
+        battle.dummyKills++;
+        battleResetDummy();
+        snprintf(battle.log, sizeof(battle.log), "TARGET DUMMY destroyed (%d). A new dummy is online.", battle.dummyKills);
+        return;
+    }
     if (battle.trainer >= 0) {
         Trainer* t = &trainers[battle.trainer];
         t->numDefeated++;
@@ -402,8 +458,8 @@ static void enemyScrapped(void) {
 // Returns 1 if the battle state changed because a mech went down
 static int checkOutcome(void) {
     battle.outcomePending = 0;
-    if (battle.enemyMech.integrity <= 0) { enemyScrapped(); return 1; }
-    if (battle.player.mech->integrity <= 0) {
+    if (battle.enemyMech.stats.integrity <= 0) { enemyScrapped(); return 1; }
+    if (battle.player.mech->stats.integrity <= 0) {
         battle.phase = BP_DEFEAT;
         snprintf(battle.log, sizeof(battle.log), "%s DISABLED!", battle.player.mech->name);
         return 1;
@@ -411,7 +467,11 @@ static int checkOutcome(void) {
     return 0;
 }
 
+// Leaving a battle: vent heat and refill energy for the overworld
 static void finish(BattleResult result) {
+    Mech* m = rosterActive();
+    m->stats.heat = 0;
+    m->stats.energy = m->stats.maxEnergy;
     battle.result = result;
     battle.phase = BP_OVER;
 }
@@ -460,7 +520,7 @@ void battleEndTurn(void) {
 }
 
 int battleCanHack(void) {
-    return battle.phase == BP_PLAYER_TURN && battle.trainer < 0 && teamSize < MAX_TEAM;
+    return battle.phase == BP_PLAYER_TURN && battle.trainer < 0 && !battle.testRange && teamSize < MAX_TEAM;
 }
 
 // Hacking costs the rest of the turn
@@ -468,7 +528,7 @@ void battleHack(void) {
     if (!battleCanHack() || battleBusy()) return;
     pushEvent(FX_SCAN, 1, 0, 1, (Color) { 120, 255, 220, 255 });
     battle.animTimer = fxDuration(FX_SCAN);
-    if (frand() < hackChance(&battle.enemyMech, &battle.enemy.stats)) {
+    if (frand() < hackChance(&battle.enemyMech)) {
         Mech caught = battle.enemyMech;
         mechRepair(&caught);
         mechReloadWeapons(&caught);

@@ -82,6 +82,12 @@ const MechModel mechModels[NUM_MODELS] = {
       {70,60,130,255}, {150,130,255,255}, {190,170,255,255},
       { { 0, 0, 0, 0, 0, 0, 0, 0, 0 } },
       { W_ARC_EMITTER, W_JAMMER, W_PULSE_LASER, -1 }, 2 },
+    // Test Range target: unarmed, never appears in the wild.
+    // Ironclad + delta = INT 200, ARM 100, MOB 25, STB 60.
+    { "TR-00", "TARGET DUMMY", ROLE_IRONCLAD, "Unarmed test-range target. Rebuilds itself.", 1,
+      {90,95,110,255}, {230,200,90,255}, {255,230,120,255},
+      { { 25, 0, -25, 5, 0, 0, 0, 0, -30 } },
+      { -1, -1, -1, -1 }, 0 },
 };
 
 // ============ REFIT MODULES ============

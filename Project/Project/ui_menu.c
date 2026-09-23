@@ -1,15 +1,16 @@
 #include "ui.h"
 #include "mech.h"
+#include "battle.h"
 #include <math.h>
 
-#define NUM_MENU_ITEMS 3
+#define NUM_MENU_ITEMS 4
 #define NUM_SETTINGS_ITEMS 3   // display mode, aspect ratio, back
 
 int gameStarted = 0;
 int quitRequested = 0;
 static int menuSel = 0, settingsSel = 0;
 
-static Rectangle menuButtonRect(int i) { return (Rectangle) { SCREEN_W / 2 - 140.0f, 290.0f + i * 70, 280, 52 }; }
+static Rectangle menuButtonRect(int i) { return (Rectangle) { SCREEN_W / 2 - 140.0f, 284.0f + i * 64, 280, 50 }; }
 static Rectangle settingsRowRect(int i) { return (Rectangle) { SCREEN_W / 2 - 250.0f, 190.0f + i * 90, 500, 56 }; }
 static Rectangle settingsArrowRect(int i, int right) {
     Rectangle r = settingsRowRect(i);
@@ -57,7 +58,8 @@ void uiMenuUpdate(GameState* state) {
     if (!activate) return;
     consumeInput();
     if (menuSel == 0) { gameStarted = 1; *state = STATE_OVERWORLD; }
-    else if (menuSel == 1) *state = STATE_SETTINGS;
+    else if (menuSel == 1) { battleStartTestRange(); *state = STATE_BATTLE; }   // active mech vs a passive dummy
+    else if (menuSel == 2) *state = STATE_SETTINGS;
     else quitRequested = 1;
 }
 
@@ -66,7 +68,7 @@ void uiMenuDraw(void) {
     BeginMode2D(layoutCamera());
     drawMenuTitle("MECH PILOT", "- NEON WASTELAND -");
     drawMechBattle(MODEL_NOVA, SCREEN_W / 2, 215, 8, 0);
-    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "CONTINUE" : "START", "SETTINGS", "EXIT" };
+    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "CONTINUE" : "START", "TEST RANGE", "SETTINGS", "EXIT" };
     for (int i = 0; i < NUM_MENU_ITEMS; i++)
         drawButton(menuButtonRect(i), labels[i], 24, i == menuSel, 1);
     drawTextCentered("[WASD/ARROWS] Navigate   [Z/ENTER/CLICK] Select", SCREEN_H - 30, 16, (Color) { 150, 220, 255, 200 });
