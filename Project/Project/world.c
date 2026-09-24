@@ -63,7 +63,7 @@ static void initTrainers(void) {
         "You're stronger than you look...",
         "Good luck out there, pilot.",
         0, 0,
-        { MODEL_WISP }, { 1 }, 1, 0
+        { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
         "COMMANDER VOLK", "IRON LEGION", 25, 18, 0, { 255, 180, 60, 255 },
@@ -71,7 +71,7 @@ static void initTrainers(void) {
         "IMPOSSIBLE! My mechs... destroyed!",
         "You've earned my respect, pilot.",
         1, 0,
-        { MODEL_BULWARK, MODEL_RAZOR }, { 2, 2 }, 2, 0
+        { ARCH_BRAWLER, ARCH_BERSERKER }, { 2, 2 }, 2, 0
     };
     trainers[2] = (Trainer){
         "WARDEN KRUX", "IRON LEGION", 14, 22, 0, { 255, 60, 60, 255 },
@@ -79,7 +79,16 @@ static void initTrainers(void) {
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
         2, 0,
-        { MODEL_HAVOC, MODEL_BULWARK, MODEL_OBLIVION }, { 4, 4, 6 }, 3, 0
+        { ARCH_SNIPER, ARCH_JAMMER, ARCH_BRAWLER }, { 4, 4, 6 }, 3, 0
+    };
+    // Boss: the machine itself. Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
+    trainers[3] = (Trainer){
+        "FACTORY OVERSEER", "BLACK BOX", 32, 24, 0, { 200, 60, 255, 255 },
+        "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
+        "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
+        "...the Overseer's chassis sits silent.",
+        3, 0,
+        { ARCH_OVERSEER }, { 12 }, 1, 0
     };
 }
 

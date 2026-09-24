@@ -65,4 +65,6 @@ const Weapon weaponTable[NUM_WEAPONS] = {
     { "ARC EMITTER",        8, 1,  95, 2,  0, TARGET_SINGLE,   8, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          45,  0, FX_ARC },
     { "JAMMER",             0, 1, 100, 4,  0, TARGET_SINGLE,   5, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          80,  0, FX_JAM },
     { "CORROSIVE SPRAY",   12, 1,  85, 1, 10, TARGET_CONE,    10, MUN_CHEMICAL,        PLAT_FLAMETHROWER,      0,  0, FX_PULSE },
+    // Scramble that always lands as Firmware Corruption (chips offline / reversed, Energy costs, targeting)
+    { "VIRUS UPLINK",       0, 1,  90, 3,  0, TARGET_SINGLE,  10, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          60,  0, FX_JAM, 1 },
 };

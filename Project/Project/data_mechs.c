@@ -152,3 +152,60 @@ const RefitModule refitModules[NUM_REFIT_MODULES] = {
     { "JUMP JETS", SLOT_LEGS, "+10 Mobility, -5 Armor, -15 Heat capacity.",
       { { 0, 0, -5, 10, 0, -15, 0, 0, 0 } }, { 2, 1, 5, 3 } },
 };
+
+// ============ ENEMY ARCHETYPES ============
+//                                  damage armorBias scramble heatCaution finisher desperation
+const AIProfile aiDefault = {       1.0f,  0.6f,     0.6f,    0.4f,       1.0f,    1.0f };
+
+const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
+    // Soaks the first hit, cracks armor with the breach routine, repairs itself when low.
+    { "BRAWLER", "Armored Dreadnought. Hits hard up close and refuses to go down.",
+      CLASS_HEAVY_ASSAULT, ROLE_DREADNOUGHT, MODEL_BULWARK,
+      { { W_PLASMA_BLADE, W_SHOTGUN, W_GRENADE_LAUNCHER, -1 },
+        { REFIT_STANDARD_OPTICS, REFIT_CRYO_COOLING, REFIT_SHIELD_ARM, REFIT_TREADS } },
+      { CHIP_ARMOR_BREACH, CHIP_EMERGENCY_REPAIR, CHIP_PREDICTIVE_TARGETING }, 3,
+      TRAIT_DEFENSIVE, { BRANCH_BASTION }, 1,
+      { 1.0f, 0.8f, 0.0f, 0.2f, 1.0f, 1.0f }, 0 },
+    // All-in melee: ignores heat, gets stronger as it breaks.
+    { "BERSERKER", "Blade-armed Breacher. Overheats itself chasing the kill.",
+      CLASS_HEAVY_ASSAULT, ROLE_BREACHER, MODEL_RAZOR,
+      { { W_PLASMA_BLADE, W_FLAMER, W_SHOTGUN, -1 },
+        { REFIT_STANDARD_OPTICS, REFIT_OVERCLOCKED_REACTOR, REFIT_STANDARD_MOUNTS, REFIT_BIPEDAL_LEGS } },
+      { CHIP_OVERCHARGE, CHIP_LAST_STAND }, 2,
+      TRAIT_AGGRESSIVE, { BRANCH_OVERCLOCK }, 1,
+      { 1.3f, 0.5f, 0.0f, 0.0f, 2.0f, 1.0f }, 0 },
+    // Free first railgun each turn; a second one builds heat until it has to switch or vent.
+    { "SNIPER", "Arbalest on treads. Saves its heat for one armor-piercing railgun shot.",
+      CLASS_ARTILLERY, ROLE_ARBALEST, MODEL_LONGBOW,
+      { { W_RAILGUN, W_PULSE_LASER, W_MACHINE_GUN, -1 },
+        { REFIT_LONG_RANGE_RADAR, REFIT_CRYO_COOLING, REFIT_STABILIZED_MOUNTS, REFIT_TREADS } },
+      { CHIP_PRECISION_STRIKE, CHIP_ARMOR_ANALYSIS, CHIP_COOLANT_DUMP }, 3,
+      TRAIT_EFFICIENT, { BRANCH_HUNTER }, 1,
+      { 1.0f, 0.3f, 0.0f, 0.9f, 1.5f, 1.0f }, 0 },
+    // Five cheap shots a turn and hard to pin down.
+    { "SKIRMISHER", "Hit-and-run Recon frame. Many small shots, very hard to hit.",
+      CLASS_RECON, ROLE_SKIRMISHER, MODEL_WISP,
+      { { W_PULSE_LASER, W_MACHINE_GUN, W_ARC_EMITTER, -1 },
+        { REFIT_TARGETING_ARRAY, REFIT_OVERCLOCKED_REACTOR, REFIT_STANDARD_MOUNTS, REFIT_BIPEDAL_LEGS } },
+      { CHIP_EVASIVE_MANEUVER, CHIP_TARGETING_SPOOF }, 2,
+      TRAIT_AGGRESSIVE, { BRANCH_GHOST }, 1,
+      { 1.0f, 0.6f, 0.4f, 0.5f, 1.0f, 1.0f }, 0 },
+    // Barely damages you; scrambles your turn and corrupts your firmware instead.
+    { "JAMMER", "Disruptor. Attacks your Stability and your firmware, not your armor.",
+      CLASS_EW, ROLE_DISRUPTOR, MODEL_STATIC,
+      { { W_VIRUS_UPLINK, W_JAMMER, W_ARC_EMITTER, W_PULSE_LASER },
+        { REFIT_LONG_RANGE_RADAR, REFIT_OVERCLOCKED_REACTOR, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM } },
+      { CHIP_COUNTER_INTRUSION, CHIP_SYSTEM_RECOVERY }, 2,
+      TRAIT_ADAPTIVE, { BRANCH_SIGNAL }, 1,
+      { 0.6f, 0.6f, 2.0f, 0.5f, 1.0f, 1.5f }, 0 },
+    // BOSS: misses make it deadlier, killing it triggers one last free shot, and
+    // once below half Integrity it turns to corrupting your firmware.
+    { "FACTORY OVERSEER", "Ancient Ordnance platform running Black Box firmware.",
+      CLASS_ARTILLERY, ROLE_ORDNANCE, MODEL_OBLIVION,
+      { { W_RAILGUN, W_SIEGE_MORTAR, W_VIRUS_UPLINK, W_MACHINE_GUN },
+        { REFIT_LONG_RANGE_RADAR, REFIT_CRYO_COOLING, REFIT_STABILIZED_MOUNTS, REFIT_TREADS } },
+      { CHIP_RECURSIVE_TARGETING, CHIP_DEAD_MAN, CHIP_ARMOR_ANALYSIS, CHIP_COUNTER_INTRUSION, CHIP_EMERGENCY_REPAIR,
+        CHIP_COOLANT_DUMP }, 6,
+      TRAIT_ADAPTIVE, { BRANCH_SIEGE, BRANCH_OVERCLOCK }, 2,
+      { 1.0f, 0.5f, 1.0f, 0.6f, 2.0f, 3.5f }, 1 },
+};

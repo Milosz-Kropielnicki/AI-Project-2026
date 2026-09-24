@@ -65,11 +65,20 @@ typedef struct {
     int firstAction;        // Efficient Power Distribution makes it free
     int firstHitOnTarget;   // target has not been hit this battle (Defensive Kernel)
     int targetLastMunition; // munition that last damaged the target, -1 = none (Adaptive Kernel)
+    int energyTax;          // extra Energy per attack from Firmware Corruption
+    int targetScrambled;    // scramble / corruption effects already pending on the target (AI only)
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
                    const AttackContext* ctx, AttackPreview* out);
 AttackContext attackContextBaseline(const Mech* attacker, const Mech* target);   // fresh round, first action
+
+// Enemy AI: expected value of one attack, weighed by the archetype's profile.
+// Covers Energy cost, Heat headroom, Armor vs penetration, target Mobility (via
+// hit chance) and Stability (via scramble resistance).
+float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
+                    const AttackContext* ctx, const AIProfile* ai);
+#define AI_HOLD_SCORE 2.0f      // after its first action the AI stops rather than fire below this
 float hackChance(const Mech* target);
 int revisionDataForWild(const Mech* enemy);
 int revisionDataForTrainer(const Mech* enemy, int tier);
@@ -90,6 +99,7 @@ typedef enum { RESULT_NONE, RESULT_TO_WORLD, RESULT_TO_REVISION } BattleResult;
 // Battle-only modifiers; the pools themselves live in mech->stats
 typedef struct {
     Mech* mech;
+    const AIProfile* ai;    // weights used when the AI picks for this side
     int actionsThisTurn;
     int attackedThisRound;  // for Targeting Spoof
     int breachUsed;         // Armor Breach Routine spent
@@ -100,8 +110,12 @@ typedef struct {
     int lastMunitionTaken;  // -1 = none
     // scramble effects active this turn
     int accPenalty, disabledWeapon, skipTurn;
-    // scramble effects queued for this side's next turn
+    // scramble / corruption effects queued for this side's next turn
     int nextEnergyLoss, nextAccPenalty, nextDisabledWeapon, nextSkipTurn;
+    int energyTax, nextEnergyTax;               // corruption: +Energy per attack
+    int randomTargeting, nextRandomTargeting;   // corruption: attacks may fire a random weapon
+    int deadManUsed;
+    int skipImmune;         // normal turns left before this side can lose a turn again
 } Combatant;
 
 // A visual cue for ui_battle.c; battle logic never touches effects directly
@@ -115,6 +129,7 @@ typedef struct {
     char log[256];
     Combatant player, enemy;
     Mech enemyMech;
+    int enemyArchetype;     // -1 = stock chassis with random chips
     int trainer;            // -1 = wild
     int testRange;          // player vs a passive, self-rebuilding dummy
     int dummyKills;
@@ -140,6 +155,7 @@ int battleBusy(void);                       // animating or showing dialogue
 int battleCanFire(int mount, const char** reason);
 void battleFire(int mount);
 void battleEndTurn(void);
+int battleAIChooseForPlayer(void);          // the enemy AI's pick for the player's side (tests / autoplay)
 int battleCanHack(void);
 void battleHack(void);
 void battleConfirm(void);                   // advance dialogue / victory / defeat

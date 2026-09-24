@@ -71,11 +71,13 @@ typedef struct {
     int scramble;       // scramble strength (0 = none)
     int ammo;           // uses per battle, 0 = unlimited
     int fx;             // battle visual
+    int virus;          // 1 = a scramble that lands always becomes Firmware Corruption
 } Weapon;
 
 enum {
     W_MACHINE_GUN, W_SHOTGUN, W_RAILGUN, W_AA_MISSILE, W_ROCKET_POD, W_PULSE_LASER, W_FLAMER,
     W_PLASMA_BLADE, W_GRENADE_LAUNCHER, W_SIEGE_MORTAR, W_ARC_EMITTER, W_JAMMER, W_CORROSIVE_SPRAY,
+    W_VIRUS_UPLINK,
     NUM_WEAPONS
 };
 extern const Weapon weaponTable[NUM_WEAPONS];   // data_weapons.c
@@ -181,6 +183,7 @@ typedef struct {
     WeaponInstance weapons[MAX_WEAPONS];
     int refit[NUM_REFIT_SLOTS];         // module index per slot
     Firmware fw;
+    int boss;                           // boss rules: double Integrity, past the 200 cap
 } Mech;
 
 // Every layer that feeds a mech's attributes, for the debug screen
@@ -209,6 +212,40 @@ void mechSetRefit(Mech* m, RefitSlot slot, int module);
 int refitRating(const Mech* m, int module);
 const Weapon* mechWeapon(const Mech* m, int mount);   // NULL if empty mount
 int mechNumWeapons(const Mech* m);
+
+// ============ ENEMY ARCHETYPES ============
+// Enemy blueprints fed through the same createMech pipeline as everything
+// else, plus the weights the battle AI scores its options with.
+typedef struct {
+    float damage;       // weight on expected damage
+    float armorBias;    // value of Armor damage relative to Integrity damage (0..1)
+    float scramble;     // weight on expected scramble / corruption payloads
+    float heatCaution;  // 0 = fires until the thermal limit .. 1 = keeps headroom for next turn
+    float finisher;     // weight on shots that can scrap the target outright
+    float desperation;  // scramble weight multiplier while below 50% Integrity
+} AIProfile;
+extern const AIProfile aiDefault;
+
+typedef struct {
+    const char* name;
+    const char* desc;
+    MechClass cls;
+    MechRole role;
+    int chassis;
+    Refit refit;
+    int chips[MAX_SOCKETS];
+    int numChips;
+    int trait;
+    int branches[MAX_MAJORS];   // picked in this order at major revisions, the rest random
+    int numBranches;
+    AIProfile ai;
+    int boss;                   // ignores Processing Capacity and weapon ratings; trainer-only, so never hacked
+} EnemyArchetype;
+
+enum { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SNIPER, ARCH_SKIRMISHER, ARCH_JAMMER, ARCH_OVERSEER, NUM_ARCHETYPES };
+#define NUM_WILD_ARCHETYPES ARCH_OVERSEER   // the boss never roams
+extern const EnemyArchetype archetypes[NUM_ARCHETYPES];   // data_mechs.c
+Mech archetypeBuild(int archetype, int level);
 
 // ============ ROSTER ============
 extern Mech team[MAX_TEAM];

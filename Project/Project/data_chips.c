@@ -41,6 +41,8 @@ const ChipDef chipDefs[NUM_CHIPS] = {
       "Energy weapons deal +30% damage but generate +50% Heat." },
     { "RECURSIVE TARGETING",            CAT_TRIGGERED, RARITY_BLACK_BOX,    3, CFX_RECURSIVE_TARGETING, STAT_ACCURACY,   10,
       "Every miss: +10 Accuracy for the rest of the battle." },
+    { "DEAD-MAN PROTOCOL",              CAT_TRIGGERED, RARITY_BLACK_BOX,    4, CFX_DEAD_MAN,            STAT_INTEGRITY,  1,
+      "On reaching 0 Integrity: one final attack, free of Energy and Heat." },
 };
 
 // ============ FIRMWARE BRANCHES (doc 7.16) ============

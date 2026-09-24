@@ -23,13 +23,13 @@ typedef struct {
     const char* postLine;
     int tier;
     int defeated;
-    int teamModels[MAX_TEAM];      // index into mechModels[]
+    int teamArchetypes[MAX_TEAM];  // index into archetypes[]
     int teamRevisions[MAX_TEAM];   // firmware revision step
     int numMechs;
     int numDefeated;
 } Trainer;
 
-#define NUM_TRAINERS 3
+#define NUM_TRAINERS 4           // the last one is the boss
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);

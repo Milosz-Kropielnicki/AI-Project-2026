@@ -154,14 +154,22 @@ int firmwareChipActive(const Firmware* fw, int socket) {
     return socket >= 0 && socket < firmwareSockets(fw) && fw->chips[socket] >= 0 && fw->corrupt[socket] <= 0;
 }
 
+int firmwareChipSign(const Firmware* fw, int socket) {
+    if (socket < 0 || socket >= firmwareSockets(fw) || fw->chips[socket] < 0) return 0;
+    if (fw->corrupt[socket] <= 0) return 1;
+    return fw->corruptKind[socket] == CORRUPT_REVERSED ? -1 : 0;
+}
+
 static float kernelEffect(const KernelDef* k, ChipEffect e) {
     return (k->effect == e ? k->value : 0) + (k->effect2 == e ? k->value2 : 0);
 }
 
 float firmwareEffect(const Firmware* fw, ChipEffect e) {
     float total = 0;
-    for (int i = 0; i < MAX_SOCKETS; i++)
-        if (firmwareChipActive(fw, i) && chipDefs[fw->chips[i]].effect == e) total += chipDefs[fw->chips[i]].value;
+    for (int i = 0; i < MAX_SOCKETS; i++) {
+        int sign = firmwareChipSign(fw, i);
+        if (sign != 0 && chipDefs[fw->chips[i]].effect == e) total += sign * chipDefs[fw->chips[i]].value;
+    }
     total += kernelEffect(&traitDefs[fw->trait], e);
     for (int i = 0; i < fw->numBranches; i++) total += kernelEffect(&branchDefs[fw->branches[i]], e);
     return total;
@@ -170,9 +178,10 @@ float firmwareEffect(const Firmware* fw, ChipEffect e) {
 float firmwareChipStat(const Firmware* fw, StatId s) {
     float total = 0;
     for (int i = 0; i < MAX_SOCKETS; i++) {
-        if (!firmwareChipActive(fw, i)) continue;
+        int sign = firmwareChipSign(fw, i);
+        if (sign == 0) continue;
         const ChipDef* c = &chipDefs[fw->chips[i]];
-        if (c->effect == CFX_STAT && c->stat == s) total += c->value;
+        if (c->effect == CFX_STAT && c->stat == s) total += sign * c->value;
     }
     return total;
 }
@@ -184,12 +193,13 @@ int firmwareInstalledCount(const Firmware* fw) {
 }
 
 // ============ CORRUPTION ============
-int firmwareCorruptRandom(Firmware* fw) {
+int firmwareCorruptRandom(Firmware* fw, CorruptKind kind) {
     int sockets[MAX_SOCKETS], n = 0;
     for (int i = 0; i < MAX_SOCKETS; i++) if (firmwareChipActive(fw, i)) sockets[n++] = i;
     if (n == 0) return -1;
     int s = sockets[rand() % n];
     fw->corrupt[s] = CORRUPT_TURNS;
+    fw->corruptKind[s] = kind;
     return fw->chips[s];
 }
 
