@@ -264,6 +264,11 @@ static void partsInit(void) {
     weaponOwned[W_PULSE_LASER]++;
 }
 
+void gameChooseStarter(int starter) {
+    worldInitNewGame(starter);
+    partsInit();   // the inventory follows the new team
+}
+
 void gameNew(void) {
     worldInit();                        // map generation reseeds with fixed seeds
     srand((unsigned)time(NULL));
@@ -273,13 +278,15 @@ void gameNew(void) {
     credits = START_CREDITS;
     memset(jobState, 0, sizeof(jobState));
     memset(jobProgress, 0, sizeof(jobProgress));
+    playerStarter = -1;
+    starterStage = starterSlot = obtainedStarters = 0;
 }
 
 // ============ SAVE / LOAD ============
 // A flat binary snapshot. Mech and Firmware are plain data, so the team is
 // written as-is; the header rejects saves from builds with a different layout.
 #define SAVE_FILE "savegame.dat"
-#define SAVE_VERSION 1
+#define SAVE_VERSION 2   // 2: starter line
 
 typedef struct {
     char magic[4];
@@ -294,6 +301,7 @@ typedef struct {
     int jobState[NUM_JOBS], jobProgress[NUM_JOBS];
     int trainerDefeated[NUM_TRAINERS];
     int zone, x, y;
+    int playerStarter, starterStage, starterSlot, obtainedStarters;
 } SaveData;
 
 static void saveLayout(int* layout) {
@@ -320,6 +328,10 @@ int gameSave(void) {
     memcpy(d.jobProgress, jobProgress, sizeof(d.jobProgress));
     for (int i = 0; i < NUM_TRAINERS; i++) d.trainerDefeated[i] = trainers[i].defeated;
     worldGetPlayer(&d.zone, &d.x, &d.y);
+    d.playerStarter = playerStarter;
+    d.starterStage = starterStage;
+    d.starterSlot = starterSlot;
+    d.obtainedStarters = obtainedStarters;
 
     FILE* f = fopen(SAVE_FILE, "wb");
     if (!f) return 0;
@@ -360,5 +372,9 @@ int gameLoad(void) {
     memcpy(jobProgress, d.jobProgress, sizeof(jobProgress));
     for (int i = 0; i < NUM_TRAINERS; i++) trainers[i].defeated = d.trainerDefeated[i];
     worldSetPlayer(d.zone, d.x, d.y);
+    playerStarter = d.playerStarter;
+    starterStage = d.starterStage;
+    starterSlot = d.starterSlot;
+    obtainedStarters = d.obtainedStarters;
     return 1;
 }

@@ -18,8 +18,15 @@ static void enterState(GameState to, GameState from) {
     case STATE_TEAM:     uiTeamOpen(); break;
     case STATE_BATTLE:   uiBattleOpen(); break;
     case STATE_REVISION: uiRevisionOpen(); break;
+    case STATE_STARTER:  uiStarterOpen(); break;
     case STATE_DEBUG:    uiDebugOpen(from); break;
     case STATE_TERMINAL: uiTerminalOpen(); break;
+    case STATE_OVERWORLD:   // back from a fight: starter evolution and bonus starters
+        if (from == STATE_BATTLE || from == STATE_REVISION) {
+            worldTryStarterEvolution();
+            worldOfferAlternateStarters();
+        }
+        break;
     default: break;
     }
 }
@@ -61,6 +68,7 @@ int main(void) {
             case STATE_TEAM:      uiTeamUpdate(&state); break;
             case STATE_DEBUG:     uiDebugUpdate(&state); break;
             case STATE_TERMINAL:  uiTerminalUpdate(&state); break;
+            case STATE_STARTER:   uiStarterUpdate(dt, &state); break;
             }
         }
         if (state != frameState) enterState(state, frameState);
@@ -75,6 +83,7 @@ int main(void) {
         case STATE_TEAM:      uiTeamDraw(); break;
         case STATE_DEBUG:     uiDebugDraw(); break;
         case STATE_TERMINAL:  uiTerminalDraw(); break;
+        case STATE_STARTER:   uiStarterDraw(); break;
         }
         presentCanvas();
     }

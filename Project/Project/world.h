@@ -26,6 +26,27 @@ typedef struct {
 
 extern const Zone zones[NUM_ZONES];
 
+// ============ STARTERS ============
+// New-game starter lines. The starter evolves into the next chassis when its
+// firmware reaches evolveLevel (a revision step).
+#define NUM_STARTERS 3
+#define NUM_STARTER_STAGES 3
+
+typedef struct {
+    const char* name;
+    const char* tagline;
+    int stages[NUM_STARTER_STAGES];         // chassis per stage
+    int evolveLevel[NUM_STARTER_STAGES];    // firmware revision step to reach each stage
+    Color accent;
+    const char* desc;
+} StarterLine;
+
+extern const StarterLine starters[NUM_STARTERS];
+extern int playerStarter;       // which starter the player picked (-1 = none)
+extern int starterStage;        // current evolution stage of the starter
+extern int starterSlot;         // which team slot the starter lives in
+extern int obtainedStarters;    // bitmask of starters acquired
+
 // ============ ENCOUNTERS ============
 // Faction encounters (a squad from a criminal org or rogue AI). Still called
 // Trainer in code; faction indexes factions[] in game.h.
@@ -51,6 +72,7 @@ typedef struct {
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);
+void worldInitNewGame(int starterIdx);         // team = the chosen starter
 void worldUpdate(float dt, GameState* state);
 void worldDraw(void);
 void showMessage(const char* msg, float dur);
@@ -60,5 +82,8 @@ const char* worldCurrentZoneSubtitle(void);
 void worldGetPlayer(int* zone, int* x, int* y);
 void worldSetPlayer(int zone, int x, int y);   // used by save/load
 int worldFindTrainer(const char* name);        // -1 if none
+int worldTryStarterEvolution(void);            // 1 if the starter evolved
+void worldOfferAlternateStarters(void);        // grants unpicked starters after enough encounters
+int worldStarterSlot(void);
 
 #endif

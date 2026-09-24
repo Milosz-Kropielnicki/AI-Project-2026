@@ -66,9 +66,13 @@ void uiMenuUpdate(GameState* state) {
     if (!activate) return;
     consumeInput();
     if (menuSel == 0) {
-        if (!gameStarted) gameNew();
-        gameStarted = 1;
-        *state = STATE_OVERWORLD;
+        // NEW GAME: fresh campaign, then pick a starter. RESUME: back to the sector.
+        if (gameStarted) *state = STATE_OVERWORLD;
+        else {
+            gameNew();
+            gameStarted = 1;
+            *state = STATE_STARTER;
+        }
     }
     else if (menuSel == 1) {
         if (saveExists && gameLoad()) { gameStarted = 1; *state = STATE_OVERWORLD; showMessage("[SYSTEM] Save loaded.", 2.0f); }

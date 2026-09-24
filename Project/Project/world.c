@@ -14,6 +14,35 @@ const Zone zones[NUM_ZONES] = {
     { "SECTOR GAMMA", "- APEX WASTELAND -",     {220, 200, 255, 255}, 22, 9, ZONE_BETA, -1 },
 };
 
+const StarterLine starters[NUM_STARTERS] = {
+    {
+        "NOVA", "Balanced frontline mech",
+        { MODEL_NOVA, MODEL_RAZOR, MODEL_OBLIVION },
+        { 0, 3, 8 },
+        { 120, 230, 255, 255 },
+        "Starts even across the board. Evolves into an aggressive blade fighter, then an apex predator. A safe, versatile pick."
+    },
+    {
+        "BULWARK", "Armored siege platform",
+        { MODEL_BULWARK, MODEL_LONGBOW, MODEL_OBLIVION },
+        { 0, 3, 8 },
+        { 120, 255, 160, 255 },
+        "Slow, heavily armored brawler. Evolves into a railgun sniper that hits from long range, then an apex predator. For patient players."
+    },
+    {
+        "WISP", "Fast electronic warfare scout",
+        { MODEL_WISP, MODEL_STATIC, MODEL_HAVOC },
+        { 0, 3, 8 },
+        { 255, 240, 140, 255 },
+        "Fragile but extremely fast, with scrambling tools. Evolves into a jammer platform, then a missile battery. Rewards clever play."
+    },
+};
+
+int playerStarter = -1;
+int starterStage = 0;
+int starterSlot = 0;
+int obtainedStarters = 0;
+
 Trainer trainers[NUM_TRAINERS];
 
 // Per-zone maps
@@ -167,6 +196,109 @@ void worldInit(void) {
     px = 15; py = 16; facing = 0;
     pxF = (float)(px * TILE_SIZE); pyF = (float)(py * TILE_SIZE);
     justEnteredZone = 1;
+}
+
+// ============ STARTERS ============
+void worldInitNewGame(int starterIdx) {
+    if (starterIdx < 0 || starterIdx >= NUM_STARTERS) starterIdx = 0;
+    playerStarter = starterIdx;
+    starterStage = 0;
+    starterSlot = 0;
+    obtainedStarters = (1 << starterIdx);
+    const StarterLine* line = &starters[starterIdx];
+    int model = line->stages[0];
+
+    teamSize = 0;
+    activeTeamSlot = 0;
+    team[0] = mechCreateStock(model, 0);
+    snprintf(team[0].name, sizeof(team[0].name), "%s-01", line->name);
+
+    if (starterIdx == 0)      firmwareInstall(&team[0].fw, 0, CHIP_PREDICTIVE_TARGETING);
+    else if (starterIdx == 1) firmwareInstall(&team[0].fw, 0, CHIP_HARDENED_KERNEL);
+    else                       firmwareInstall(&team[0].fw, 0, CHIP_COUNTER_INTRUSION);
+    mechRepair(&team[0]);
+    teamSize = 1;
+}
+
+int worldStarterSlot(void) { return starterSlot; }
+
+static int checkStarterEvolution(void) {
+    if (playerStarter < 0 || starterStage >= NUM_STARTER_STAGES - 1) return 0;
+    if (starterSlot < 0 || starterSlot >= teamSize) return 0;
+    Mech* m = &team[starterSlot];
+    const StarterLine* line = &starters[playerStarter];
+    int need = line->evolveLevel[starterStage + 1];
+    if (need <= 0 || m->fw.revision < need) return 0;
+
+    starterStage++;
+    int newModel = line->stages[starterStage];
+    int keptRevision = m->fw.revision;
+    Mech evolved = mechCreateStock(newModel, keptRevision);
+    snprintf(evolved.name, sizeof(evolved.name), "%s-%s",
+        line->name, starterStage == 1 ? "MK2" : "PRIME");
+    partsAddFromMech(&evolved);   // the new chassis' weapons/modules; the old ones stay in the inventory
+    evolved.fw = m->fw;           // firmware carries over whole: chips, trait, branches, profiles, data
+    mechRepair(&evolved);
+    team[starterSlot] = evolved;
+
+    showMessage(TextFormat(">> EVOLUTION! Your %s evolved into %s!", line->name,
+        mechModel(&team[starterSlot])->name), 4.0f);
+    return 1;
+}
+
+int worldTryStarterEvolution(void) { return checkStarterEvolution(); }
+
+// Give the player the other starters as they progress through the trainer ladder.
+// After 2 defeats: first missing starter. After 4 defeats: second missing starter.
+// The player's own pick is always marked as obtained at new-game time, so we
+// only gift the two they don't have.
+void worldOfferAlternateStarters(void) {
+    int totalDefeated = 0;
+    for (int i = 0; i < NUM_TRAINERS; i++) if (trainers[i].defeated) totalDefeated++;
+
+    // Find the two starters the player doesn't have yet
+    int missing[2] = { -1, -1 };
+    int missingCount = 0;
+    for (int i = 0; i < NUM_STARTERS; i++) {
+        if (!(obtainedStarters & (1 << i))) {
+            if (missingCount < 2) missing[missingCount] = i;
+            missingCount++;
+        }
+    }
+    if (missingCount == 0) return;
+
+    // After 2 trainer defeats, gift the first missing starter
+    if (totalDefeated >= 2 && missing[0] >= 0 && teamSize < MAX_TEAM) {
+        Mech m = mechCreateStock(starters[missing[0]].stages[0], 0);
+        snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[0]].name);
+        // Give them a thematic starting chip too, so they feel complete
+        int idx = missing[0];
+        if (idx == 0)      firmwareInstall(&m.fw, 0, CHIP_PREDICTIVE_TARGETING);
+        else if (idx == 1) firmwareInstall(&m.fw, 0, CHIP_HARDENED_KERNEL);
+        else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
+        mechRepair(&m);
+        if (rosterAdd(&m)) {
+            partsAddFromMech(&m);
+            obtainedStarters |= (1 << missing[0]);
+            showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[0]].name), 4.0f);
+        }
+    }
+
+    // After 4 trainer defeats, gift the second missing starter
+    if (totalDefeated >= 4 && missingCount >= 2 && missing[1] >= 0 && teamSize < MAX_TEAM) {
+        Mech m = mechCreateStock(starters[missing[1]].stages[0], 0);
+        snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[1]].name);
+        int idx = missing[1];
+        if (idx == 0)      firmwareInstall(&m.fw, 0, CHIP_PREDICTIVE_TARGETING);
+        else if (idx == 1) firmwareInstall(&m.fw, 0, CHIP_HARDENED_KERNEL);
+        else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
+        mechRepair(&m);
+        if (rosterAdd(&m)) {
+            partsAddFromMech(&m);
+            obtainedStarters |= (1 << missing[1]);
+            showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[1]].name), 4.0f);
+        }
+    }
 }
 
 int worldCurrentZone(void) { return currentZone; }

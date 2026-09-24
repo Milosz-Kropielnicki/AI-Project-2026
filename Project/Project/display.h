@@ -19,7 +19,8 @@ typedef enum {
     STATE_MENU,
     STATE_SETTINGS,
     STATE_DEBUG,
-    STATE_TERMINAL    // mission board, showroom, parts market, services
+    STATE_TERMINAL,   // mission board, showroom, parts market, services
+    STATE_STARTER     // new game: pick a starter mech
 } GameState;
 
 extern int screenW;       // current canvas width

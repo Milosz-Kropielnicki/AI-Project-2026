@@ -37,6 +37,11 @@ void uiSettingsUpdate(GameState* state);
 void uiSettingsDraw(void);
 void drawMenuBackground(void);
 
+// ============ ui_starter.c ============
+void uiStarterOpen(void);
+void uiStarterUpdate(float dt, GameState* state);
+void uiStarterDraw(void);
+
 // ============ ui_debug.c ============
 void uiDebugOpen(GameState returnTo);
 void uiDebugUpdate(GameState* state);

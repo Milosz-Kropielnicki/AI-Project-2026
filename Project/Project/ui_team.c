@@ -12,6 +12,8 @@ static int teamSel = 0;
 static int loadoutOpen = 0;
 static int loadoutRow = 0;
 static char profileMsg[64] = "";
+static float switchFlash = 0;      // seconds remaining on the "DEPLOYED" flash
+static int switchFlashSlot = -1;
 
 enum { ROW_REFIT = 0, ROW_WEAPON = NUM_REFIT_SLOTS, ROW_SOCKET = NUM_REFIT_SLOTS + MAX_WEAPONS };
 
@@ -133,6 +135,8 @@ static void updateLoadout(void) {
 }
 
 void uiTeamUpdate(GameState* state) {
+    if (switchFlash > 0) switchFlash -= GetFrameTime();
+
     if (loadoutOpen) { updateLoadout(); return; }
 
     if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_ESCAPE) || clickedOn(closeButtonRect())) {
@@ -159,7 +163,11 @@ void uiTeamUpdate(GameState* state) {
     }
     if (activate) {
         consumeInput();
-        activeTeamSlot = teamSel;
+        if (activeTeamSlot != teamSel) {
+            activeTeamSlot = teamSel;
+            switchFlash = 1.2f;
+            switchFlashSlot = teamSel;
+        }
     }
 }
 
@@ -183,6 +191,7 @@ static void drawRating(int x, int y, int rating) {
 static void drawTeamGrid(void) {
     drawHeader(">> MECH TEAM");
     DrawText(TextFormat("%d / %d", teamSize, MAX_TEAM), SCREEN_W - 100, 22, 20, WHITE);
+    DrawText("[Z/ENTER/CLICK] Deploy selected mech", 30, 66, 12, (Color) { 150, 190, 220, 220 });
 
     for (int i = 0; i < teamSize; i++) {
         Rectangle slot = teamSlotRect(i);
@@ -226,6 +235,18 @@ static void drawTeamGrid(void) {
     drawButton(closeButtonRect(), "CLOSE [TAB/ESC]", 16, 0, 1);
     drawButton(loadoutButtonRect(), "LOADOUT [E]", 16, 0, teamSize > 0);
     DrawText("[Z/ENTER/CLICK] Set active", SCREEN_W - 290, SCREEN_H - 34, 18, (Color) { 255, 220, 100, 255 });
+
+    if (switchFlash > 0 && switchFlashSlot >= 0 && switchFlashSlot < teamSize) {
+        float a = switchFlash / 1.2f;
+        if (a > 1.0f) a = 1.0f;
+        Color c = mechModel(&team[switchFlashSlot])->accent;
+        c.a = (unsigned char)(255 * a);
+        const char* msg = TextFormat(">> %s DEPLOYED <<", team[switchFlashSlot].name);
+        int mw = MeasureText(msg, 22);
+        DrawRectangle(SCREEN_W / 2 - mw / 2 - 20, SCREEN_H / 2 - 20, mw + 40, 40, (Color) { 15, 25, 45, (unsigned char)(220 * a) });
+        DrawRectangleLines(SCREEN_W / 2 - mw / 2 - 20, SCREEN_H / 2 - 20, mw + 40, 40, c);
+        DrawText(msg, SCREEN_W / 2 - mw / 2, SCREEN_H / 2 - 12, 22, c);
+    }
     EndMode2D();
 }
 

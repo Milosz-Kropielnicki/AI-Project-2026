@@ -116,6 +116,7 @@ void gameOnPlayerDisabled(char* note, int size);
 
 // ============ SESSION ============
 void gameNew(void);                 // fresh campaign: world, roster, inventory, credits, jobs
+void gameChooseStarter(int starter);    // new game: replace the team with the picked starter line
 int gameSave(void);                 // 1 on success
 int gameLoad(void);                 // 1 on success
 int gameSaveExists(void);
