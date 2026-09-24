@@ -1,16 +1,21 @@
 #include "ui.h"
 #include "mech.h"
 #include "battle.h"
+#include "world.h"
+#include "game.h"
 #include <math.h>
 
-#define NUM_MENU_ITEMS 4
+#define NUM_MENU_ITEMS 5   // new game / resume, load, test range, settings, exit
 #define NUM_SETTINGS_ITEMS 3   // display mode, aspect ratio, back
 
 int gameStarted = 0;
 int quitRequested = 0;
 static int menuSel = 0, settingsSel = 0;
+static int saveExists = 0;
+static float menuNoticeTimer = 0;
+static const char* menuNotice = "";
 
-static Rectangle menuButtonRect(int i) { return (Rectangle) { SCREEN_W / 2 - 140.0f, 284.0f + i * 64, 280, 50 }; }
+static Rectangle menuButtonRect(int i) { return (Rectangle) { SCREEN_W / 2 - 140.0f, 280.0f + i * 54, 280, 44 }; }
 static Rectangle settingsRowRect(int i) { return (Rectangle) { SCREEN_W / 2 - 250.0f, 190.0f + i * 90, 500, 56 }; }
 static Rectangle settingsArrowRect(int i, int right) {
     Rectangle r = settingsRowRect(i);
@@ -43,7 +48,10 @@ static void drawMenuTitle(const char* title, const char* subtitle) {
 }
 
 // ============ MAIN MENU ============
-void uiMenuOpen(void) { menuSel = 0; }
+void uiMenuOpen(void) {
+    menuSel = 0;
+    saveExists = gameSaveExists();
+}
 
 void uiMenuUpdate(GameState* state) {
     if (UP_PRESSED)   menuSel = (menuSel + NUM_MENU_ITEMS - 1) % NUM_MENU_ITEMS;
@@ -57,9 +65,17 @@ void uiMenuUpdate(GameState* state) {
     if (IsKeyPressed(KEY_ESCAPE) && gameStarted) { *state = STATE_OVERWORLD; return; }
     if (!activate) return;
     consumeInput();
-    if (menuSel == 0) { gameStarted = 1; *state = STATE_OVERWORLD; }
-    else if (menuSel == 1) { battleStartTestRange(); *state = STATE_BATTLE; }   // active mech vs a passive dummy
-    else if (menuSel == 2) *state = STATE_SETTINGS;
+    if (menuSel == 0) {
+        if (!gameStarted) gameNew();
+        gameStarted = 1;
+        *state = STATE_OVERWORLD;
+    }
+    else if (menuSel == 1) {
+        if (saveExists && gameLoad()) { gameStarted = 1; *state = STATE_OVERWORLD; showMessage("[SYSTEM] Save loaded.", 2.0f); }
+        else { menuNotice = "No compatible save found."; menuNoticeTimer = 2.5f; }
+    }
+    else if (menuSel == 2) { battleStartTestRange(); *state = STATE_BATTLE; }   // active mech vs a passive dummy
+    else if (menuSel == 3) *state = STATE_SETTINGS;
     else quitRequested = 1;
 }
 
@@ -68,9 +84,13 @@ void uiMenuDraw(void) {
     BeginMode2D(layoutCamera());
     drawMenuTitle("MECH PILOT", "- NEON WASTELAND -");
     drawMechBattle(MODEL_NOVA, SCREEN_W / 2, 215, 8, 0);
-    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "CONTINUE" : "START", "TEST RANGE", "SETTINGS", "EXIT" };
+    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "RESUME" : "NEW GAME", "LOAD GAME", "TEST RANGE", "SETTINGS", "EXIT" };
     for (int i = 0; i < NUM_MENU_ITEMS; i++)
-        drawButton(menuButtonRect(i), labels[i], 24, i == menuSel, 1);
+        drawButton(menuButtonRect(i), labels[i], 22, i == menuSel, i != 1 || saveExists);
+    if (menuNoticeTimer > 0) {
+        menuNoticeTimer -= GetFrameTime();
+        drawTextCentered(menuNotice, SCREEN_H - 56, 16, (Color) { 255, 120, 110, 255 });
+    }
     drawTextCentered("[WASD/ARROWS] Navigate   [Z/ENTER/CLICK] Select", SCREEN_H - 30, 16, (Color) { 150, 220, 255, 200 });
     EndMode2D();
 }

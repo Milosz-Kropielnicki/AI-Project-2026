@@ -21,6 +21,11 @@ void uiTeamOpen(void);
 void uiTeamUpdate(GameState* state);
 void uiTeamDraw(void);
 
+// ============ ui_terminal.c ============
+void uiTerminalOpen(void);
+void uiTerminalUpdate(GameState* state);
+void uiTerminalDraw(void);
+
 // ============ ui_menu.c ============
 extern int gameStarted;
 extern int quitRequested;

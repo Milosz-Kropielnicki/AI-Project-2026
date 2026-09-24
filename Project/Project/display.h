@@ -18,7 +18,8 @@ typedef enum {
     STATE_TEAM,
     STATE_MENU,
     STATE_SETTINGS,
-    STATE_DEBUG
+    STATE_DEBUG,
+    STATE_TERMINAL    // mission board, showroom, parts market, services
 } GameState;
 
 extern int screenW;       // current canvas width

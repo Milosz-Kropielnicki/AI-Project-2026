@@ -1,5 +1,6 @@
 #include "battle.h"
 #include "world.h"
+#include "game.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -159,13 +160,18 @@ float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
 }
 
 // Hacking (capture): easier on damaged, common, low-Stability machines
-float hackChance(const Mech* target) {
-    const MechStats* s = &target->stats;
-    float damage = s->maxIntegrity > 0 ? 1.0f - (float)s->integrity / s->maxIntegrity : 0;
-    int rarity = mechModel(target)->rarity;
-    if (rarity < 1) rarity = 3;
-    float chance = 0.25f + damage * 0.55f - (rarity - 1) * 0.08f - (s->stability - 60) * 0.003f;
-    return clampf(chance, 0.05f, 0.95f);
+int hackStrength(const Mech* hacker) {
+    int best = 0;
+    for (int i = 0; i < MAX_WEAPONS; i++) {
+        const Weapon* w = mechWeapon(hacker, i);
+        if (w && w->scramble > best) best = w->scramble;
+    }
+    return HACK_BASE_STRENGTH + best / 2 + (int)fwEffect(hacker, CFX_SCRAMBLE_BONUS);
+}
+
+float hackChance(int strength, int stability) {
+    if (stability < 0) stability = 0;
+    return clampf((float)strength / (float)(strength + stability > 0 ? strength + stability : 1), 0.05f, 0.95f);
 }
 
 // Revision Data (doc 7.3): destroying machines, fighting higher-revision
@@ -196,6 +202,14 @@ int combatMobility(const Combatant* c) {
     int mob = c->mech->stats.mobility + c->evasiveBonus;
     if (integrityBelow(c, 0.25f)) mob += (int)fwEffect(c->mech, CFX_EMERGENCY_EVASION);
     return clampi(mob, 0, 100);
+}
+
+// Scramble / corruption effects waiting on this side's next turn
+static int pendingScrambles(const Combatant* c) {
+    int n = c->nextSkipTurn + (c->nextDisabledWeapon >= 0) + (c->nextAccPenalty > 0) + c->nextEnergyLoss
+        + c->nextEnergyTax + c->nextRandomTargeting;
+    for (int i = 0; i < MAX_SOCKETS; i++) if (c->mech->fw.corrupt[i] > 0) n++;
+    return n;
 }
 
 static AttackContext liveContext(const Combatant* a, const Combatant* d) {
@@ -513,6 +527,7 @@ static void beginBattle(void) {
     battle.dataEarned = 0;
     battle.revisionsGained = 0;
     battle.hacked = 0;
+    battle.loot[0] = 0;
     battle.result = RESULT_NONE;
     battle.numEvents = 0;
     battle.oldRevision = rosterActive()->fw.revision;
@@ -535,9 +550,10 @@ void battleStartWild(void) {
         pick -= weights[i];
     }
     battle.trainer = -1;
-    if (rand() % 10 < 7) spawnArchetype(rand() % NUM_WILD_ARCHETYPES, rand() % 4);
+    int level = gameWildLevel(worldCurrentZone());
+    if (rand() % 10 < 7) spawnArchetype(rand() % NUM_WILD_ARCHETYPES, level);
     else {   // a stock chassis running random chips
-        battle.enemyMech = mechCreateStock(model, rand() % 4);
+        battle.enemyMech = mechCreateStock(model, level);
         battle.enemyArchetype = -1;
         equipEnemyChips(&battle.enemyMech);
     }
@@ -589,6 +605,8 @@ void battleEndTestRange(void) {
 }
 
 // ============ OUTCOME ============
+static void encounterMechDown(void);
+
 static void enemyScrapped(void) {
     if (battle.testRange) {
         battle.dummyKills++;
@@ -596,35 +614,41 @@ static void enemyScrapped(void) {
         snprintf(battle.log, sizeof(battle.log), "TARGET DUMMY destroyed (%d). A new dummy is online.", battle.dummyKills);
         return;
     }
-    if (battle.trainer >= 0) {
-        Trainer* t = &trainers[battle.trainer];
-        t->numDefeated++;
-        awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
-        if (t->numDefeated < t->numMechs) {
-            spawnArchetype(t->teamArchetypes[t->numDefeated], t->teamRevisions[t->numDefeated]);
-            initCombatant(&battle.enemy, &battle.enemyMech);
-            battle.enemy.ai = enemyAI();
-            battle.round = 0;
-            beginPlayerTurn();
-            snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (%d/%d)",
-                t->name, battle.enemyMech.name, t->numDefeated + 1, t->numMechs);
-        }
-        else {
-            t->defeated = 1;
-            battle.phase = BP_VICTORY;
-            snprintf(battle.log, sizeof(battle.log), "ALL MECHS DOWN! %s defeated!", t->name);
-            battle.dialogue = DLG_DEFEAT;
-            snprintf(battle.dialogueText, sizeof(battle.dialogueText), "\"%s\"", t->defeatLine);
-        }
-    }
+    if (battle.trainer >= 0) encounterMechDown();
     else {
         int data = revisionDataForWild(&battle.enemyMech);
         awardData(data);
+        gameOnWildScrapped(&battle.enemyMech, battle.loot, sizeof(battle.loot));
         battle.phase = BP_VICTORY;
         if (battle.revisionsGained > 0)
             snprintf(battle.log, sizeof(battle.log), "TARGET %s SCRAPPED! Firmware revision ready!", battle.enemyMech.name);
         else
             snprintf(battle.log, sizeof(battle.log), "TARGET %s SCRAPPED! +%d DATA.", battle.enemyMech.name, data);
+    }
+}
+
+// One of an encounter squad's mechs is out (scrapped or reprogrammed): send the
+// next one, or pay out the encounter.
+static void encounterMechDown(void) {
+    Trainer* t = &trainers[battle.trainer];
+    t->numDefeated++;
+    awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
+    if (t->numDefeated < t->numMechs) {
+        spawnArchetype(t->teamArchetypes[t->numDefeated], t->teamRevisions[t->numDefeated]);
+        initCombatant(&battle.enemy, &battle.enemyMech);
+        battle.enemy.ai = enemyAI();
+        battle.round = 0;
+        beginPlayerTurn();
+        snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (%d/%d)",
+            t->name, battle.enemyMech.name, t->numDefeated + 1, t->numMechs);
+    }
+    else {
+        t->defeated = 1;
+        gameOnEncounterDefeated(battle.trainer, battle.loot, sizeof(battle.loot));
+        battle.phase = BP_VICTORY;
+        snprintf(battle.log, sizeof(battle.log), "ALL MECHS DOWN! %s defeated!", t->name);
+        battle.dialogue = DLG_DEFEAT;
+        snprintf(battle.dialogueText, sizeof(battle.dialogueText), "\"%s\"", t->defeatLine);
     }
 }
 
@@ -651,7 +675,10 @@ static int checkOutcome(void) {
     if (tryDeadMan(&battle.enemy, &battle.player, 0)) return 1;
     if (tryDeadMan(&battle.player, &battle.enemy, 1)) return 1;
     if (battle.player.mech->stats.integrity <= 0) {
-        if (!battle.testRange) awardData(revisionDataForParticipation(&battle.enemyMech));
+        if (!battle.testRange) {
+            awardData(revisionDataForParticipation(&battle.enemyMech));
+            gameOnPlayerDisabled(battle.loot, sizeof(battle.loot));
+        }
         battle.phase = BP_DEFEAT;
         snprintf(battle.log, sizeof(battle.log), "%s DISABLED!", battle.player.mech->name);
         return 1;
@@ -725,30 +752,48 @@ void battleEndTurn(void) {
     beginEnemyTurn();
 }
 
-int battleCanHack(void) {
-    return battle.phase == BP_PLAYER_TURN && battle.trainer < 0 && !battle.testRange && teamSize < MAX_TEAM;
+// Wild machines are rogue AI; encounter squads only if their faction is rogue
+// AI, and never a boss.
+static int enemyHackable(void) {
+    if (battle.testRange) return 0;
+    if (battle.trainer < 0) return factionHackable(FAC_WILD);
+    return factionHackable(trainers[battle.trainer].faction) && !battle.enemyMech.boss;
 }
+
+int battleCanHack(void) {
+    return battle.phase == BP_PLAYER_TURN && enemyHackable() && teamSize < MAX_TEAM;
+}
+
+int battleHackStability(void) {
+    return battle.enemyMech.stats.stability + (int)fwEffect(&battle.enemyMech, CFX_COUNTER_INTRUSION)
+        - HACK_STABILITY_PER_EFFECT * pendingScrambles(&battle.enemy);
+}
+
+float battleHackChance(void) { return hackChance(hackStrength(battle.player.mech), battleHackStability()); }
 
 // Hacking costs the rest of the turn
 void battleHack(void) {
     if (!battleCanHack() || battleBusy()) return;
     pushEvent(FX_SCAN, 1, 0, 1, (Color) { 120, 255, 220, 255 });
     battle.animTimer = fxDuration(FX_SCAN);
-    if (frand() < hackChance(&battle.enemyMech)) {
+    if (frand() < battleHackChance()) {
         Mech caught = battle.enemyMech;
         firmwareClearCorruption(&caught.fw);
-        int salvaged = 0;   // its chips join the collection, still installed
-        for (int s = 0; s < MAX_SOCKETS; s++)
-            if (caught.fw.chips[s] >= 0) { chipOwned[caught.fw.chips[s]]++; salvaged++; }
         mechRepair(&caught);
         mechReloadWeapons(&caught);
         caught.fw.data = 0;
         rosterAdd(&caught);
+        gameOnHacked(&caught, battle.enemyArchetype, battle.loot, sizeof(battle.loot));   // its parts and chips join the inventory
         battle.hacked = 1;
+        if (battle.trainer >= 0) {   // a rogue AI squad keeps fighting
+            encounterMechDown();
+            if (battle.phase != BP_VICTORY)
+                snprintf(battle.log, sizeof(battle.log), "REPROGRAMMED %s! Next machine incoming.", caught.name);
+            return;
+        }
         awardData(revisionDataForWild(&battle.enemyMech) / 2);
         battle.phase = BP_VICTORY;
-        snprintf(battle.log, sizeof(battle.log), "REPROGRAMMED %s! Added to team (%d/%d). %d chips salvaged.",
-            caught.name, teamSize, MAX_TEAM, salvaged);
+        snprintf(battle.log, sizeof(battle.log), "REPROGRAMMED %s! Added to team (%d/%d).", caught.name, teamSize, MAX_TEAM);
     }
     else {
         beginEnemyTurn();

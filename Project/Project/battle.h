@@ -79,7 +79,14 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target);  
 float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
                     const AttackContext* ctx, const AIProfile* ai);
 #define AI_HOLD_SCORE 2.0f      // after its first action the AI stops rather than fire below this
-float hackChance(const Mech* target);
+// Hacking (capture) is a scramble attack on the target's Stability:
+// chance = Strength / (Strength + Stability), clamped 5-95%. Strength comes from
+// the hacker's best scrambling weapon; every scramble / corruption effect
+// pending on the target lowers its Stability by HACK_STABILITY_PER_EFFECT.
+#define HACK_BASE_STRENGTH 30
+#define HACK_STABILITY_PER_EFFECT 15
+int hackStrength(const Mech* hacker);
+float hackChance(int strength, int stability);
 int revisionDataForWild(const Mech* enemy);
 int revisionDataForTrainer(const Mech* enemy, int tier);
 int revisionDataForParticipation(const Mech* enemy);   // losing still teaches the firmware something
@@ -138,6 +145,7 @@ typedef struct {
     float animTimer;        // > 0 while an attack animation plays
     int outcomePending;     // check for scrapped mechs once the animation ends
     int dataEarned, revisionsGained, oldRevision, hacked;
+    char loot[160];         // credits, salvage and job updates from this battle
     BattleResult result;
     BattleEvent events[MAX_BATTLE_EVENTS];
     int numEvents;
@@ -157,6 +165,8 @@ void battleFire(int mount);
 void battleEndTurn(void);
 int battleAIChooseForPlayer(void);          // the enemy AI's pick for the player's side (tests / autoplay)
 int battleCanHack(void);
+int battleHackStability(void);              // enemy's effective Stability against a hack
+float battleHackChance(void);
 void battleHack(void);
 void battleConfirm(void);                   // advance dialogue / victory / defeat
 int battlePopEvent(BattleEvent* out);

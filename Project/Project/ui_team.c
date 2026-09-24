@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "mech.h"
+#include "game.h"
 #include <math.h>
 #include <stdio.h>
 
@@ -46,11 +47,12 @@ void uiTeamOpen(void) {
 static int loadoutRows(const Mech* m) { return ROW_SOCKET + firmwareSockets(&m->fw); }
 
 // ============ LOADOUT CHANGES ============
+// Only parts in the inventory (owned and not fitted to another mech) can be installed
 static void cycleRefit(Mech* m, int slot, int dir) {
     int cur = m->refit[slot];
     for (int k = 1; k <= NUM_REFIT_MODULES; k++) {
         int idx = ((cur + dir * k) % NUM_REFIT_MODULES + NUM_REFIT_MODULES) % NUM_REFIT_MODULES;
-        if (refitModules[idx].slot == (RefitSlot)slot) {
+        if (refitModules[idx].slot == (RefitSlot)slot && moduleAvailable(idx) > 0) {
             mechSetRefit(m, (RefitSlot)slot, idx);
             mechReplate(m);
             return;
@@ -65,7 +67,11 @@ static int stepOption(int cur, int dir, int count) {
 }
 
 static void cycleWeapon(Mech* m, int mount, int dir) {
-    mechSetWeapon(m, mount, stepOption(m->weapons[mount].weapon, dir, NUM_WEAPONS));
+    int w = m->weapons[mount].weapon;
+    for (int k = 0; k <= NUM_WEAPONS; k++) {
+        w = stepOption(w, dir, NUM_WEAPONS);
+        if (w < 0 || weaponAvailable(w) > 0) { mechSetWeapon(m, mount, w); return; }
+    }
 }
 
 static void cycleChip(Mech* m, int socket, int dir) {

@@ -5,8 +5,8 @@
 #include "mech.h"
 #include "firmware.h"
 #include "ui.h"
+#include "game.h"
 #include <stdlib.h>
-#include <time.h>
 
 // Called once when the game switches screens. Returning from the debug
 // screen resumes the previous screen as it was.
@@ -19,6 +19,7 @@ static void enterState(GameState to, GameState from) {
     case STATE_BATTLE:   uiBattleOpen(); break;
     case STATE_REVISION: uiRevisionOpen(); break;
     case STATE_DEBUG:    uiDebugOpen(from); break;
+    case STATE_TERMINAL: uiTerminalOpen(); break;
     default: break;
     }
 }
@@ -33,10 +34,7 @@ int main(void) {
     SetTargetFPS(60);
     displayInit();
 
-    worldInit();            // map generation uses a fixed seed
-    srand((unsigned)time(NULL));
-    chipCollectionInit();
-    rosterInit();
+    gameNew();              // a fresh campaign; the menu can load a save over it
 
     GameState state = STATE_MENU;
 
@@ -62,6 +60,7 @@ int main(void) {
             case STATE_REVISION:  uiRevisionUpdate(dt, &state); break;
             case STATE_TEAM:      uiTeamUpdate(&state); break;
             case STATE_DEBUG:     uiDebugUpdate(&state); break;
+            case STATE_TERMINAL:  uiTerminalUpdate(&state); break;
             }
         }
         if (state != frameState) enterState(state, frameState);
@@ -75,6 +74,7 @@ int main(void) {
         case STATE_REVISION:  uiRevisionDraw(); break;
         case STATE_TEAM:      uiTeamDraw(); break;
         case STATE_DEBUG:     uiDebugDraw(); break;
+        case STATE_TERMINAL:  uiTerminalDraw(); break;
         }
         presentCanvas();
     }

@@ -33,6 +33,9 @@
     <ClCompile Include="ui_menu.c" />
     <ClCompile Include="ui_debug.c" />
     <ClCompile Include="ui_sprites.c" />
+    <ClCompile Include="game.c" />
+    <ClCompile Include="data_game.c" />
+    <ClCompile Include="ui_terminal.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="display.h" />
@@ -42,6 +45,7 @@
     <ClInclude Include="firmware.h" />
     <ClInclude Include="stats.h" />
     <ClInclude Include="ui.h" />
+    <ClInclude Include="game.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>

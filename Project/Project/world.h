@@ -26,10 +26,12 @@ typedef struct {
 
 extern const Zone zones[NUM_ZONES];
 
-// ============ TRAINERS ============
+// ============ ENCOUNTERS ============
+// Faction encounters (a squad from a criminal org or rogue AI). Still called
+// Trainer in code; faction indexes factions[] in game.h.
 typedef struct {
     char name[32];
-    char team[32];
+    int faction;
     int x, y;
     int zone;                      // which zone they live in
     int facing;
@@ -55,5 +57,8 @@ void showMessage(const char* msg, float dur);
 int worldCurrentZone(void);
 const char* worldCurrentZoneName(void);
 const char* worldCurrentZoneSubtitle(void);
+void worldGetPlayer(int* zone, int* x, int* y);
+void worldSetPlayer(int zone, int x, int y);   // used by save/load
+int worldFindTrainer(const char* name);        // -1 if none
 
 #endif

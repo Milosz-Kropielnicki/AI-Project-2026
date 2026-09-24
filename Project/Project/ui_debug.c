@@ -238,9 +238,9 @@ void uiDebugDraw(void) {
     for (int i = 0; i < MAX_WEAPONS; i++) drawAttack(a, i, d, 20, wy + 14 + i * 50);
 
     int my = wy + 14 + MAX_WEAPONS * 50 + 2;
-    int rarity = mechModel(d)->rarity < 1 ? 3 : mechModel(d)->rarity;
-    text(TextFormat("HACK %s: 0.25 + (1 - %d/%d) x 0.55 - (rarity %d - 1) x 0.08 - (STB %d - 60) x 0.003 = %.1f%%",
-        d->name, ds->integrity, ds->maxIntegrity, rarity, ds->stability, hackChance(d) * 100), 20, my, 10, colText);
+    int str = hackStrength(a), stb = ds->stability + (int)firmwareEffect(&d->fw, CFX_COUNTER_INTRUSION);
+    text(TextFormat("HACK %s -> %s: STR %d / (STR %d + STB %d) = %.1f%%  (-%d STB per pending scramble)", a->name, d->name,
+        str, str, stb, hackChance(str, stb) * 100, HACK_STABILITY_PER_EFFECT), 20, my, 10, colText);
     int stab = as->stability + (int)firmwareEffect(&a->fw, CFX_COUNTER_INTRUSION);
     text(TextFormat("SCRAMBLE RESIST %s: STB %d / (STB + STR)   str 40: %.1f%%   70: %.1f%%   100: %.1f%%", a->name, stab,
         formulaScrambleResist(stab, 40) * 100, formulaScrambleResist(stab, 70) * 100, formulaScrambleResist(stab, 100) * 100),

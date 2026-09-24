@@ -1,5 +1,6 @@
 #include "world.h"
 #include "battle.h"
+#include "game.h"
 #include "ui.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -33,7 +34,6 @@ static int justEnteredZone = 0;    // suppress encounter roll on spawn tile
 static char message[256] = { 0 };
 static float messageTimer = 0;
 
-#define TERMINAL_MESSAGE "[TERMINAL] Repair bay: team restored. Hack mechs to grow your team!"
 
 static unsigned char (*map)[MAP_W] = zoneMaps[ZONE_ALPHA];
 
@@ -103,14 +103,14 @@ static int isSolid(int x, int y) {
 static void initTrainers(void) {
     // Zone Alpha - tutorial tier
     trainers[0] = (Trainer){
-        "PILOT RHEA", "IRON LEGION", 10, 12, ZONE_ALPHA, 0, { 255, 120, 200, 255 },
+        "PILOT RHEA", FAC_IRON_LEGION, 10, 12, ZONE_ALPHA, 0, { 255, 120, 200, 255 },
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
         "Try the east route to reach Sector Beta.",
         0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
-        "SCOUT DANE", "IRON LEGION", 22, 8, ZONE_ALPHA, 0, { 255, 200, 100, 255 },
+        "SCOUT DANE", FAC_IRON_LEGION, 22, 8, ZONE_ALPHA, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Beta's got tougher pilots.",
@@ -119,14 +119,14 @@ static void initTrainers(void) {
 
     // Zone Beta - mid tier
     trainers[2] = (Trainer){
-        "COMMANDER VOLK", "IRON LEGION", 25, 18, ZONE_BETA, 0, { 255, 180, 60, 255 },
+        "COMMANDER VOLK", FAC_IRON_LEGION, 25, 18, ZONE_BETA, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "You've earned my respect, pilot.",
         1, 0, { ARCH_BRAWLER, ARCH_BERSERKER }, { 3, 3 }, 2, 0
     };
     trainers[3] = (Trainer){
-        "ENGINEER KESS", "IRON LEGION", 8, 22, ZONE_BETA, 0, { 120, 220, 160, 255 },
+        "ENGINEER KESS", FAC_CHROME_SYNDICATE, 8, 22, ZONE_BETA, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "Gamma is the final frontier.",
@@ -135,14 +135,14 @@ static void initTrainers(void) {
 
     // Zone Gamma - elite tier (Gamma's plasma lake covers rows 3-11 at x 26-35)
     trainers[4] = (Trainer){
-        "WARDEN KRUX", "IRON LEGION", 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
+        "WARDEN KRUX", FAC_IRON_LEGION, 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
         2, 0, { ARCH_BOMBARD, ARCH_BRAWLER, ARCH_ORDNANCE }, { 5, 5, 7 }, 3, 0
     };
     trainers[5] = (Trainer){
-        "GHOST ECHO", "IRON LEGION", 30, 12, ZONE_GAMMA, 0, { 200, 100, 255, 255 },
+        "GHOST ECHO", FAC_CHROME_SYNDICATE, 30, 12, ZONE_GAMMA, 0, { 200, 100, 255, 255 },
         "You cannot hit what you cannot see.",
         "Even my stealth... failed.",
         "Krux awaits at the center.",
@@ -151,7 +151,7 @@ static void initTrainers(void) {
 
     // Gamma boss: the machine itself. Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
     trainers[6] = (Trainer){
-        "FACTORY OVERSEER", "BLACK BOX", 32, 24, ZONE_GAMMA, 0, { 200, 60, 255, 255 },
+        "FACTORY OVERSEER", FAC_BLACK_BOX, 32, 24, ZONE_GAMMA, 0, { 200, 60, 255, 255 },
         "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
         "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
         "...the Overseer's chassis sits silent.",
@@ -172,6 +172,23 @@ void worldInit(void) {
 int worldCurrentZone(void) { return currentZone; }
 const char* worldCurrentZoneName(void) { return zones[currentZone].name; }
 const char* worldCurrentZoneSubtitle(void) { return zones[currentZone].subtitle; }
+
+void worldGetPlayer(int* zone, int* x, int* y) { *zone = currentZone; *x = px; *y = py; }
+
+void worldSetPlayer(int zone, int x, int y) {
+    currentZone = zone;
+    map = zoneMaps[currentZone];
+    px = x; py = y;
+    pxF = (float)(px * TILE_SIZE);
+    pyF = (float)(py * TILE_SIZE);
+    moving = 0;
+    justEnteredZone = 1;
+}
+
+int worldFindTrainer(const char* name) {
+    for (int i = 0; i < NUM_TRAINERS; i++) if (strcmp(trainers[i].name, name) == 0) return i;
+    return -1;
+}
 
 void showMessage(const char* msg, float dur) {
     strncpy(message, msg, sizeof(message) - 1);
@@ -225,10 +242,6 @@ static int triggerTrainerEncounter(int trainerIdx) {
     return 1;
 }
 
-static void useTerminal(void) {
-    for (int i = 0; i < teamSize; i++) mechRepair(&team[i]);
-    showMessage(TERMINAL_MESSAGE, 3.5f);
-}
 
 // ============ UPDATE ============
 void worldUpdate(float dt, GameState* state) {
@@ -281,8 +294,10 @@ void worldUpdate(float dt, GameState* state) {
                 break;
             }
         }
-        if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_TERMINAL)
-            useTerminal();
+        if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_TERMINAL) {
+            *state = STATE_TERMINAL;
+            return;
+        }
         // Interact with a gate directly in front: step through
         if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_GATE)
             tryGateTransition(fx, fy);
@@ -321,7 +336,7 @@ void worldUpdate(float dt, GameState* state) {
     }
 
     if (isSolid(nx, ny)) {
-        if (fresh && map[ny][nx] == T_TERMINAL) useTerminal();
+        if (fresh && map[ny][nx] == T_TERMINAL) *state = STATE_TERMINAL;
         return;
     }
 
@@ -463,6 +478,18 @@ static void drawHud(void) {
     DrawText(TextFormat("DATA %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)),
         20, 119, 10, (Color) { 200, 170, 255, 255 });
     DrawText(TextFormat("FIRMWARE %s", firmwareLabel(m->fw.revision)), 20, 134, 12, (Color) { 200, 170, 255, 255 });
+    DrawText(TextFormat("%d CR", credits), 250, 134, 12, (Color) { 255, 220, 100, 255 });
+
+    // Active jobs
+    int jy = SCREEN_H - 50;
+    for (int j = NUM_JOBS - 1; j >= 0; j--) {
+        if (jobState[j] != JS_ACTIVE && jobState[j] != JS_READY) continue;
+        int ready = jobState[j] == JS_READY;
+        DrawText(TextFormat("%s %s: %s", ready ? "[READY]" : "[JOB]", jobDefs[j].title,
+            ready ? "claim at any terminal" : jobObjective(j)), 12, jy, 12,
+            ready ? (Color) { 120, 255, 160, 255 } : (Color) { 255, 220, 140, 255 });
+        jy -= 16;
+    }
 
     // Zone + trainer tracker
     int defeated = 0, total = 0;
@@ -476,7 +503,7 @@ static void drawHud(void) {
     DrawRectangleLines(screenW - 240, 10, 230, 76, (Color) { 255, 200, 100, 180 });
     DrawText(zones[currentZone].name, screenW - 230, 16, 16, (Color) { 255, 220, 100, 255 });
     DrawText(zones[currentZone].subtitle, screenW - 230, 34, 10, (Color) { 200, 220, 240, 200 });
-    DrawText(TextFormat("Legion: %d / %d", defeated, total), screenW - 230, 48, 12, WHITE);
+    DrawText(TextFormat("Encounters: %d / %d", defeated, total), screenW - 230, 48, 12, WHITE);
     DrawText(TextFormat("SECTOR %02d-%02d", px, py), screenW - 230, 64, 11, (Color) { 150, 200, 255, 200 });
 
     // Route indicator at bottom of HUD panel
@@ -492,6 +519,7 @@ static void drawHud(void) {
             180, 240, 255, 255
         });
     }
+    if (z->gateWest >= 0 && z->gateEast >= 0) ry += 11;   // Beta has both routes
     if (z->gateEast >= 0) {
         DrawText(TextFormat("> EAST: %s", zones[z->gateEast].name), rx + 8, ry, 11,
             (Color) {
@@ -501,7 +529,7 @@ static void drawHud(void) {
     if (z->gateWest < 0 && z->gateEast < 0)
         DrawText("no routes", rx + 8, ry, 11, (Color) { 150, 150, 150, 255 });
 
-    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Enter Gate   [TAB] Team   [F1] Debug   [ESC] Menu",
+    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Terminal/Gate   [TAB] Team   [F1] Debug   [ESC] Menu",
         10, SCREEN_H - 28, 16, (Color) { 150, 220, 255, 220 });
 
     if (messageTimer > 0) {

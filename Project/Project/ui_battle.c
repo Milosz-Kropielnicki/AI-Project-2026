@@ -1,4 +1,5 @@
 #include "ui.h"
+#include "game.h"
 #include "battle.h"
 #include "world.h"
 #include <stdio.h>
@@ -511,15 +512,15 @@ static void drawEnemyHud(const AttackPreview* p) {
     else if (battle.trainer >= 0) {
         Trainer* t = &trainers[battle.trainer];
         DrawRectangleLines(20, 20, 300, 132, (Color) { 255, 200, 60, 220 });
-        DrawText(TextFormat("%s  %s", t->team, t->name), 28, 24, 12, (Color) { 255, 220, 100, 255 });
+        DrawText(TextFormat("%s  %s", factions[t->faction].name, t->name), 28, 24, 12, factions[t->faction].color);
         DrawText(TextFormat("MECH %d/%d", t->numDefeated + 1, t->numMechs), 250, 24, 12, (Color) { 255, 200, 100, 255 });
     }
     else {
         DrawRectangleLines(20, 20, 300, 132, (Color) { 255, 80, 80, 220 });
-        DrawText("HOSTILE", 28, 24, 12, (Color) { 255, 100, 100, 255 });
-        if (battleCanHack())
-            DrawText(TextFormat("HACK %d%%", (int)roundf(hackChance(m) * 100)), 240, 24, 12, (Color) { 120, 255, 220, 255 });
+        DrawText(TextFormat("ROGUE AI  %s", factions[FAC_WILD].name), 28, 24, 12, (Color) { 255, 100, 100, 255 });
     }
+    if (battleCanHack())
+        DrawText(TextFormat("HACK %d%%", (int)roundf(battleHackChance() * 100)), 240, 24, 12, (Color) { 120, 255, 220, 255 });
     DrawText(m->name, 30, 38, 22, (Color) { 255, 210, 210, 255 });
     DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), 250, 40, 18, WHITE);
     const char* arch = battle.enemyArchetype >= 0 ? TextFormat("  [%s%s]", archetypes[battle.enemyArchetype].boss ? "BOSS " : "",
@@ -717,6 +718,8 @@ void uiBattleDraw(void) {
                 DrawText(">> TARGET SCRAPPED! [Z/CLICK] <<", 35, PANEL_Y + 90, 20, (Color) { 120, 255, 180, 255 });
             DrawText(TextFormat("+%d REVISION DATA", battle.dataEarned), 480, PANEL_Y + 90, 20, (Color) { 200, 170, 255, 255 });
         }
+        if ((battle.phase == BP_VICTORY || battle.phase == BP_DEFEAT) && battle.dialogue == DLG_NONE && battle.loot[0])
+            DrawText(battle.loot, 35, PANEL_Y + 62, 14, (Color) { 255, 220, 120, 255 });
         if (battle.phase == BP_DEFEAT && battle.dialogue == DLG_NONE)
             DrawText(">> MECH DISABLED! [Z/CLICK] TO CONTINUE <<", 35, PANEL_Y + 90, 20, (Color) { 255, 100, 100, 255 });
 
@@ -725,7 +728,7 @@ void uiBattleDraw(void) {
             DrawRectangleLines(20, PANEL_Y - 110, SCREEN_W - 40, 100, (Color) { 255, 220, 100, 240 });
             if (battle.trainer >= 0) {
                 Trainer* t = &trainers[battle.trainer];
-                DrawText(TextFormat("%s  %s", t->team, t->name), 35, PANEL_Y - 102, 14, (Color) { 255, 220, 100, 255 });
+                DrawText(TextFormat("%s  %s", factions[t->faction].name, t->name), 35, PANEL_Y - 102, 14, factions[t->faction].color);
             }
             DrawText(battle.dialogueText, 40, PANEL_Y - 75, 22, (Color) { 255, 240, 220, 255 });
             DrawText("[Z/CLICK] to continue", SCREEN_W - 220, PANEL_Y - 30, 16, (Color) { 150, 200, 255, 255 });
