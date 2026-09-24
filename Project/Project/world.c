@@ -13,12 +13,41 @@ const Zone zones[NUM_ZONES] = {
     { "SECTOR GAMMA", "- APEX WASTELAND -",     {220, 200, 255, 255}, 22, 9, ZONE_BETA, -1 },
 };
 
+// ============ STARTERS ============
+const StarterLine starters[NUM_STARTERS] = {
+    {
+        "NOVA", "Balanced frontline mech",
+        { MODEL_NOVA, MODEL_RAZOR, MODEL_OBLIVION },
+        { 0, 3, 8 },
+        { 120, 230, 255, 255 },
+        "Starts even across the board. Evolves into an aggressive blade fighter, then an apex predator. A safe, versatile pick."
+    },
+    {
+        "BULWARK", "Armored siege platform",
+        { MODEL_BULWARK, MODEL_LONGBOW, MODEL_OBLIVION },
+        { 0, 3, 8 },
+        { 120, 255, 160, 255 },
+        "Slow, heavily armored brawler. Evolves into a railgun sniper that hits from long range, then an apex predator. For patient players."
+    },
+    {
+        "WISP", "Fast electronic warfare scout",
+        { MODEL_WISP, MODEL_STATIC, MODEL_HAVOC },
+        { 0, 3, 8 },
+        { 255, 240, 140, 255 },
+        "Fragile but extremely fast, with scrambling tools. Evolves into a jammer platform, then a missile battery. Rewards clever play."
+    },
+};
+
+int playerStarter = -1;
+int starterStage = 0;
+int starterSlot = 0;
+int obtainedStarters = 0;
+
 Trainer trainers[NUM_TRAINERS];
 
 // Per-zone maps
 static unsigned char zoneMaps[NUM_ZONES][MAP_H][MAP_W];
 
-// Current zone state
 static int currentZone = ZONE_ALPHA;
 static int px, py;
 static float pxF, pyF;
@@ -28,7 +57,7 @@ static int moving = 0;
 static float moveT = 0;
 static float moveFromX, moveFromY;
 static int lastDir = -1;
-static int justEnteredZone = 0;    // suppress encounter roll on spawn tile
+static int justEnteredZone = 0;
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
@@ -38,20 +67,15 @@ static float messageTimer = 0;
 static unsigned char (*map)[MAP_W] = zoneMaps[ZONE_ALPHA];
 
 // ============ MAP GEN ============
-// Generic layout generator parameterized by zone. Every zone has the same
-// walkable structure (borders, ruins clusters, cross paths, bunkers, terminal)
-// but zones get their own random seed and cluster counts so they feel different.
 static void genZoneMap(int zoneIdx) {
     unsigned char (*m)[MAP_W] = zoneMaps[zoneIdx];
     for (int y = 0; y < MAP_H; y++)
         for (int x = 0; x < MAP_W; x++)
             m[y][x] = T_GRID;
 
-    // Solid border
     for (int x = 0; x < MAP_W; x++) { m[0][x] = T_BLOCK; m[MAP_H - 1][x] = T_BLOCK; }
     for (int y = 0; y < MAP_H; y++) { m[y][0] = T_BLOCK; m[y][MAP_W - 1] = T_BLOCK; }
 
-    // Plasma lake (bigger in later zones)
     int plasmaY0 = 5 - zoneIdx, plasmaY1 = 10 + zoneIdx;
     int plasmaX0 = 28 - zoneIdx, plasmaX1 = 36;
     if (plasmaY0 < 2) plasmaY0 = 2;
@@ -60,7 +84,6 @@ static void genZoneMap(int zoneIdx) {
         for (int x = plasmaX0; x < plasmaX1; x++)
             m[y][x] = T_PLASMA;
 
-    // Ruins clusters - seeds differ per zone
     srand(42 + zoneIdx * 1000);
     int clusters = zones[zoneIdx].ruinsCount;
     for (int i = 0; i < clusters; i++) {
@@ -70,24 +93,19 @@ static void genZoneMap(int zoneIdx) {
                 if (m[y][x] == T_GRID) m[y][x] = T_RUINS;
     }
 
-    // Cross paths
     for (int x = 3; x < MAP_W - 3; x++) m[15][x] = T_PAD;
     for (int y = 3; y < 25; y++) m[y][15] = T_PAD;
 
-    // Bunkers
     m[6][8] = T_BUNKER; m[6][9] = T_BUNKER;
     m[7][8] = T_BUNKER; m[7][9] = T_BUNKER;
     m[20][30] = T_BUNKER; m[20][31] = T_BUNKER;
     m[21][30] = T_BUNKER; m[21][31] = T_BUNKER;
 
-    // Terminal
     m[14][15] = T_TERMINAL;
 
-    // Route gates to neighboring zones (left and right edges, on the cross path)
     if (zones[zoneIdx].gateWest >= 0)  m[15][1] = T_GATE;
     if (zones[zoneIdx].gateEast >= 0)  m[15][MAP_W - 2] = T_GATE;
 
-    // Make sure the tile in front of each gate is walkable (a path lead-in)
     if (zones[zoneIdx].gateWest >= 0) { m[15][2] = T_PAD; }
     if (zones[zoneIdx].gateEast >= 0) { m[15][MAP_W - 3] = T_PAD; }
 }
@@ -95,13 +113,11 @@ static void genZoneMap(int zoneIdx) {
 static int isSolid(int x, int y) {
     if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return 1;
     int t = map[y][x];
-    // Gates are walkable (they trigger zone transition)
     return (t == T_BLOCK || t == T_PLASMA || t == T_BUNKER || t == T_TERMINAL);
 }
 
 // ============ TRAINERS ============
 static void initTrainers(void) {
-    // Zone Alpha - tutorial tier
     trainers[0] = (Trainer){
         "PILOT RHEA", "IRON LEGION", 10, 12, ZONE_ALPHA, 0, { 255, 120, 200, 255 },
         "Hey rookie! Let's see what you've got!",
@@ -116,8 +132,6 @@ static void initTrainers(void) {
         "Beta's got tougher pilots.",
         0, 0, { MODEL_HOUND }, { 1 }, 1, 0
     };
-
-    // Zone Beta - mid tier
     trainers[2] = (Trainer){
         "COMMANDER VOLK", "IRON LEGION", 25, 18, ZONE_BETA, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
@@ -132,8 +146,6 @@ static void initTrainers(void) {
         "Gamma is the final frontier.",
         1, 0, { MODEL_STATIC, MODEL_LONGBOW }, { 3, 3 }, 2, 0
     };
-
-    // Zone Gamma - elite tier
     trainers[4] = (Trainer){
         "WARDEN KRUX", "IRON LEGION", 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
@@ -160,6 +172,108 @@ void worldInit(void) {
     justEnteredZone = 1;
 }
 
+void worldInitNewGame(int starterIdx) {
+    if (starterIdx < 0 || starterIdx >= NUM_STARTERS) starterIdx = 0;
+    playerStarter = starterIdx;
+    starterStage = 0;
+    starterSlot = 0;
+    obtainedStarters = (1 << starterIdx);
+    const StarterLine* line = &starters[starterIdx];
+    int model = line->stages[0];
+
+    teamSize = 0;
+    activeTeamSlot = 0;
+    team[0] = mechCreateStock(model, 0);
+    snprintf(team[0].name, sizeof(team[0].name), "%s-01", line->name);
+
+    if (starterIdx == 0)      firmwareInstall(&team[0].fw, 0, CHIP_PREDICTIVE_TARGETING);
+    else if (starterIdx == 1) firmwareInstall(&team[0].fw, 0, CHIP_HARDENED_KERNEL);
+    else                       firmwareInstall(&team[0].fw, 0, CHIP_COUNTER_INTRUSION);
+    mechRepair(&team[0]);
+    teamSize = 1;
+}
+
+int worldStarterSlot(void) { return starterSlot; }
+
+static int checkStarterEvolution(void) {
+    if (playerStarter < 0 || starterStage >= NUM_STARTER_STAGES - 1) return 0;
+    if (starterSlot < 0 || starterSlot >= teamSize) return 0;
+    Mech* m = &team[starterSlot];
+    const StarterLine* line = &starters[playerStarter];
+    int need = line->evolveLevel[starterStage + 1];
+    if (need <= 0 || m->fw.revision < need) return 0;
+
+    starterStage++;
+    int newModel = line->stages[starterStage];
+    int keptRevision = m->fw.revision;
+    Mech evolved = mechCreateStock(newModel, keptRevision);
+    snprintf(evolved.name, sizeof(evolved.name), "%s-%s",
+        line->name, starterStage == 1 ? "MK2" : "PRIME");
+    for (int s = 0; s < MAX_SOCKETS; s++) evolved.fw.chips[s] = m->fw.chips[s];
+    evolved.fw.optPoints = m->fw.optPoints;
+    for (int i = 0; i < NUM_OPTIMIZATIONS; i++) evolved.fw.optPicks[i] = m->fw.optPicks[i];
+    mechRefreshStats(&evolved);
+    mechRepair(&evolved);
+    team[starterSlot] = evolved;
+
+    showMessage(TextFormat(">> EVOLUTION! Your %s evolved into %s!", line->name,
+        mechModel(&team[starterSlot])->name), 4.0f);
+    return 1;
+}
+
+int worldTryStarterEvolution(void) { return checkStarterEvolution(); }
+
+// Give the player the other starters as they progress through the trainer ladder.
+// After 2 defeats: first missing starter. After 4 defeats: second missing starter.
+// The player's own pick is always marked as obtained at new-game time, so we
+// only gift the two they don't have.
+void worldOfferAlternateStarters(void) {
+    int totalDefeated = 0;
+    for (int i = 0; i < NUM_TRAINERS; i++) if (trainers[i].defeated) totalDefeated++;
+
+    // Find the two starters the player doesn't have yet
+    int missing[2] = { -1, -1 };
+    int missingCount = 0;
+    for (int i = 0; i < NUM_STARTERS; i++) {
+        if (!(obtainedStarters & (1 << i))) {
+            if (missingCount < 2) missing[missingCount] = i;
+            missingCount++;
+        }
+    }
+    if (missingCount == 0) return;
+
+    // After 2 trainer defeats, gift the first missing starter
+    if (totalDefeated >= 2 && missing[0] >= 0 && teamSize < MAX_TEAM) {
+        Mech m = mechCreateStock(starters[missing[0]].stages[0], 0);
+        snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[0]].name);
+        // Give them a thematic starting chip too, so they feel complete
+        int idx = missing[0];
+        if (idx == 0)      firmwareInstall(&m.fw, 0, CHIP_PREDICTIVE_TARGETING);
+        else if (idx == 1) firmwareInstall(&m.fw, 0, CHIP_HARDENED_KERNEL);
+        else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
+        mechRepair(&m);
+        if (rosterAdd(&m)) {
+            obtainedStarters |= (1 << missing[0]);
+            showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[0]].name), 4.0f);
+        }
+    }
+
+    // After 4 trainer defeats, gift the second missing starter
+    if (totalDefeated >= 4 && missingCount >= 2 && missing[1] >= 0 && teamSize < MAX_TEAM) {
+        Mech m = mechCreateStock(starters[missing[1]].stages[0], 0);
+        snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[1]].name);
+        int idx = missing[1];
+        if (idx == 0)      firmwareInstall(&m.fw, 0, CHIP_PREDICTIVE_TARGETING);
+        else if (idx == 1) firmwareInstall(&m.fw, 0, CHIP_HARDENED_KERNEL);
+        else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
+        mechRepair(&m);
+        if (rosterAdd(&m)) {
+            obtainedStarters |= (1 << missing[1]);
+            showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[1]].name), 4.0f);
+        }
+    }
+}
+
 int worldCurrentZone(void) { return currentZone; }
 const char* worldCurrentZoneName(void) { return zones[currentZone].name; }
 const char* worldCurrentZoneSubtitle(void) { return zones[currentZone].subtitle; }
@@ -174,11 +288,10 @@ void showMessage(const char* msg, float dur) {
 static void enterZone(int zoneIdx, int fromEast) {
     currentZone = zoneIdx;
     map = zoneMaps[currentZone];
-    // Spawn on the opposite edge from where we came
     if (fromEast) { px = MAP_W - 3; }
     else { px = 2; }
     py = 15;
-    facing = fromEast ? 2 : 3;   // face away from the gate
+    facing = fromEast ? 2 : 3;
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
     moving = 0;
@@ -187,12 +300,10 @@ static void enterZone(int zoneIdx, int fromEast) {
     showMessage(TextFormat(">> %s  %s", zones[zoneIdx].name, zones[zoneIdx].subtitle), 2.5f);
 }
 
-// Returns 1 if the tile at (x,y) is a gate and the player can step through
 static int tryGateTransition(int x, int y) {
     if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return 0;
     if (map[y][x] != T_GATE) return 0;
     if (x <= 1) {
-        // West gate
         int target = zones[currentZone].gateWest;
         if (target >= 0) { enterZone(target, 0); return 1; }
     }
@@ -240,7 +351,6 @@ void worldUpdate(float dt, GameState* state) {
         pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
     }
 
-    // Encounter roll on arrival (skip the very first tile after a zone load)
     if (arrived && !justEnteredZone && map[py][px] == T_RUINS) {
         if (rand() % 100 < zones[currentZone].baseEncounter) {
             battleStartWild();
@@ -264,7 +374,6 @@ void worldUpdate(float dt, GameState* state) {
         else if (facing == 1) fy--;
         else if (facing == 2) fx--;
         else if (facing == 3) fx++;
-        // Interact with trainer in facing tile, only if in the current zone
         for (int i = 0; i < NUM_TRAINERS; i++) {
             if (trainers[i].zone != currentZone) continue;
             if (trainers[i].x == fx && trainers[i].y == fy) {
@@ -274,12 +383,10 @@ void worldUpdate(float dt, GameState* state) {
         }
         if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_TERMINAL)
             useTerminal();
-        // Interact with a gate directly in front: step through
         if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_GATE)
             tryGateTransition(fx, fy);
     }
 
-    // Direction selection
     for (int d = 0; d < 4; d++) if (dirPressed(d)) lastDir = d;
     int dir = -1;
     if (lastDir >= 0 && dirDown(lastDir)) dir = lastDir;
@@ -292,7 +399,6 @@ void worldUpdate(float dt, GameState* state) {
     int nx = px + dx, ny = py + dy;
     facing = dir;
 
-    // Trainer bumping (only trainers in the current zone)
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].zone != currentZone) continue;
         if (trainers[i].x == nx && trainers[i].y == ny) {
@@ -301,13 +407,8 @@ void worldUpdate(float dt, GameState* state) {
         }
     }
 
-    // Gate step-through: attempt transition, and if it fails (dead-end gate),
-    // treat the gate as a solid wall so the player is blocked
     if (map[ny][nx] == T_GATE) {
-        if (fresh && tryGateTransition(nx, ny)) {
-            // Zone changed, position already set, done for this frame
-            return;
-        }
+        if (fresh && tryGateTransition(nx, ny)) return;
         return;
     }
 
@@ -354,7 +455,6 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
     }
 }
 
-// Zone tint multiplies the base colors so each sector has its own mood
 static Color tint(Color c) {
     Color t = zones[currentZone].tint;
     return (Color) {
@@ -417,7 +517,6 @@ static void drawTile(int x, int y, int screenX, int screenY) {
         DrawText("T", screenX + 15, screenY + 10, 18, BLACK);
         break;
     case T_GATE:
-        // A neon gateway: pulsing frame, arrows pointing to the destination
         DrawRectangleRec(r, tint((Color) { 10, 20, 40, 255 }));
         {
             Color g = tint((Color) { 100, 240, 255, 255 });
@@ -427,7 +526,6 @@ static void drawTile(int x, int y, int screenX, int screenY) {
                 g.r, g.g, g.b, (unsigned char)(120 + glow)
             });
             DrawRectangleLinesEx(r, 2, WHITE);
-            // Animated chevrons
             const char* arrow = (x <= 1) ? "<<" : ">>";
             DrawText(arrow, screenX + 6, screenY + 12, 16, (Color) { 10, 20, 40, 255 });
             DrawCircle(screenX + 20, screenY + 20, 3 + (int)(pulse * 2), WHITE);
@@ -455,7 +553,6 @@ static void drawHud(void) {
         20, 119, 10, (Color) { 200, 170, 255, 255 });
     DrawText(TextFormat("FIRMWARE %s", firmwareLabel(m->fw.revision)), 20, 134, 12, (Color) { 200, 170, 255, 255 });
 
-    // Zone + trainer tracker
     int defeated = 0, total = 0;
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].zone == currentZone) {
@@ -470,25 +567,16 @@ static void drawHud(void) {
     DrawText(TextFormat("Legion: %d / %d", defeated, total), screenW - 230, 48, 12, WHITE);
     DrawText(TextFormat("SECTOR %02d-%02d", px, py), screenW - 230, 64, 11, (Color) { 150, 200, 255, 200 });
 
-    // Route indicator at bottom of HUD panel
     const Zone* z = &zones[currentZone];
     int rx = screenW - 240;
     DrawRectangle(rx, 92, 230, 42, (Color) { 15, 25, 45, 200 });
     DrawRectangleLines(rx, 92, 230, 42, (Color) { 100, 220, 255, 180 });
     DrawText("ROUTES", rx + 8, 96, 10, (Color) { 100, 240, 255, 255 });
     int ry = 110;
-    if (z->gateWest >= 0) {
-        DrawText(TextFormat("< WEST: %s", zones[z->gateWest].name), rx + 8, ry, 11,
-            (Color) {
-            180, 240, 255, 255
-        });
-    }
-    if (z->gateEast >= 0) {
-        DrawText(TextFormat("> EAST: %s", zones[z->gateEast].name), rx + 8, ry, 11,
-            (Color) {
-            180, 240, 255, 255
-        });
-    }
+    if (z->gateWest >= 0)
+        DrawText(TextFormat("< WEST: %s", zones[z->gateWest].name), rx + 8, ry, 11, (Color) { 180, 240, 255, 255 });
+    if (z->gateEast >= 0)
+        DrawText(TextFormat("> EAST: %s", zones[z->gateEast].name), rx + 8, ry, 11, (Color) { 180, 240, 255, 255 });
     if (z->gateWest < 0 && z->gateEast < 0)
         DrawText("no routes", rx + 8, ry, 11, (Color) { 150, 150, 150, 255 });
 
@@ -523,7 +611,6 @@ void worldDraw(void) {
         for (int x = startX; x < endX; x++)
             drawTile(x, y, x * TILE_SIZE, y * TILE_SIZE);
 
-    // Only draw trainers that live in the current zone
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].zone != currentZone) continue;
         if (!trainers[i].defeated)

@@ -4,7 +4,7 @@
 #include <math.h>
 
 #define NUM_MENU_ITEMS 4
-#define NUM_SETTINGS_ITEMS 3   // display mode, aspect ratio, back
+#define NUM_SETTINGS_ITEMS 3
 
 int gameStarted = 0;
 int quitRequested = 0;
@@ -19,7 +19,6 @@ static Rectangle settingsArrowRect(int i, int right) {
 
 void drawMenuBackground(void) {
     ClearBackground((Color) { 6, 8, 18, 255 });
-    // Scrolling neon grid
     float scroll = fmodf(glowTimer * 30, TILE_SIZE);
     for (int x = 0; x <= screenW / TILE_SIZE + 1; x++)
         DrawLine(x * TILE_SIZE, 0, x * TILE_SIZE, SCREEN_H, (Color) { 30, 50, 90, 90 });
@@ -42,7 +41,6 @@ static void drawMenuTitle(const char* title, const char* subtitle) {
     DrawText(subtitle, SCREEN_W / 2 - sw / 2, 124, 20, (Color) { 255, 120, 200, 255 });
 }
 
-// ============ MAIN MENU ============
 void uiMenuOpen(void) { menuSel = 0; }
 
 void uiMenuUpdate(GameState* state) {
@@ -53,12 +51,20 @@ void uiMenuUpdate(GameState* state) {
         if (mouseMoved() && mouseOver(menuButtonRect(i))) menuSel = i;
         if (clickedOn(menuButtonRect(i))) { menuSel = i; activate = 1; }
     }
-    // ESC resumes a game in progress
     if (IsKeyPressed(KEY_ESCAPE) && gameStarted) { *state = STATE_OVERWORLD; return; }
     if (!activate) return;
     consumeInput();
-    if (menuSel == 0) { gameStarted = 1; *state = STATE_OVERWORLD; }
-    else if (menuSel == 1) { battleStartTestRange(); *state = STATE_BATTLE; }   // active mech vs a passive dummy
+    if (menuSel == 0) {
+        // START: if a game is already running, resume; otherwise pick a starter.
+        if (gameStarted) {
+            *state = STATE_OVERWORLD;
+        }
+        else {
+            gameStarted = 1;
+            *state = STATE_STARTER;
+        }
+    }
+    else if (menuSel == 1) { battleStartTestRange(); *state = STATE_BATTLE; }
     else if (menuSel == 2) *state = STATE_SETTINGS;
     else quitRequested = 1;
 }
@@ -68,7 +74,10 @@ void uiMenuDraw(void) {
     BeginMode2D(layoutCamera());
     drawMenuTitle("MECH PILOT", "- NEON WASTELAND -");
     drawMechBattle(MODEL_NOVA, SCREEN_W / 2, 215, 8, 0);
-    const char* labels[NUM_MENU_ITEMS] = { gameStarted ? "CONTINUE" : "START", "TEST RANGE", "SETTINGS", "EXIT" };
+    const char* labels[NUM_MENU_ITEMS] = {
+        gameStarted ? "CONTINUE" : "START",
+        "TEST RANGE", "SETTINGS", "EXIT"
+    };
     for (int i = 0; i < NUM_MENU_ITEMS; i++)
         drawButton(menuButtonRect(i), labels[i], 24, i == menuSel, 1);
     drawTextCentered("[WASD/ARROWS] Navigate   [Z/ENTER/CLICK] Select", SCREEN_H - 30, 16, (Color) { 150, 220, 255, 200 });
@@ -123,6 +132,8 @@ void uiSettingsDraw(void) {
     drawButton(settingsRowRect(2), "BACK", 22, settingsSel == 2, 1);
 
     drawTextCentered("[W/S] Select   [A/D] Change   [Z/ENTER/CLICK] Toggle   [ESC] Back", SCREEN_H - 30, 16,
-        (Color) { 150, 220, 255, 200 });
+        (Color) {
+        150, 220, 255, 200
+    });
     EndMode2D();
 }

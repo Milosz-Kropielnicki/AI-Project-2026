@@ -57,6 +57,9 @@
     <ClCompile Include="ui_sprites.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="ui_starter.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="display.h">

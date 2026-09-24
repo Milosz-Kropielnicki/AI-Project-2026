@@ -1,21 +1,8 @@
-﻿  battle.c
-  data_chips.c
-  data_mechs.c
-  data_weapons.c
-  firmware.c
-  main.c
-  mech.c
-  ui_battle.c
-  ui_debug.c
-  ui_menu.c
-  ui_sprites.c
-  ui_team.c
-  world.c
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\world.c(433,54): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-  Generating Code...
+﻿  ui_starter.c
+C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\ui_starter.c(175,27): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
 LINK : warning LNK4098: defaultlib 'MSVCRT' conflicts with use of other libs; use /NODEFAULTLIB:library
-raylib.lib(rcore.obj) : warning LNK4099: PDB '' was not found with 'raylib.lib(rcore.obj)' or at ''; linking object as if no debug info
-raylib.lib(rglfw.obj) : warning LNK4099: PDB '' was not found with 'raylib.lib(rglfw.obj)' or at ''; linking object as if no debug info
+raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rglfw.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rglfw.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
 raylib.lib(rshapes.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rshapes.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
 raylib.lib(rtext.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtext.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
 raylib.lib(rtextures.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtextures.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info

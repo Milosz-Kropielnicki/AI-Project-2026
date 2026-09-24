@@ -18,20 +18,39 @@ enum { ZONE_ALPHA, ZONE_BETA, ZONE_GAMMA };
 typedef struct {
     const char* name;
     const char* subtitle;
-    Color tint;                    // ambient tint for tiles
-    int baseEncounter;             // base encounter chance per ruins tile
-    int ruinsCount;                // how many ruins clusters
-    int gateWest, gateEast;        // -1 = no gate; else zone index
+    Color tint;
+    int baseEncounter;
+    int ruinsCount;
+    int gateWest, gateEast;
 } Zone;
 
 extern const Zone zones[NUM_ZONES];
+
+// ============ STARTERS ============
+#define NUM_STARTERS 3
+#define NUM_STARTER_STAGES 3
+
+typedef struct {
+    const char* name;
+    const char* tagline;
+    int stages[NUM_STARTER_STAGES];
+    int evolveLevel[NUM_STARTER_STAGES];
+    Color accent;
+    const char* desc;
+} StarterLine;
+
+extern const StarterLine starters[NUM_STARTERS];
+extern int playerStarter;       // which starter the player picked (-1 = none)
+extern int starterStage;        // current evolution stage of the starter
+extern int starterSlot;         // which team slot the starter lives in
+extern int obtainedStarters;    // bitmask of starters acquired
 
 // ============ TRAINERS ============
 typedef struct {
     char name[32];
     char team[32];
     int x, y;
-    int zone;                      // which zone they live in
+    int zone;
     int facing;
     Color color;
     const char* introLine;
@@ -45,15 +64,19 @@ typedef struct {
     int numDefeated;
 } Trainer;
 
-#define NUM_TRAINERS 6                 // 2 per zone
+#define NUM_TRAINERS 6
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);
+void worldInitNewGame(int starterIdx);
 void worldUpdate(float dt, GameState* state);
 void worldDraw(void);
 void showMessage(const char* msg, float dur);
 int worldCurrentZone(void);
 const char* worldCurrentZoneName(void);
 const char* worldCurrentZoneSubtitle(void);
+int worldTryStarterEvolution(void);
+void worldOfferAlternateStarters(void);
+int worldStarterSlot(void);
 
 #endif

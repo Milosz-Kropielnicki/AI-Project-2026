@@ -1,16 +1,16 @@
 #include "ui.h"
 #include "mech.h"
+#include "world.h"
 #include <math.h>
-#include <stdio.h>
 
 // Two views: the team grid, and a loadout screen for one mech where refit
-// modules, weapons and firmware chips can be swapped (outside combat only),
-// and chip loadouts saved to / loaded from Firmware Profiles.
+// modules, weapons and firmware chips can be swapped (outside combat only).
 
 static int teamSel = 0;
 static int loadoutOpen = 0;
 static int loadoutRow = 0;
-static char profileMsg[64] = "";
+static float switchFlash = 0;      // seconds remaining on the "DEPLOYED" flash
+static int switchFlashSlot = -1;
 
 enum { ROW_REFIT = 0, ROW_WEAPON = NUM_REFIT_SLOTS, ROW_SOCKET = NUM_REFIT_SLOTS + MAX_WEAPONS };
 
@@ -20,16 +20,9 @@ static Rectangle teamSlotRect(int i) {
 }
 static Rectangle closeButtonRect(void) { return (Rectangle) { 30, SCREEN_H - 42, 200, 30 }; }
 static Rectangle loadoutButtonRect(void) { return (Rectangle) { 245, SCREEN_H - 42, 200, 30 }; }
-// Rows are grouped REFIT / WEAPON SYSTEM / FIRMWARE with a label gap between groups
 static Rectangle loadoutRowRect(int i) {
     int group = i >= ROW_SOCKET ? 2 : (i >= ROW_WEAPON ? 1 : 0);
     return (Rectangle) { 30, 80.0f + i * 25 + group * 14, 440, 22 };
-}
-// Profile strip under the loadout rows: click the name to load, SAVE to overwrite
-static Rectangle profileRect(int i) { return (Rectangle) { 30.0f + i * 148, 518, 140, 30 }; }
-static Rectangle profileSaveRect(int i) {
-    Rectangle r = profileRect(i);
-    return (Rectangle) { r.x + r.width - 42, r.y + 4, 38, r.height - 8 };
 }
 static Rectangle arrowRect(int i, int right) {
     Rectangle r = loadoutRowRect(i);
@@ -40,7 +33,6 @@ void uiTeamOpen(void) {
     teamSel = activeTeamSlot;
     loadoutOpen = 0;
     loadoutRow = 0;
-    profileMsg[0] = 0;
 }
 
 static int loadoutRows(const Mech* m) { return ROW_SOCKET + firmwareSockets(&m->fw); }
@@ -58,7 +50,6 @@ static void cycleRefit(Mech* m, int slot, int dir) {
     }
 }
 
-// Options run -1 (empty) .. count-1
 static int stepOption(int cur, int dir, int count) {
     int n = count + 1;
     return ((cur + 1 + dir) % n + n) % n - 1;
@@ -80,20 +71,6 @@ static void cycleChip(Mech* m, int socket, int dir) {
     }
 }
 
-static void loadProfile(Mech* m, int slot) {
-    int skipped = mechLoadProfile(m, slot);
-    const char* name = m->fw.profiles[slot].name;
-    if (skipped < 0) snprintf(profileMsg, sizeof(profileMsg), "%s is empty - [SHIFT+%d] to save", name, slot + 1);
-    else if (skipped > 0) snprintf(profileMsg, sizeof(profileMsg), "Loaded %s (%d chip%s unavailable)", name, skipped, skipped > 1 ? "s" : "");
-    else snprintf(profileMsg, sizeof(profileMsg), "Loaded %s", name);
-    if (loadoutRow >= loadoutRows(m)) loadoutRow = 0;
-}
-
-static void saveProfile(Mech* m, int slot) {
-    firmwareSaveProfile(&m->fw, slot, NULL);
-    snprintf(profileMsg, sizeof(profileMsg), "Saved current chips to %s", m->fw.profiles[slot].name);
-}
-
 static void changeRow(Mech* m, int row, int dir) {
     if (row < ROW_WEAPON) cycleRefit(m, row - ROW_REFIT, dir);
     else if (row < ROW_SOCKET) cycleWeapon(m, row - ROW_WEAPON, dir);
@@ -113,12 +90,6 @@ static void updateLoadout(void) {
     if (DOWN_PRESSED) loadoutRow = (loadoutRow + 1) % rows;
     if (LEFT_PRESSED)  changeRow(m, loadoutRow, -1);
     if (RIGHT_PRESSED || confirmPressed()) changeRow(m, loadoutRow, +1);
-    int shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
-    for (int p = 0; p < MAX_PROFILES; p++) {
-        if (IsKeyPressed(KEY_ONE + p)) { if (shift) saveProfile(m, p); else loadProfile(m, p); }
-        if (clickedOn(profileSaveRect(p))) { saveProfile(m, p); consumeInput(); }
-        else if (clickedOn(profileRect(p))) { loadProfile(m, p); consumeInput(); }
-    }
     for (int i = 0; i < rows; i++) {
         if (mouseMoved() && mouseOver(loadoutRowRect(i))) loadoutRow = i;
         if (clickedOn(arrowRect(i, 0))) { loadoutRow = i; changeRow(m, i, -1); consumeInput(); }
@@ -127,6 +98,8 @@ static void updateLoadout(void) {
 }
 
 void uiTeamUpdate(GameState* state) {
+    if (switchFlash > 0) switchFlash -= GetFrameTime();
+
     if (loadoutOpen) { updateLoadout(); return; }
 
     if (IsKeyPressed(KEY_TAB) || IsKeyPressed(KEY_ESCAPE) || clickedOn(closeButtonRect())) {
@@ -153,7 +126,11 @@ void uiTeamUpdate(GameState* state) {
     }
     if (activate) {
         consumeInput();
-        activeTeamSlot = teamSel;
+        if (activeTeamSlot != teamSel) {
+            activeTeamSlot = teamSel;
+            switchFlash = 1.2f;
+            switchFlashSlot = teamSel;
+        }
     }
 }
 
@@ -169,7 +146,7 @@ static void drawHeader(const char* title) {
 static void drawRating(int x, int y, int rating) {
     for (int i = 0; i < 5; i++) {
         Color c = i < rating ? (rating >= 4 ? (Color) { 120, 255, 160, 255 } : rating >= 3 ? (Color) { 255, 220, 100, 255 }
-            : (Color) { 255, 110, 90, 255 }) : (Color) { 50, 60, 80, 255 };
+        : (Color) { 255, 110, 90, 255 }) : (Color) { 50, 60, 80, 255 };
         DrawRectangle(x + i * 9, y, 7, 7, c);
     }
 }
@@ -177,6 +154,10 @@ static void drawRating(int x, int y, int rating) {
 static void drawTeamGrid(void) {
     drawHeader(">> MECH TEAM");
     DrawText(TextFormat("%d / %d", teamSize, MAX_TEAM), SCREEN_W - 100, 22, 20, WHITE);
+    DrawText("[Z/ENTER/CLICK] Deploy selected mech", 30, 66, 12,
+        (Color) {
+        150, 190, 220, 220
+    });
 
     for (int i = 0; i < teamSize; i++) {
         Rectangle slot = teamSlotRect(i);
@@ -199,7 +180,9 @@ static void drawTeamGrid(void) {
         DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), bx + 270, by + 24, 16, WHITE);
         DrawText(TextFormat("%s %s", model->designation, model->name), bx + 110, by + 44, 12, (Color) { 180, 200, 220, 255 });
         DrawText(TextFormat("%s / %s", classNames[mechClass(m)], roleName(mechRole(m))), bx + 110, by + 58, 10,
-            (Color) { 150, 170, 190, 220 });
+            (Color) {
+            150, 170, 190, 220
+        });
 
         drawIntegrityBar(bx + 110, by + 74, 180, 9, s->integrity, s->maxIntegrity);
         DrawText(TextFormat("%d/%d", s->integrity, s->maxIntegrity), bx + 294, by + 74, 10, WHITE);
@@ -220,6 +203,23 @@ static void drawTeamGrid(void) {
     drawButton(closeButtonRect(), "CLOSE [TAB/ESC]", 16, 0, 1);
     drawButton(loadoutButtonRect(), "LOADOUT [E]", 16, 0, teamSize > 0);
     DrawText("[Z/ENTER/CLICK] Set active", SCREEN_W - 290, SCREEN_H - 34, 18, (Color) { 255, 220, 100, 255 });
+
+    // "DEPLOYED" flash
+    if (switchFlash > 0 && switchFlashSlot >= 0 && switchFlashSlot < teamSize) {
+        float a = switchFlash / 1.2f;
+        if (a > 1.0f) a = 1.0f;
+        Color c = mechModel(&team[switchFlashSlot])->accent;
+        c.a = (unsigned char)(255 * a);
+        const char* msg = TextFormat(">> %s DEPLOYED <<", team[switchFlashSlot].name);
+        int mw = MeasureText(msg, 22);
+        DrawRectangle(SCREEN_W / 2 - mw / 2 - 20, SCREEN_H / 2 - 20, mw + 40, 40,
+            (Color) {
+            15, 25, 45, (unsigned char)(220 * a)
+        });
+        DrawRectangleLines(SCREEN_W / 2 - mw / 2 - 20, SCREEN_H / 2 - 20, mw + 40, 40, c);
+        DrawText(msg, SCREEN_W / 2 - mw / 2, SCREEN_H / 2 - 12, 22, c);
+    }
+
     EndMode2D();
 }
 
@@ -249,7 +249,7 @@ static void drawLoadout(void) {
         drawButton(arrowRect(i, 1), ">", 14, 0, 1);
 
         const char* value;
-        Color valueCol = (Color) { 220, 240, 255, 255 };
+        Color valueCol = (Color){ 220, 240, 255, 255 };
         if (i < ROW_WEAPON) {
             int mod = m->refit[i - ROW_REFIT];
             value = refitModules[mod].name;
@@ -266,12 +266,11 @@ static void drawLoadout(void) {
         else {
             int c = m->fw.chips[i - ROW_SOCKET];
             value = c >= 0 ? TextFormat("%s  [%d]", chipDefs[c].name, chipDefs[c].cost) : "-- EMPTY --";
-            if (c >= 0) valueCol = (Color) { 200, 170, 255, 255 };
+            if (c >= 0) valueCol = (Color){ 200, 170, 255, 255 };
         }
         DrawText(value, (int)r.x + 120, (int)r.y + 6, 12, valueCol);
     }
 
-    // Right panel: stats + firmware + selected item description
     int px = 490, py = 70;
     StatBreakdown b;
     mechStatBreakdown(m, &b);
@@ -289,13 +288,8 @@ static void drawLoadout(void) {
         px + 14, fy + 20, 12, WHITE);
     DrawText(TextFormat("Instruction Sockets: %d", firmwareSockets(&m->fw)), px + 14, fy + 36, 12, WHITE);
     DrawText(TextFormat("Revision Data: %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)), px + 14, fy + 52, 12, WHITE);
-    DrawText(TextFormat("TRAIT  %s", traitDefs[m->fw.trait].name), px + 14, fy + 68, 10, (Color) { 255, 220, 120, 255 });
-    const char* branches = m->fw.numBranches == 0 ? "none (first at 2.0)" : "";
-    for (int i = 0; i < m->fw.numBranches; i++)
-        branches = TextFormat("%s%s%s", branches, i ? ", " : "", branchDefs[m->fw.branches[i]].name);
-    DrawText(TextFormat("BRANCH %s", branches), px + 14, fy + 81, 10, (Color) { 255, 220, 120, 255 });
 
-    int dy = fy + 100;
+    int dy = fy + 80;
     DrawLine(px + 10, dy - 8, px + 280, dy - 8, (Color) { 60, 100, 150, 200 });
     if (loadoutRow < ROW_WEAPON) {
         int mod = m->refit[loadoutRow - ROW_REFIT];
@@ -331,27 +325,13 @@ static void drawLoadout(void) {
         }
         DrawText("Chips owned / free:", px + 10, dy + 58, 10, (Color) { 150, 170, 190, 255 });
         int line = 0;
-        for (int k = 0; k < NUM_CHIPS && line < 5; k++) {
+        for (int k = 0; k < NUM_CHIPS && line < 6; k++) {
             if (chipOwned[k] == 0) continue;
             DrawText(TextFormat("%s  %d/%d", chipDefs[k].name, chipOwned[k], chipAvailable(k)),
                 px + 14, dy + 72 + line * 13, 10, (Color) { 170, 190, 210, 255 });
             line++;
         }
     }
-
-    DrawText("FIRMWARE PROFILES  [1-3] load  [SHIFT+1-3] save", 30, 506, 10, (Color) { 120, 160, 200, 255 });
-    for (int p = 0; p < MAX_PROFILES; p++) {
-        const FirmwareProfile* prof = &m->fw.profiles[p];
-        Rectangle r = profileRect(p);
-        int n = 0;
-        for (int k = 0; k < MAX_SOCKETS; k++) if (prof->chips[k] >= 0) n++;
-        DrawRectangleRec(r, mouseOver(r) ? (Color) { 40, 70, 110, 230 } : (Color) { 15, 25, 45, 220 });
-        DrawRectangleLinesEx(r, 1, prof->saved ? (Color) { 200, 170, 255, 255 } : (Color) { 60, 80, 110, 255 });
-        DrawText(TextFormat("%d %s", p + 1, prof->name), (int)r.x + 6, (int)r.y + 4, 10, prof->saved ? WHITE : (Color) { 110, 120, 140, 255 });
-        DrawText(prof->saved ? TextFormat("%d chips", n) : "empty", (int)r.x + 6, (int)r.y + 17, 10, (Color) { 150, 170, 190, 255 });
-        drawButton(profileSaveRect(p), "SAVE", 10, 0, 1);
-    }
-    if (profileMsg[0]) DrawText(profileMsg, 490, 548, 10, (Color) { 120, 255, 180, 255 });
 
     drawButton(closeButtonRect(), "BACK [E/ESC]", 16, 0, 1);
     DrawText("[W/S] Select   [A/D/CLICK] Change", 250, SCREEN_H - 34, 16, (Color) { 150, 220, 255, 220 });

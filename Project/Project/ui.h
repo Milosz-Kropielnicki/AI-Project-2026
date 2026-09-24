@@ -4,15 +4,11 @@
 #include "raylib.h"
 #include "display.h"
 
-// Screens drawn on top of the game modules. Each update takes the current state
-// and may switch it; main.c calls the matching *Open function whenever a
-// screen is entered.
-
 // ============ ui_battle.c ============
 void uiBattleOpen(void);
 void uiBattleUpdate(float dt, GameState* state);
 void uiBattleDraw(void);
-void uiRevisionOpen(void);          // post-battle firmware revision screen
+void uiRevisionOpen(void);
 void uiRevisionUpdate(float dt, GameState* state);
 void uiRevisionDraw(void);
 
@@ -31,6 +27,11 @@ void uiSettingsOpen(void);
 void uiSettingsUpdate(GameState* state);
 void uiSettingsDraw(void);
 void drawMenuBackground(void);
+
+// ============ ui_starter.c ============
+void uiStarterOpen(void);
+void uiStarterUpdate(float dt, GameState* state);
+void uiStarterDraw(void);
 
 // ============ ui_debug.c ============
 void uiDebugOpen(GameState returnTo);

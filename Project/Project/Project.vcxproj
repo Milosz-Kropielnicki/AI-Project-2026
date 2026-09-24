@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClCompile Include="main.c" />
     <ClCompile Include="display.c" />
+    <ClCompile Include="ui_starter.c" />
     <ClCompile Include="world.c" />
     <ClCompile Include="battle.c" />
     <ClCompile Include="mech.c" />
