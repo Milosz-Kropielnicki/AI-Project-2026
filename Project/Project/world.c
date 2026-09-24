@@ -283,7 +283,7 @@ static void drawHud(void) {
     DrawRectangleLines(10, 10, 300, 124, model->accent);
     DrawText("PILOT STATUS", 20, 15, 12, model->accent);
     DrawText(TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)), 20, 30, 20, WHITE);
-    DrawText(TextFormat("%s %s  -  %s", model->designation, model->name, roleNames[model->role]),
+    DrawText(TextFormat("%s %s  -  %s", model->designation, model->name, roleName(mechRole(m))),
         20, 52, 12, (Color) { 180, 200, 220, 255 });
     const MechStats* s = &m->stats;
     drawIntegrityBar(20, 68, 280, 12, s->integrity, s->maxIntegrity);

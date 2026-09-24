@@ -47,16 +47,47 @@ int refitRating(const Mech* m, int module) {
     return refitModules[module].rating[mechClass(m)];
 }
 
+Refit chassisRefit(int chassis) {
+    Refit r;
+    for (int i = 0; i < MAX_WEAPONS; i++) r.weapons[i] = mechModels[chassis].weapons[i];
+    for (int s = 0; s < NUM_REFIT_SLOTS; s++) r.modules[s] = mechModels[chassis].refit[s];
+    return r;
+}
+
+// ============ WEAPON SYSTEM ============
+int weaponRating(MechClass cls, int weapon) {
+    const Weapon* w = &weaponTable[weapon];
+    return (platformRating[w->platform][cls] + munitionRating[w->munition][cls] + 1) / 2;
+}
+
+// Same rule as the other refits: the upside (damage, penetration, scramble)
+// shrinks with the rating while the costs stay. Accuracy only drops to half and
+// a badly matched mount also runs hotter, so a 1-star weapon is mostly heat.
+Weapon weaponFit(int weapon, int rating) {
+    Weapon w = weaponTable[weapon];
+    float f = refitRatingFactor(rating);
+    w.baseDamage = (int)roundf(w.baseDamage * f);
+    w.armorPen = (int)roundf(w.armorPen * f);
+    w.scramble = (int)roundf(w.scramble * f);
+    w.accuracy = (int)roundf(w.accuracy * (0.5f + 0.5f * f));
+    w.heat = (int)roundf(w.heat * (1.0f + 0.5f * (1.0f - f)));
+    return w;
+}
+
 // ============ MECH ============
 const char* statLayerNames[NUM_STAT_LAYERS] = { "ROLE", "MODEL", "REFIT", "FIRMWARE", "CHIPS" };
 
 const MechModel* mechModel(const Mech* m) { return &mechModels[m->model]; }
-MechClass mechClass(const Mech* m) { return (MechClass)(mechModels[m->model].role / ROLES_PER_CLASS); }
+MechClass mechClass(const Mech* m) { return m->cls; }
+MechRole mechRole(const Mech* m) { return m->role; }
+
+MechClass roleClass(MechRole role) { return (MechClass)(role / ROLES_PER_CLASS); }
+const char* roleName(MechRole role) { return role == ROLE_NONE ? "NONE" : roleNames[role]; }
 
 void mechStatBreakdown(const Mech* m, StatBreakdown* out) {
     memset(out, 0, sizeof(*out));
     const MechModel* model = mechModel(m);
-    out->layer[LAYER_ROLE] = roleBaseline[model->role];
+    out->layer[LAYER_ROLE] = m->role == ROLE_NONE ? classBaseline[m->cls] : roleBaseline[m->role];
     out->layer[LAYER_MODEL] = model->delta;
     for (int slot = 0; slot < NUM_REFIT_SLOTS; slot++) {
         const RefitModule* mod = &refitModules[m->refit[slot]];
@@ -110,13 +141,18 @@ void mechReplate(Mech* m) {
 
 void mechReloadWeapons(Mech* m) {
     for (int i = 0; i < MAX_WEAPONS; i++)
-        m->weapons[i].ammo = m->weapons[i].weapon >= 0 ? weaponTable[m->weapons[i].weapon].ammo : 0;
+        m->weapons[i].ammo = m->weapons[i].weapon >= 0 ? m->weapons[i].fitted.ammo : 0;
 }
 
 void mechSetWeapon(Mech* m, int mount, int weapon) {
     if (mount < 0 || mount >= MAX_WEAPONS) return;
-    m->weapons[mount].weapon = weapon;
-    m->weapons[mount].ammo = weapon >= 0 ? weaponTable[weapon].ammo : 0;
+    WeaponInstance* wi = &m->weapons[mount];
+    memset(wi, 0, sizeof(*wi));
+    wi->weapon = weapon;
+    if (weapon < 0) return;
+    wi->rating = weaponRating(mechClass(m), weapon);
+    wi->fitted = weaponFit(weapon, wi->rating);
+    wi->ammo = wi->fitted.ammo;
 }
 
 void mechSetRefit(Mech* m, RefitSlot slot, int module) {
@@ -127,7 +163,7 @@ void mechSetRefit(Mech* m, RefitSlot slot, int module) {
 
 const Weapon* mechWeapon(const Mech* m, int mount) {
     if (mount < 0 || mount >= MAX_WEAPONS || m->weapons[mount].weapon < 0) return NULL;
-    return &weaponTable[m->weapons[mount].weapon];
+    return &m->weapons[mount].fitted;
 }
 
 int mechNumWeapons(const Mech* m) {
@@ -136,17 +172,29 @@ int mechNumWeapons(const Mech* m) {
     return n;
 }
 
-Mech mechCreate(int model, int revision) {
+Mech createMech(MechClass cls, MechRole role, int chassis, const Refit* refit, int level) {
     Mech m;
     memset(&m, 0, sizeof(m));
-    m.model = model;
-    snprintf(m.name, sizeof(m.name), "%s-%d", mechModels[model].name, 10 + rand() % 90);
-    for (int i = 0; i < MAX_WEAPONS; i++) mechSetWeapon(&m, i, mechModels[model].weapons[i]);
-    for (int s = 0; s < NUM_REFIT_SLOTS; s++) m.refit[s] = refitStandard[s];
-    firmwareInit(&m.fw, revision);
+    m.cls = cls;
+    m.role = (role >= 0 && role < NUM_ROLES && roleClass(role) == cls) ? role : ROLE_NONE;
+    m.model = chassis;
+    snprintf(m.name, sizeof(m.name), "%s-%d", mechModels[chassis].name, 10 + rand() % 90);
+    Refit stock = chassisRefit(chassis);
+    if (!refit) refit = &stock;
+    for (int i = 0; i < MAX_WEAPONS; i++) mechSetWeapon(&m, i, refit->weapons[i]);
+    for (int s = 0; s < NUM_REFIT_SLOTS; s++) {
+        int mod = refit->modules[s];
+        m.refit[s] = (mod >= 0 && mod < NUM_REFIT_MODULES && refitModules[mod].slot == (RefitSlot)s) ? mod : refitStandard[s];
+    }
+    firmwareInit(&m.fw, level);
     firmwareAutoSpend(&m.fw);
     mechRepair(&m);
     return m;
+}
+
+Mech mechCreateStock(int chassis, int level) {
+    MechRole role = mechModels[chassis].role;
+    return createMech(roleClass(role), role, chassis, NULL, level);
 }
 
 // ============ ROSTER ============
@@ -155,7 +203,7 @@ int teamSize = 0;
 int activeTeamSlot = 0;
 
 void rosterInit(void) {
-    team[0] = mechCreate(MODEL_NOVA, 0);
+    team[0] = mechCreateStock(MODEL_NOVA, 0);
     strncpy(team[0].name, "NOVA-7", sizeof(team[0].name) - 1);
     firmwareInstall(&team[0].fw, 0, CHIP_PREDICTIVE_TARGETING);
     mechRepair(&team[0]);   // also picks up the chip's stat bonus

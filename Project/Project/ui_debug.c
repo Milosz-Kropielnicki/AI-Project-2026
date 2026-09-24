@@ -8,13 +8,41 @@
 // same functions combat uses (mechStatBreakdown, attackPreview, hackChance...).
 //
 // Subjects/targets: the team, the current battle enemy (if opened from a
-// battle) and one baseline dummy per model.
+// battle), the createMech showcase builds and one stock dummy per chassis.
 
-#define MAX_POOL (MAX_TEAM + 1 + NUM_MODELS)
+#define SLICE_LEVEL 3   // FW 1.3
+enum { BUILD_DREADNOUGHT, BUILD_ARBALEST, BUILD_SKIRMISHER, BUILD_DISRUPTOR, BUILD_MISFIT, BUILD_FALLBACK, NUM_BUILDS };
+#define MAX_POOL (MAX_TEAM + 1 + NUM_BUILDS + NUM_MODELS)
 static Mech* pool[MAX_POOL];
 static char poolTag[MAX_POOL][16];
 static int poolSize = 0;
+static Mech builds[NUM_BUILDS];
 static Mech dummies[NUM_MODELS];
+
+// The vertical slice: one role per class on its stock chassis, plus a Dreadnought
+// forced into Recon/EW gear (1-star ratings) and a Recon with no role (class
+// baseline fallback).
+static void makeBuilds(void) {
+    builds[BUILD_DREADNOUGHT] = createMech(CLASS_HEAVY_ASSAULT, ROLE_DREADNOUGHT, MODEL_BULWARK, NULL, SLICE_LEVEL);
+    builds[BUILD_ARBALEST] = createMech(CLASS_ARTILLERY, ROLE_ARBALEST, MODEL_LONGBOW, NULL, SLICE_LEVEL);
+    builds[BUILD_SKIRMISHER] = createMech(CLASS_RECON, ROLE_SKIRMISHER, MODEL_WISP, NULL, SLICE_LEVEL);
+    builds[BUILD_DISRUPTOR] = createMech(CLASS_EW, ROLE_DISRUPTOR, MODEL_STATIC, NULL, SLICE_LEVEL);
+
+    Refit misfit = {
+        { W_JAMMER, W_ARC_EMITTER, W_PULSE_LASER, -1 },
+        { REFIT_EW_SUITE, REFIT_LIGHT_PLATING, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM },
+    };
+    builds[BUILD_MISFIT] = createMech(CLASS_HEAVY_ASSAULT, ROLE_DREADNOUGHT, MODEL_BULWARK, &misfit, SLICE_LEVEL);
+    snprintf(builds[BUILD_MISFIT].name, sizeof(builds[0].name), "BULWARK MISFIT");
+    builds[BUILD_FALLBACK] = createMech(CLASS_RECON, ROLE_NONE, MODEL_WISP, NULL, SLICE_LEVEL);
+    snprintf(builds[BUILD_FALLBACK].name, sizeof(builds[0].name), "WISP NO-ROLE");
+
+    static const char* tags[NUM_BUILDS] = { "SLICE", "SLICE", "SLICE", "SLICE", "MISFIT", "FALLBACK" };
+    for (int i = 0; i < NUM_BUILDS; i++) {
+        pool[poolSize] = &builds[i];
+        snprintf(poolTag[poolSize++], sizeof(poolTag[0]), "%s", tags[i]);
+    }
+}
 static int subject = 0, target = 0;
 static GameState returnState = STATE_OVERWORLD;
 
@@ -36,8 +64,9 @@ void uiDebugOpen(GameState returnTo) {
         pool[poolSize] = &battle.enemyMech;
         snprintf(poolTag[poolSize++], sizeof(poolTag[0]), "ENEMY");
     }
+    makeBuilds();
     for (int i = 0; i < NUM_MODELS; i++) {
-        dummies[i] = mechCreate(i, 0);
+        dummies[i] = mechCreateStock(i, 0);
         snprintf(dummies[i].name, sizeof(dummies[i].name), "%s", mechModels[i].name);
         pool[poolSize] = &dummies[i];
         snprintf(poolTag[poolSize++], sizeof(poolTag[0]), "DUMMY");
@@ -93,7 +122,8 @@ static void drawStatTable(const Mech* m, int x, int y) {
     MechClass cls = mechClass(m);
     const int col[] = { 0, 90, 150, 210, 270, 345, 405, 475, 545 };
     text("STAT", x + col[0], y, 10, colHead);
-    for (int l = 0; l < NUM_STAT_LAYERS; l++) text(statLayerNames[l], x + col[1 + l], y, 10, colHead);
+    for (int l = 0; l < NUM_STAT_LAYERS; l++)
+        text(l == LAYER_ROLE && mechRole(m) == ROLE_NONE ? "CLASS" : statLayerNames[l], x + col[1 + l], y, 10, colHead);
     text("SUM", x + col[6], y, 10, colHead);
     text("FINAL", x + col[7], y, 10, colHead);
     text(TextFormat("CLASS (%s)", classInitials[cls]), x + col[8], y, 10, colDim);
@@ -155,9 +185,13 @@ static void drawAttack(const Mech* a, int mount, const Mech* d, int x, int y) {
     AttackPreview p;
     attackPreview(a, w, d, &ctx, &p);
 
+    int rating = a->weapons[mount].rating;
     text(TextFormat("[%d] %s  %s / %s / %s   COST %d   HEAT +%d   AMMO %s", mount + 1, w->name, platformNames[w->platform],
         munitionNames[w->munition], targetingNames[w->targeting], p.energyCost, p.heat, w->ammo > 0 ? TextFormat("%d", w->ammo) : "INF"),
         x, y, 10, munitionColor(w->munition));
+    text(TextFormat("MOUNT %d/5 (P%d M%d) -> upside x%.2f", rating, platformRating[w->platform][mechClass(a)],
+        munitionRating[w->munition][mechClass(a)], refitRatingFactor(rating)), x + 560, y, 10,
+        rating >= 4 ? colGood : rating >= 3 ? colText : colBad);
     text(TextFormat("HIT  %d%% x ACC %d/100=%.2f x (1 - MOB %d/200)=%.3f = %.1f%%  x spoof %.2f  -> clamp 5-95%% = %.1f%%",
         p.weaponAcc, p.accuracy, p.accMod, p.mobility, p.evasionMod, p.hitUnclamped * 100, p.spoofMod,
         p.hitChance * 100), x + 12, y + 12, 10, colText);
@@ -181,12 +215,13 @@ void uiDebugDraw(void) {
     const MechStats* ds = &d->stats;
 
     text("DEBUG // STATS & FORMULAS", 20, 8, 18, colHead);
-    text(TextFormat("[A/D] SUBJECT  %s  %s  (%s %s)  INT %d/%d  ARM %d/%d  EN %d/%d  HEAT %d/%d", poolTag[subject], a->name,
-        mechModel(a)->designation, roleNames[mechModel(a)->role], as->integrity, as->maxIntegrity, as->armor, as->maxArmor,
-        as->energy, as->maxEnergy, as->heat, as->maxHeat), 20, 32, 10, WHITE);
-    text(TextFormat("[W/S] TARGET   %s  %s  (%s %s)  INT %d/%d  ARM %d/%d  MOB %d%%  STB %d%%", poolTag[target], d->name,
-        mechModel(d)->designation, roleNames[mechModel(d)->role], ds->integrity, ds->maxIntegrity, ds->armor, ds->maxArmor,
-        ds->mobility, ds->stability), 20, 45, 10, colDim);
+    text(TextFormat("[A/D] SUBJECT  %s  %s  (%s %s / %s)  INT %d/%d  ARM %d/%d  EN %d/%d  HEAT %d/%d", poolTag[subject], a->name,
+        mechModel(a)->designation, classInitials[mechClass(a)], roleName(mechRole(a)), as->integrity, as->maxIntegrity,
+        as->armor, as->maxArmor, as->energy, as->maxEnergy, as->heat, as->maxHeat), 20, 32, 10, WHITE);
+    text(TextFormat("[W/S] TARGET   %s  %s  (%s %s / %s)  INT %d/%d  ARM %d/%d  MOB %d%%  STB %d%%  EN %d  HEAT %d/-%d",
+        poolTag[target], d->name, mechModel(d)->designation, classInitials[mechClass(d)], roleName(mechRole(d)),
+        ds->integrity, ds->maxIntegrity, ds->armor, ds->maxArmor, ds->mobility, ds->stability, ds->maxEnergy,
+        ds->maxHeat, ds->cooling), 20, 45, 10, colDim);
 
     drawStatTable(a, 20, 64);
     drawRefit(a, 20, 212);

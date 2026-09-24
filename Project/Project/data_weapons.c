@@ -22,6 +22,32 @@ Color munitionColor(int munition) {
     }
 }
 
+// ============ WEAPON SYSTEM RATINGS ============
+// Compatibility per class: HEAVY ASSAULT, ARTILLERY, RECON, EW
+const int platformRating[NUM_PLATFORMS][NUM_CLASSES] = {
+    { 5, 4, 5, 3 },   // machine gun
+    { 5, 1, 4, 2 },   // shotgun
+    { 3, 5, 2, 2 },   // railgun
+    { 4, 5, 3, 3 },   // missile
+    { 5, 1, 3, 2 },   // flamethrower
+    { 3, 4, 5, 5 },   // laser
+    { 4, 5, 2, 2 },   // grenade launcher
+    { 4, 5, 3, 2 },   // rocket pod
+    { 5, 1, 5, 2 },   // blade
+    { 1, 2, 3, 5 },   // emitter
+};
+
+const int munitionRating[NUM_MUNITIONS][NUM_CLASSES] = {
+    { 5, 5, 4, 3 },   // ballistic
+    { 3, 4, 5, 5 },   // energy
+    { 5, 2, 3, 3 },   // thermal
+    { 1, 2, 3, 5 },   // electromagnetic
+    { 5, 5, 2, 2 },   // explosive
+    { 3, 2, 4, 5 },   // chemical
+};
+
+// ============ WEAPONS ============
+// Base profiles, used as-is on a 5-star mount (see weaponFit).
 // Temporary numbers, scaled to the 65-200 Integrity range of the role table.
 // Thermal / Chemical status effects and splash damage are not simulated yet.
 const Weapon weaponTable[NUM_WEAPONS] = {

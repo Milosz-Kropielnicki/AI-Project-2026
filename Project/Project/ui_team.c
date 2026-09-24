@@ -168,7 +168,7 @@ static void drawTeamGrid(void) {
         DrawText(m->name, bx + 110, by + 22, 20, model->accent);
         DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), bx + 270, by + 24, 16, WHITE);
         DrawText(TextFormat("%s %s", model->designation, model->name), bx + 110, by + 44, 12, (Color) { 180, 200, 220, 255 });
-        DrawText(TextFormat("%s / %s", classNames[mechClass(m)], roleNames[model->role]), bx + 110, by + 58, 10,
+        DrawText(TextFormat("%s / %s", classNames[mechClass(m)], roleName(mechRole(m))), bx + 110, by + 58, 10,
             (Color) { 150, 170, 190, 220 });
 
         drawIntegrityBar(bx + 110, by + 74, 180, 9, s->integrity, s->maxIntegrity);
@@ -203,7 +203,7 @@ static void drawLoadout(void) {
     Mech* m = &team[teamSel];
     const MechModel* model = mechModel(m);
     drawHeader(TextFormat(">> LOADOUT  %s", m->name));
-    DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleNames[model->role]),
+    DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleName(mechRole(m))),
         SCREEN_W - 330, 24, 16, model->accent);
 
     int rows = loadoutRows(m);
@@ -228,7 +228,10 @@ static void drawLoadout(void) {
         else if (i < ROW_SOCKET) {
             const Weapon* w = mechWeapon(m, i - ROW_WEAPON);
             value = w ? TextFormat("%s  (%d EN)", w->name, w->energyCost) : "-- EMPTY --";
-            if (w) valueCol = munitionColor(w->munition);
+            if (w) {
+                valueCol = munitionColor(w->munition);
+                drawRating((int)(r.x + r.width) - 80, (int)r.y + 8, m->weapons[i - ROW_WEAPON].rating);
+            }
         }
         else {
             int c = m->fw.chips[i - ROW_SOCKET];
@@ -268,8 +271,12 @@ static void drawLoadout(void) {
             (int)roundf(refitRatingFactor(rating) * 100)), px + 10, dy + 36, 10, (Color) { 180, 200, 220, 255 });
     }
     else if (loadoutRow < ROW_SOCKET) {
-        const Weapon* w = mechWeapon(m, loadoutRow - ROW_WEAPON);
+        int mount = loadoutRow - ROW_WEAPON;
+        const Weapon* w = mechWeapon(m, mount);
         if (w) {
+            int rating = m->weapons[mount].rating;
+            DrawText(TextFormat("Compatibility %d/5 (%s): %d%% of upside", rating, classNames[mechClass(m)],
+                (int)roundf(refitRatingFactor(rating) * 100)), px + 10, dy + 50, 10, (Color) { 180, 200, 220, 255 });
             DrawText(TextFormat("%s  -  %s / %s", w->name, platformNames[w->platform], munitionNames[w->munition]),
                 px + 10, dy, 10, WHITE);
             DrawText(TextFormat("DMG %d  ACC %d%%  PEN %d%%  COST %d EN", w->baseDamage, w->accuracy,

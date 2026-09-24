@@ -522,7 +522,7 @@ static void drawEnemyHud(const AttackPreview* p) {
     }
     DrawText(m->name, 30, 38, 22, (Color) { 255, 210, 210, 255 });
     DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), 250, 40, 18, WHITE);
-    DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleNames[model->role]),
+    DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleName(mechRole(m))),
         30, 60, 11, (Color) { 200, 200, 240, 255 });
     drawIntegrityBar(30, 76, 280, 10, s->integrity, s->maxIntegrity);
     drawArmorBar(30, 102, 280, 8, s->armor, s->maxArmor);

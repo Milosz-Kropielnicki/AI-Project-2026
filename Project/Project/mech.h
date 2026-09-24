@@ -6,6 +6,13 @@
 #include "firmware.h"
 
 // Class -> Role -> Chassis (Model) -> Refit -> Weapon -> Munition
+//
+// A machine is assembled by createMech from four choices plus a level:
+//   Class    what it is built to do        (class baseline, refit ratings)
+//   Role     how it does that job           (role baseline; ROLE_NONE = class fallback)
+//   Chassis  the individual model           (stat delta, sprite, stock refit)
+//   Refit    how this machine is configured (Weapon System, Head, Body, Arms, Legs)
+//   Level    firmware revision step         (0 = FW 1.0)
 
 #define MAX_TEAM 6
 #define MAX_WEAPONS 4
@@ -20,7 +27,8 @@ typedef enum {
     ROLE_BOMBARD, ROLE_ORDNANCE, ROLE_ARBALEST, ROLE_BATTERY,
     ROLE_INFILTRATOR, ROLE_SKIRMISHER, ROLE_SCOUT, ROLE_PROWLER,
     ROLE_CATCHER, ROLE_DISRUPTOR, ROLE_SAPPER, ROLE_AEGIS,
-    NUM_ROLES
+    NUM_ROLES,
+    ROLE_NONE = -1      // no role: the class baseline fallback is used
 } MechRole;
 
 extern const char* classNames[NUM_CLASSES];
@@ -28,6 +36,8 @@ extern const char* classInitials[NUM_CLASSES];
 extern const char* roleNames[NUM_ROLES];
 extern const Stats classBaseline[NUM_CLASSES];   // fallback attributes (doc 5.2)
 extern const Stats roleBaseline[NUM_ROLES];      // role attributes (doc 5.3)
+MechClass roleClass(MechRole role);
+const char* roleName(MechRole role);             // "NONE" for ROLE_NONE
 
 // ============ WEAPONS ============
 typedef enum {
@@ -74,15 +84,29 @@ extern const char* munitionNames[NUM_MUNITIONS];
 extern const char* targetingNames[4];
 Color munitionColor(int munition);
 
-// A weapon mounted on a specific machine
+// A weapon mounted on a specific machine. The Weapon System is rated like any
+// other refit: `fitted` is the table weapon scaled by the mount's rating, and
+// is what combat reads (see mechWeapon).
 typedef struct {
     int weapon;     // index into weaponTable[], -1 = empty mount
     int ammo;       // remaining uses this battle
+    int rating;     // Weapon System compatibility 1-5 for this machine's class
+    Weapon fitted;
 } WeaponInstance;
 
-// ============ MODELS ============
-// Temporary model table (replaces the old Species table). Stats are the role
-// baseline plus the model's delta.
+// Weapon System compatibility: rated separately for platform and munition,
+// the mount's rating is the rounded-up average of the two.
+extern const int platformRating[NUM_PLATFORMS][NUM_CLASSES];   // data_weapons.c
+extern const int munitionRating[NUM_MUNITIONS][NUM_CLASSES];
+int weaponRating(MechClass cls, int weapon);
+Weapon weaponFit(int weapon, int rating);
+
+// ============ REFIT ============
+typedef enum { SLOT_HEAD, SLOT_BODY, SLOT_ARMS, SLOT_LEGS, NUM_REFIT_SLOTS } RefitSlot;
+
+// ============ CHASSIS (MODELS) ============
+// A chassis is one model within a class role. Stats are the role baseline plus
+// the chassis delta; `refit` is the configuration it ships with.
 typedef struct {
     const char* designation;    // "HA-D-32"
     const char* name;           // "BULWARK"
@@ -91,20 +115,19 @@ typedef struct {
     int look;                   // procedural sprite (ui_sprites.c)
     Color body, accent, glow;
     Stats delta;
-    int weapons[MAX_WEAPONS];   // stock loadout, -1 = empty
+    int weapons[MAX_WEAPONS];   // stock Weapon System, -1 = empty
+    int refit[NUM_REFIT_SLOTS]; // stock Head / Body / Arms / Legs modules
     int rarity;                 // 1 common .. 3 rare, 0 = never wild
 } MechModel;
 
 enum {
     MODEL_NOVA, MODEL_BULWARK, MODEL_WISP, MODEL_RAZOR, MODEL_HAVOC, MODEL_OBLIVION,
-    MODEL_HOUND, MODEL_STATIC, MODEL_DUMMY,
+    MODEL_HOUND, MODEL_STATIC, MODEL_LONGBOW, MODEL_DUMMY,
     NUM_MODELS
 };
 extern const MechModel mechModels[NUM_MODELS];    // data_mechs.c
 
-// ============ REFIT ============
-typedef enum { SLOT_HEAD, SLOT_BODY, SLOT_ARMS, SLOT_LEGS, NUM_REFIT_SLOTS } RefitSlot;
-
+// ============ REFIT MODULES ============
 typedef struct {
     const char* name;
     RefitSlot slot;
@@ -114,16 +137,23 @@ typedef struct {
 } RefitModule;
 
 enum {
-    REFIT_STANDARD_OPTICS, REFIT_TARGETING_ARRAY, REFIT_EW_SUITE,
+    REFIT_STANDARD_OPTICS, REFIT_TARGETING_ARRAY, REFIT_EW_SUITE, REFIT_LONG_RANGE_RADAR,
     REFIT_STANDARD_FRAME, REFIT_HEAVY_PLATING, REFIT_LIGHT_PLATING, REFIT_OVERCLOCKED_REACTOR, REFIT_CRYO_COOLING,
     REFIT_STANDARD_MOUNTS, REFIT_STABILIZED_MOUNTS, REFIT_SHIELD_ARM,
-    REFIT_BIPEDAL_LEGS, REFIT_TREADS, REFIT_HOVER_SYSTEM,
+    REFIT_BIPEDAL_LEGS, REFIT_TREADS, REFIT_HOVER_SYSTEM, REFIT_JUMP_JETS,
     NUM_REFIT_MODULES
 };
-extern const int refitStandard[NUM_REFIT_SLOTS];            // stock module per slot
+extern const int refitStandard[NUM_REFIT_SLOTS];            // standard module per slot
 extern const RefitModule refitModules[NUM_REFIT_MODULES];   // data_mechs.c
 extern const char* refitSlotNames[NUM_REFIT_SLOTS];
 float refitRatingFactor(int rating);    // how much of a module's upside survives
+
+// A full refit: the Weapon System plus the four module slots
+typedef struct {
+    int weapons[MAX_WEAPONS];           // weapon per mount, -1 = empty
+    int modules[NUM_REFIT_SLOTS];       // module per slot
+} Refit;
+Refit chassisRefit(int chassis);        // the configuration a chassis ships with
 
 // ============ MECH STATS ============
 // The live attribute block of a machine (design doc section 3). Maximums and
@@ -144,7 +174,9 @@ typedef struct {
 // ============ MECH ============
 typedef struct {
     char name[32];
-    int model;                          // index into mechModels[]
+    MechClass cls;
+    MechRole role;                      // ROLE_NONE = class baseline fallback
+    int model;                          // chassis, index into mechModels[]
     MechStats stats;
     WeaponInstance weapons[MAX_WEAPONS];
     int refit[NUM_REFIT_SLOTS];         // module index per slot
@@ -154,15 +186,19 @@ typedef struct {
 // Every layer that feeds a mech's attributes, for the debug screen
 typedef enum { LAYER_ROLE, LAYER_MODEL, LAYER_REFIT, LAYER_FIRMWARE, LAYER_CHIPS, NUM_STAT_LAYERS } StatLayer;
 typedef struct {
-    Stats layer[NUM_STAT_LAYERS];   // LAYER_ROLE is absolute, the rest are deltas
+    Stats layer[NUM_STAT_LAYERS];   // LAYER_ROLE is absolute (class baseline if no role), the rest are deltas
     Stats sum;                      // unclamped total
     Stats final;                    // clamped to attribute ranges
 } StatBreakdown;
 extern const char* statLayerNames[NUM_STAT_LAYERS];
 
-Mech mechCreate(int model, int revision);
+// Mech factory. A role from another class is ignored (class fallback is used);
+// refit NULL = the chassis' stock refit; level = firmware revision step.
+Mech createMech(MechClass cls, MechRole role, int chassis, const Refit* refit, int level);
+Mech mechCreateStock(int chassis, int level);   // chassis in its own role with its stock refit
 const MechModel* mechModel(const Mech* m);
 MechClass mechClass(const Mech* m);
+MechRole mechRole(const Mech* m);
 void mechStatBreakdown(const Mech* m, StatBreakdown* out);
 void mechRefreshStats(Mech* m);     // rebuild maximums/attributes after refit, firmware or chip changes
 void mechRepair(Mech* m);           // restore Integrity and Armor, vent Heat

@@ -369,7 +369,7 @@ void battleStartWild(void) {
         pick -= weights[i];
     }
     battle.trainer = -1;
-    battle.enemyMech = mechCreate(model, rand() % 4);
+    battle.enemyMech = mechCreateStock(model, rand() % 4);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "HOSTILE %s detected! Reactor online (%d energy).",
         battle.enemyMech.name, battle.player.mech->stats.energy);
@@ -380,7 +380,7 @@ void battleStartTrainer(int trainerIdx) {
     Trainer* t = &trainers[trainerIdx];
     t->numDefeated = 0;
     battle.trainer = trainerIdx;
-    battle.enemyMech = mechCreate(t->teamModels[0], t->teamRevisions[0]);
+    battle.enemyMech = mechCreateStock(t->teamModels[0], t->teamRevisions[0]);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (1/%d)", t->name, battle.enemyMech.name, t->numMechs);
     battle.dialogue = DLG_INTRO;
@@ -388,7 +388,7 @@ void battleStartTrainer(int trainerIdx) {
 }
 
 void battleResetDummy(void) {
-    battle.enemyMech = mechCreate(MODEL_DUMMY, 0);
+    battle.enemyMech = mechCreateStock(MODEL_DUMMY, 0);
     snprintf(battle.enemyMech.name, sizeof(battle.enemyMech.name), "TARGET DUMMY");
     initCombatant(&battle.enemy, &battle.enemyMech);
 }
@@ -429,7 +429,7 @@ static void enemyScrapped(void) {
         t->numDefeated++;
         awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
         if (t->numDefeated < t->numMechs) {
-            battle.enemyMech = mechCreate(t->teamModels[t->numDefeated], t->teamRevisions[t->numDefeated]);
+            battle.enemyMech = mechCreateStock(t->teamModels[t->numDefeated], t->teamRevisions[t->numDefeated]);
             initCombatant(&battle.enemy, &battle.enemyMech);
             battle.round = 0;
             beginPlayerTurn();
