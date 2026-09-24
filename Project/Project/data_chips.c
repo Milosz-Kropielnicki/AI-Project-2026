@@ -2,6 +2,7 @@
 
 // Algorithmic Chips (design doc 7.7 - 7.9). Only chips whose effect the battle
 // already understands are listed; add a ChipEffect before adding new behaviours.
+// Branches and traits below reuse the same effects.
 const ChipDef chipDefs[NUM_CHIPS] = {
     //  name                            category       rarity               cost effect                  stat             value
     { "PREDICTIVE TARGETING",           CAT_PASSIVE,   RARITY_STANDARD,     1, CFX_STAT,                STAT_ACCURACY,   5,
@@ -32,4 +33,40 @@ const ChipDef chipDefs[NUM_CHIPS] = {
       "Resisting a Scramble restores 10 Integrity." },
     { "LAST STAND",                     CAT_TRIGGERED, RARITY_EXPERIMENTAL, 3, CFX_LAST_STAND,          STAT_ENERGY,     2,
       "First time below 10% Integrity: +2 Energy." },
+    { "EMERGENCY REPAIR PROTOCOL",      CAT_BEHAVIORAL, RARITY_ADVANCED,    3, CFX_EMERGENCY_REPAIR,    STAT_INTEGRITY,  15,
+      "IF Integrity < 30% THEN spend 2 Energy to repair 15 Integrity." },
+    { "COOLANT DUMP PROTOCOL",          CAT_BEHAVIORAL, RARITY_STANDARD,    2, CFX_COOLANT_DUMP,        STAT_HEAT,       30,
+      "IF Heat > 75% THEN spend 1 Energy to vent 30 Heat." },
+    { "OVERCHARGE ROUTINE",             CAT_OFFENSIVE, RARITY_PROTOTYPE,    4, CFX_OVERCHARGE,          STAT_POWER,      0.30f,
+      "Energy weapons deal +30% damage but generate +50% Heat." },
+    { "RECURSIVE TARGETING",            CAT_TRIGGERED, RARITY_BLACK_BOX,    3, CFX_RECURSIVE_TARGETING, STAT_ACCURACY,   10,
+      "Every miss: +10 Accuracy for the rest of the battle." },
+};
+
+// ============ FIRMWARE BRANCHES (doc 7.16) ============
+const KernelDef branchDefs[NUM_BRANCHES] = {
+    { "HUNTER KERNEL",    "+25% damage vs targets below 50% Integrity.",
+      CFX_EXECUTE, 0.25f, CFX_NONE, 0 },
+    { "SIEGE KERNEL",     "+15 Armor Penetration, weapons run 10% hotter.",
+      CFX_PEN_BONUS, 15, CFX_HEAT_MULT, 0.10f },
+    { "GHOST KERNEL",     "After attacking, +15 Mobility until your next turn.",
+      CFX_EVASIVE_MANEUVER, 15, CFX_NONE, 0 },
+    { "BASTION KERNEL",   "All incoming damage -10%.",
+      CFX_DAMAGE_REDUCTION, 0.10f, CFX_NONE, 0 },
+    { "OVERCLOCK KERNEL", "+1 Energy every turn, weapons run 25% hotter.",
+      CFX_BONUS_ENERGY, 1, CFX_HEAT_MULT, 0.25f },
+    { "SIGNAL KERNEL",    "+20 Scramble strength on scrambling weapons.",
+      CFX_SCRAMBLE_BONUS, 20, CFX_NONE, 0 },
+};
+
+// ============ FIRMWARE TRAITS (doc 7.17) ============
+const KernelDef traitDefs[NUM_TRAITS] = {
+    { "AGGRESSIVE KERNEL", "+0.10 Power while below 50% Integrity.",
+      CFX_POWER_WHEN_DAMAGED, 0.10f, CFX_NONE, 0 },
+    { "DEFENSIVE KERNEL",  "First attack received each battle deals 15% less damage.",
+      CFX_FIRST_HIT_SHIELD, 0.15f, CFX_NONE, 0 },
+    { "EFFICIENT KERNEL",  "The first action each turn costs 0 Energy.",
+      CFX_FIRST_ACTION_FREE, 1, CFX_NONE, 0 },
+    { "ADAPTIVE KERNEL",   "-15% damage from the munition type that last damaged it.",
+      CFX_ADAPTIVE, 0.15f, CFX_NONE, 0 },
 };

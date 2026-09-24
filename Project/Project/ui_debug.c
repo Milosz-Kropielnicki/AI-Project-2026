@@ -164,15 +164,20 @@ static void drawFirmware(const Mech* m, int x, int y) {
     if (fw->revision < MAX_REVISION)
         text(TextFormat("NEXT %s: %s", firmwareLabel(fw->revision + 1), firmwareUnlockDesc(firmwareUnlockAt(fw->revision + 1))),
             x, y + 27, 10, colDim);
+    const char* branches = "";
+    for (int i = 0; i < fw->numBranches; i++)
+        branches = TextFormat("%s%s%s", branches, i ? "," : "", branchDefs[fw->branches[i]].name);
+    text(TextFormat("TRAIT %s   BRANCH %s%s", traitDefs[fw->trait].name, fw->numBranches ? branches : "-",
+        firmwareBranchesPending(fw) > 0 ? TextFormat(" (+%d pending)", firmwareBranchesPending(fw)) : ""), x, y + 40, 10, colFw);
     int line = 0;
-    for (int s = 0; s < firmwareSockets(fw) && line < 3; s++) {
+    for (int s = 0; s < firmwareSockets(fw) && line < 2; s++) {
         int c = fw->chips[s];
         if (c < 0) continue;
-        text(TextFormat("[%d] %s (%d) = %g", s + 1, chipDefs[c].name, chipDefs[c].cost, chipDefs[c].value),
-            x, y + 40 + line * 13, 10, colText);
+        text(TextFormat("[%d] %s (%d) = %g%s", s + 1, chipDefs[c].name, chipDefs[c].cost, chipDefs[c].value,
+            fw->corrupt[s] > 0 ? "  CORRUPTED" : ""), x, y + 53 + line * 13, 10, fw->corrupt[s] > 0 ? colBad : colText);
         line++;
     }
-    if (line == 0) text("no chips installed", x, y + 40, 10, colDim);
+    if (line == 0) text("no chips installed", x, y + 53, 10, colDim);
 }
 
 static void drawAttack(const Mech* a, int mount, const Mech* d, int x, int y) {
@@ -195,9 +200,9 @@ static void drawAttack(const Mech* a, int mount, const Mech* d, int x, int y) {
     text(TextFormat("HIT  %d%% x ACC %d/100=%.2f x (1 - MOB %d/200)=%.3f = %.1f%%  x spoof %.2f  -> clamp 5-95%% = %.1f%%",
         p.weaponAcc, p.accuracy, p.accMod, p.mobility, p.evasionMod, p.hitUnclamped * 100, p.spoofMod,
         p.hitChance * 100), x + 12, y + 12, 10, colText);
-    text(TextFormat("RAW  %d x PWR %.2f = %.2f   PEN %d%%: INT = %.2f x %.2f = %.2f   ARM = %.2f x %.2f = %.2f",
-        p.baseDamage, p.power, p.raw, p.pen, p.raw, p.pen / 100.0f, p.split.toIntegrity, p.raw, 1 - p.pen / 100.0f, p.split.toArmor),
-        x + 12, y + 24, 10, colText);
+    text(TextFormat("RAW  %d x PWR %.2f x FW %.2f = %.2f   PEN %d%%: INT = %.2f x %.2f = %.2f   ARM = %.2f x %.2f = %.2f",
+        p.baseDamage, p.power, p.dmgMod, p.raw, p.pen, p.raw, p.pen / 100.0f, p.split.toIntegrity, p.raw, 1 - p.pen / 100.0f,
+        p.split.toArmor), x + 12, y + 24, 10, colText);
     float expected = (p.armorDamage + p.integrityDamage) * p.hitChance;
     text(TextFormat("vs ARMOR %d: absorbed %d%s, spill %d -> ARM -%d  INT -%d   expected %.1f/shot%s",
         p.armorBefore, p.split.armorDamage, p.breachBonus > 0 ? TextFormat(" +%d breach", p.breachBonus) : "",
@@ -235,7 +240,7 @@ void uiDebugDraw(void) {
     int rarity = mechModel(d)->rarity < 1 ? 3 : mechModel(d)->rarity;
     text(TextFormat("HACK %s: 0.25 + (1 - %d/%d) x 0.55 - (rarity %d - 1) x 0.08 - (STB %d - 60) x 0.003 = %.1f%%",
         d->name, ds->integrity, ds->maxIntegrity, rarity, ds->stability, hackChance(d) * 100), 20, my, 10, colText);
-    int stab = as->stability + (int)firmwareChipTotal(&a->fw, CFX_COUNTER_INTRUSION);
+    int stab = as->stability + (int)firmwareEffect(&a->fw, CFX_COUNTER_INTRUSION);
     text(TextFormat("SCRAMBLE RESIST %s: STB %d / (STB + STR)   str 40: %.1f%%   70: %.1f%%   100: %.1f%%", a->name, stab,
         formulaScrambleResist(stab, 40) * 100, formulaScrambleResist(stab, 70) * 100, formulaScrambleResist(stab, 100) * 100),
         20, my + 13, 10, colText);

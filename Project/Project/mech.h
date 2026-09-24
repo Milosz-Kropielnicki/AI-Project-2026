@@ -218,5 +218,6 @@ void rosterInit(void);
 int rosterAdd(const Mech* m);       // returns 0 if full
 Mech* rosterActive(void);
 int chipAvailable(int chip);        // owned copies not installed on any team mech
+int mechLoadProfile(Mech* m, int slot);   // returns chips that could not be installed, -1 if the slot is empty
 
 #endif

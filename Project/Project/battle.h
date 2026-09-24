@@ -39,7 +39,10 @@ typedef struct {
     float accMod, evasionMod, hitUnclamped, spoofMod, hitChance;
     // damage
     int baseDamage;
-    float power, raw;
+    float power;            // attacker Power + Aggressive Kernel bonus
+    float dmgMod;           // product of the firmware damage modifiers below
+    float executeMod, overchargeMod, reductionMod, firstHitMod, adaptiveMod;
+    float raw;              // base x power x dmgMod
     int pen;                // weapon pen + Armor Analysis bonus, percent
     DamageSplit split;
     int armorBefore;
@@ -60,6 +63,8 @@ typedef struct {
     int spoofActive;        // target's Targeting Spoof applies to this attack
     int breachReady;        // attacker's Armor Breach Routine still unused
     int firstAction;        // Efficient Power Distribution makes it free
+    int firstHitOnTarget;   // target has not been hit this battle (Defensive Kernel)
+    int targetLastMunition; // munition that last damaged the target, -1 = none (Adaptive Kernel)
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -68,6 +73,7 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target);  
 float hackChance(const Mech* target);
 int revisionDataForWild(const Mech* enemy);
 int revisionDataForTrainer(const Mech* enemy, int tier);
+int revisionDataForParticipation(const Mech* enemy);   // losing still teaches the firmware something
 
 // ============ BATTLE STATE ============
 typedef enum {
@@ -89,6 +95,9 @@ typedef struct {
     int breachUsed;         // Armor Breach Routine spent
     int lastStandUsed, emergencyPowerUsed;
     int evasiveBonus;       // Mobility until this side's next turn
+    int missStacks;         // Recursive Targeting
+    int hitTaken;           // hit at least once this battle
+    int lastMunitionTaken;  // -1 = none
     // scramble effects active this turn
     int accPenalty, disabledWeapon, skipTurn;
     // scramble effects queued for this side's next turn

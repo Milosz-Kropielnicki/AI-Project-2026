@@ -41,16 +41,20 @@ float formulaScrambleResist(int stability, int strength) {
     return (float)stability / (float)(stability + strength);
 }
 
-static float chipTotal(const Mech* m, ChipEffect e) { return firmwareChipTotal(&m->fw, e); }
+// Chips, trait and branches together
+static float fwEffect(const Mech* m, ChipEffect e) { return firmwareEffect(&m->fw, e); }
 
 static int weaponHeat(const Mech* m, const Weapon* w) {
-    float heat = (float)w->heat;
-    if (w->munition == MUN_ENERGY) heat *= 1.0f - chipTotal(m, CFX_ENERGY_HEAT_CUT);   // Thermal Optimization
+    float heat = (float)w->heat * (1.0f + fwEffect(m, CFX_HEAT_MULT));                   // Siege / Overclock Kernel
+    if (w->munition == MUN_ENERGY) {
+        heat *= 1.0f - fwEffect(m, CFX_ENERGY_HEAT_CUT);                                 // Thermal Optimization
+        if (fwEffect(m, CFX_OVERCHARGE) > 0) heat *= 1.5f;                               // Overcharge Routine
+    }
     return (int)roundf(heat);
 }
 
 static int weaponCost(const Mech* m, const Weapon* w, int firstAction) {
-    if (firstAction && chipTotal(m, CFX_FIRST_ACTION_FREE) > 0) return 0;   // Efficient Power Distribution
+    if (firstAction && fwEffect(m, CFX_FIRST_ACTION_FREE) > 0) return 0;   // Efficient Power Distribution
     return w->energyCost;
 }
 
@@ -67,20 +71,27 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->accMod = out->accuracy / 100.0f;
     out->evasionMod = 1.0f - out->mobility / 200.0f;
     out->hitUnclamped = formulaHitUnclamped(w->accuracy, out->accuracy, out->mobility);
-    out->spoofMod = ctx->spoofActive ? 1.0f - chipTotal(target, CFX_TARGETING_SPOOF) : 1.0f;
+    out->spoofMod = ctx->spoofActive ? 1.0f - fwEffect(target, CFX_TARGETING_SPOOF) : 1.0f;
     out->hitChance = clampf(out->hitUnclamped * out->spoofMod, HIT_CHANCE_MIN, HIT_CHANCE_MAX);
 
-    // Raw damage and armor split
+    // Raw damage, with the firmware multipliers
     out->baseDamage = w->baseDamage;
     out->power = atk->power;
-    out->raw = formulaRawDamage(w->baseDamage, atk->power);
-    out->pen = w->armorPen;
-    if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(chipTotal(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
+    if (atk->integrity < atk->maxIntegrity * 0.5f) out->power += fwEffect(attacker, CFX_POWER_WHEN_DAMAGED);   // Aggressive Kernel
+    out->executeMod = def->integrity < def->maxIntegrity * 0.5f ? 1.0f + fwEffect(attacker, CFX_EXECUTE) : 1.0f;
+    out->overchargeMod = w->munition == MUN_ENERGY ? 1.0f + fwEffect(attacker, CFX_OVERCHARGE) : 1.0f;
+    out->reductionMod = 1.0f - fwEffect(target, CFX_DAMAGE_REDUCTION);
+    out->firstHitMod = ctx->firstHitOnTarget ? 1.0f - fwEffect(target, CFX_FIRST_HIT_SHIELD) : 1.0f;
+    out->adaptiveMod = ctx->targetLastMunition == w->munition ? 1.0f - fwEffect(target, CFX_ADAPTIVE) : 1.0f;
+    out->dmgMod = out->executeMod * out->overchargeMod * out->reductionMod * out->firstHitMod * out->adaptiveMod;
+    out->raw = formulaRawDamage(w->baseDamage, out->power) * out->dmgMod;
+    out->pen = w->armorPen + (int)fwEffect(attacker, CFX_PEN_BONUS);                     // Siege Kernel
+    if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(fwEffect(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
     out->pen = clampi(out->pen, 0, 100);
     out->armorBefore = def->armor;
     out->split = formulaDamageSplit(out->raw, out->pen, def->armor);
     if (ctx->breachReady && def->armor > 0) {   // Armor Breach Routine
-        int bonus = (int)roundf(out->split.toArmor * chipTotal(attacker, CFX_ARMOR_BREACH));
+        int bonus = (int)roundf(out->split.toArmor * fwEffect(attacker, CFX_ARMOR_BREACH));
         int room = def->armor - out->split.armorDamage;
         out->breachBonus = bonus < room ? bonus : room;
     }
@@ -93,19 +104,21 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->heat = weaponHeat(attacker, w);
     out->heatBefore = atk->heat;
     out->maxHeat = atk->maxHeat;
-    out->scramble = w->scramble;
-    out->resist = w->scramble > 0
-        ? formulaScrambleResist(def->stability + (int)chipTotal(target, CFX_COUNTER_INTRUSION), w->scramble)
+    out->scramble = w->scramble > 0 ? w->scramble + (int)fwEffect(attacker, CFX_SCRAMBLE_BONUS) : 0;   // Signal Kernel
+    out->resist = out->scramble > 0
+        ? formulaScrambleResist(def->stability + (int)fwEffect(target, CFX_COUNTER_INTRUSION), out->scramble)
         : 1.0f;
 }
 
 AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     AttackContext c;
-    c.attackerAccuracy = clampi(attacker->stats.accuracy + (int)chipTotal(attacker, CFX_PRECISION_STRIKE), 0, 100);
+    c.attackerAccuracy = clampi(attacker->stats.accuracy + (int)fwEffect(attacker, CFX_PRECISION_STRIKE), 0, 100);
     c.targetMobility = target->stats.mobility;
-    c.spoofActive = chipTotal(target, CFX_TARGETING_SPOOF) > 0;
-    c.breachReady = chipTotal(attacker, CFX_ARMOR_BREACH) > 0;
+    c.spoofActive = fwEffect(target, CFX_TARGETING_SPOOF) > 0;
+    c.breachReady = fwEffect(attacker, CFX_ARMOR_BREACH) > 0;
     c.firstAction = 1;
+    c.firstHitOnTarget = 1;
+    c.targetLastMunition = -1;
     return c;
 }
 
@@ -119,8 +132,17 @@ float hackChance(const Mech* target) {
     return clampf(chance, 0.05f, 0.95f);
 }
 
-int revisionDataForWild(const Mech* enemy) { return 10 + enemy->fw.revision * 4 + rand() % 4; }
-int revisionDataForTrainer(const Mech* enemy, int tier) { return 15 + enemy->fw.revision * 5 + tier * 8 + rand() % 5; }
+// Revision Data (doc 7.3): destroying machines, fighting higher-revision
+// enemies (bonus per step above the player), and simply taking part.
+static int levelGapBonus(const Mech* enemy) {
+    int gap = enemy->fw.revision - rosterActive()->fw.revision;
+    return gap > 0 ? gap * 3 : 0;
+}
+int revisionDataForWild(const Mech* enemy) { return 10 + enemy->fw.revision * 4 + levelGapBonus(enemy) + rand() % 4; }
+int revisionDataForTrainer(const Mech* enemy, int tier) {
+    return 15 + enemy->fw.revision * 5 + tier * 8 + levelGapBonus(enemy) + rand() % 5;
+}
+int revisionDataForParticipation(const Mech* enemy) { return 5 + enemy->fw.revision * 2; }
 
 // ============ COMBATANTS ============
 static int integrityBelow(const Combatant* c, float fraction) {
@@ -129,13 +151,14 @@ static int integrityBelow(const Combatant* c, float fraction) {
 
 int combatAccuracy(const Combatant* c) {
     int acc = c->mech->stats.accuracy - c->accPenalty;
-    if (c->actionsThisTurn == 0) acc += (int)chipTotal(c->mech, CFX_PRECISION_STRIKE);
+    if (c->actionsThisTurn == 0) acc += (int)fwEffect(c->mech, CFX_PRECISION_STRIKE);
+    acc += c->missStacks * (int)fwEffect(c->mech, CFX_RECURSIVE_TARGETING);
     return clampi(acc, 0, 100);
 }
 
 int combatMobility(const Combatant* c) {
     int mob = c->mech->stats.mobility + c->evasiveBonus;
-    if (integrityBelow(c, 0.25f)) mob += (int)chipTotal(c->mech, CFX_EMERGENCY_EVASION);
+    if (integrityBelow(c, 0.25f)) mob += (int)fwEffect(c->mech, CFX_EMERGENCY_EVASION);
     return clampi(mob, 0, 100);
 }
 
@@ -143,9 +166,11 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     AttackContext ctx;
     ctx.attackerAccuracy = combatAccuracy(a);
     ctx.targetMobility = combatMobility(d);
-    ctx.spoofActive = !d->attackedThisRound && chipTotal(d->mech, CFX_TARGETING_SPOOF) > 0;
-    ctx.breachReady = !a->breachUsed && chipTotal(a->mech, CFX_ARMOR_BREACH) > 0;
+    ctx.spoofActive = !d->attackedThisRound && fwEffect(d->mech, CFX_TARGETING_SPOOF) > 0;
+    ctx.breachReady = !a->breachUsed && fwEffect(a->mech, CFX_ARMOR_BREACH) > 0;
     ctx.firstAction = a->actionsThisTurn == 0;
+    ctx.firstHitOnTarget = !d->hitTaken;
+    ctx.targetLastMunition = d->lastMunitionTaken;
     return ctx;
 }
 
@@ -172,21 +197,37 @@ static void initCombatant(Combatant* c, Mech* m) {
     c->mech = m;
     c->disabledWeapon = -1;
     c->nextDisabledWeapon = -1;
+    c->lastMunitionTaken = -1;
+    firmwareClearCorruption(&m->fw);
     mechRefreshStats(m);
     m->stats.heat = 0;
     mechReloadWeapons(m);
 }
 
-// Start of this side's turn: refill Energy, cool Heat, apply queued scrambles
-static void turnStart(Combatant* c) {
+// Wild and trainer machines run their own firmware: random chips up to their
+// sockets and capacity. They can be corrupted, and salvaged by hacking.
+static void equipEnemyChips(Mech* m) {
+    for (int s = 0; s < firmwareSockets(&m->fw); s++)
+        for (int tries = 0; tries < 6; tries++) {
+            int c = rand() % NUM_CHIPS;
+            if (firmwareCanInstall(&m->fw, s, c)) { firmwareInstall(&m->fw, s, c); break; }
+        }
+    mechRefreshStats(m);
+}
+
+// Start of this side's turn: tick corruption, refill Energy, cool Heat, apply
+// queued scrambles, then run Behavioral (IF/THEN) chips. Returns a log note.
+static const char* turnStart(Combatant* c) {
     MechStats* s = &c->mech->stats;
-    s->energy = s->maxEnergy - c->nextEnergyLoss;
-    if (!c->emergencyPowerUsed && integrityBelow(c, 0.25f) && chipTotal(c->mech, CFX_EMERGENCY_POWER) > 0) {
-        s->energy += (int)chipTotal(c->mech, CFX_EMERGENCY_POWER);
+    firmwareCorruptionTick(&c->mech->fw);
+    mechRefreshStats(c->mech);   // a stat chip may have come back online
+    s->energy = s->maxEnergy - c->nextEnergyLoss + (int)fwEffect(c->mech, CFX_BONUS_ENERGY);
+    if (!c->emergencyPowerUsed && integrityBelow(c, 0.25f) && fwEffect(c->mech, CFX_EMERGENCY_POWER) > 0) {
+        s->energy += (int)fwEffect(c->mech, CFX_EMERGENCY_POWER);
         c->emergencyPowerUsed = 1;
     }
-    if (!c->lastStandUsed && integrityBelow(c, 0.10f) && chipTotal(c->mech, CFX_LAST_STAND) > 0) {
-        s->energy += (int)chipTotal(c->mech, CFX_LAST_STAND);
+    if (!c->lastStandUsed && integrityBelow(c, 0.10f) && fwEffect(c->mech, CFX_LAST_STAND) > 0) {
+        s->energy += (int)fwEffect(c->mech, CFX_LAST_STAND);
         c->lastStandUsed = 1;
     }
     if (s->energy < 0) s->energy = 0;
@@ -199,6 +240,22 @@ static void turnStart(Combatant* c) {
     c->evasiveBonus = 0;
     c->actionsThisTurn = 0;
     c->attackedThisRound = 0;
+
+    static char note[64];
+    note[0] = 0;
+    int repair = (int)fwEffect(c->mech, CFX_EMERGENCY_REPAIR);
+    if (repair > 0 && integrityBelow(c, 0.30f) && s->energy >= 2) {
+        s->energy -= 2;
+        s->integrity = clampi(s->integrity + repair, 0, s->maxIntegrity);
+        snprintf(note, sizeof(note), " REPAIR PROTOCOL +%d INT.", repair);
+    }
+    int vent = (int)fwEffect(c->mech, CFX_COOLANT_DUMP);
+    if (vent > 0 && s->heat > s->maxHeat * 0.75f && s->energy >= 1) {
+        s->energy -= 1;
+        s->heat = s->heat > vent ? s->heat - vent : 0;
+        snprintf(note + strlen(note), sizeof(note) - strlen(note), " COOLANT DUMP -%d HEAT.", vent);
+    }
+    return note;
 }
 
 // ============ EVENTS ============
@@ -233,9 +290,18 @@ int battlePreviewPlayer(int mount, AttackPreview* out) {
     return 1;
 }
 
-// Scramble outcome depends on strength (design doc 4.6); it hits the victim's next turn
+// Scramble outcome depends on strength (design doc 4.6); it hits the victim's
+// next turn. From strength 40 up, half the time it corrupts an installed chip
+// instead (design doc 7.19).
 static const char* applyScramble(Combatant* d, int strength) {
     if (strength >= 100) { d->nextSkipTurn = 1; return "TURN LOST"; }
+    if (strength >= 40 && rand() % 2 == 0) {
+        int chip = firmwareCorruptRandom(&d->mech->fw);
+        if (chip >= 0) {
+            mechRefreshStats(d->mech);
+            return TextFormat("FIRMWARE CORRUPTED (%s)", chipDefs[chip].name);
+        }
+    }
     if (strength >= 70) {
         int mounts[MAX_WEAPONS], n = 0;
         for (int i = 0; i < MAX_WEAPONS; i++) if (d->mech->weapons[i].weapon >= 0) mounts[n++] = i;
@@ -270,9 +336,13 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
         if (ds->integrity < 0) ds->integrity = 0;
         if (p.breachBonus > 0) a->breachUsed = 1;
         total = p.armorDamage + p.integrityDamage;
+        if (total > 0) {
+            d->hitTaken = 1;
+            d->lastMunitionTaken = w->munition;
+        }
         if (p.scramble > 0 && ds->integrity > 0) {
             if (frand() < p.resist) {
-                int heal = (int)chipTotal(d->mech, CFX_SYSTEM_RECOVERY);
+                int heal = (int)fwEffect(d->mech, CFX_SYSTEM_RECOVERY);
                 ds->integrity = clampi(ds->integrity + heal, 0, ds->maxIntegrity);
                 snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
             }
@@ -284,10 +354,13 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
         else
             snprintf(battle.log, sizeof(battle.log), "%s activated %s.%s", who, w->name, extra);
     }
-    else snprintf(battle.log, sizeof(battle.log), "%s fired %s... MISSED! (%d%% to hit)", who, w->name,
-        (int)roundf(p.hitChance * 100));
+    else {
+        snprintf(battle.log, sizeof(battle.log), "%s fired %s... MISSED! (%d%% to hit)", who, w->name,
+            (int)roundf(p.hitChance * 100));
+        if (fwEffect(a->mech, CFX_RECURSIVE_TARGETING) > 0) a->missStacks++;
+    }
 
-    a->evasiveBonus = (int)chipTotal(a->mech, CFX_EVASIVE_MANEUVER);
+    a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
     pushEvent(w->fx, isPlayer, total, hit, munitionColor(w->munition));
     battle.animTimer = fxDuration(w->fx);
     battle.outcomePending = 1;
@@ -304,8 +377,9 @@ static void awardData(int amount) {
 }
 
 static void beginEnemyTurn(void) {
-    turnStart(&battle.enemy);
+    const char* note = turnStart(&battle.enemy);
     battle.phase = BP_ENEMY_TURN;
+    if (note[0]) snprintf(battle.log, sizeof(battle.log), "Enemy %s:%s", battle.enemyMech.name, note);
     if (battle.enemy.skipTurn) {
         snprintf(battle.log, sizeof(battle.log), "Enemy %s is scrambled and loses its turn!", battle.enemyMech.name);
         battle.enemyMech.stats.energy = 0;
@@ -315,10 +389,10 @@ static void beginEnemyTurn(void) {
 
 static void beginPlayerTurn(void) {
     battle.round++;
-    turnStart(&battle.player);
+    const char* note = turnStart(&battle.player);
     battle.phase = BP_PLAYER_TURN;
-    snprintf(battle.log, sizeof(battle.log), "REACTOR RECHARGED: %d EN, heat vented to %d. Round %d.",
-        battle.player.mech->stats.energy, battle.player.mech->stats.heat, battle.round);
+    snprintf(battle.log, sizeof(battle.log), "REACTOR RECHARGED: %d EN, heat vented to %d. Round %d.%s",
+        battle.player.mech->stats.energy, battle.player.mech->stats.heat, battle.round, note);
     if (battle.player.skipTurn) {
         snprintf(battle.log, sizeof(battle.log), "SYSTEMS SCRAMBLED! %s loses its turn.", battle.player.mech->name);
         beginEnemyTurn();
@@ -370,6 +444,7 @@ void battleStartWild(void) {
     }
     battle.trainer = -1;
     battle.enemyMech = mechCreateStock(model, rand() % 4);
+    equipEnemyChips(&battle.enemyMech);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "HOSTILE %s detected! Reactor online (%d energy).",
         battle.enemyMech.name, battle.player.mech->stats.energy);
@@ -381,6 +456,7 @@ void battleStartTrainer(int trainerIdx) {
     t->numDefeated = 0;
     battle.trainer = trainerIdx;
     battle.enemyMech = mechCreateStock(t->teamModels[0], t->teamRevisions[0]);
+    equipEnemyChips(&battle.enemyMech);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (1/%d)", t->name, battle.enemyMech.name, t->numMechs);
     battle.dialogue = DLG_INTRO;
@@ -430,6 +506,7 @@ static void enemyScrapped(void) {
         awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
         if (t->numDefeated < t->numMechs) {
             battle.enemyMech = mechCreateStock(t->teamModels[t->numDefeated], t->teamRevisions[t->numDefeated]);
+            equipEnemyChips(&battle.enemyMech);
             initCombatant(&battle.enemy, &battle.enemyMech);
             battle.round = 0;
             beginPlayerTurn();
@@ -460,6 +537,7 @@ static int checkOutcome(void) {
     battle.outcomePending = 0;
     if (battle.enemyMech.stats.integrity <= 0) { enemyScrapped(); return 1; }
     if (battle.player.mech->stats.integrity <= 0) {
+        if (!battle.testRange) awardData(revisionDataForParticipation(&battle.enemyMech));
         battle.phase = BP_DEFEAT;
         snprintf(battle.log, sizeof(battle.log), "%s DISABLED!", battle.player.mech->name);
         return 1;
@@ -470,6 +548,8 @@ static int checkOutcome(void) {
 // Leaving a battle: vent heat and refill energy for the overworld
 static void finish(BattleResult result) {
     Mech* m = rosterActive();
+    firmwareClearCorruption(&m->fw);
+    mechRefreshStats(m);
     m->stats.heat = 0;
     m->stats.energy = m->stats.maxEnergy;
     battle.result = result;
@@ -530,6 +610,10 @@ void battleHack(void) {
     battle.animTimer = fxDuration(FX_SCAN);
     if (frand() < hackChance(&battle.enemyMech)) {
         Mech caught = battle.enemyMech;
+        firmwareClearCorruption(&caught.fw);
+        int salvaged = 0;   // its chips join the collection, still installed
+        for (int s = 0; s < MAX_SOCKETS; s++)
+            if (caught.fw.chips[s] >= 0) { chipOwned[caught.fw.chips[s]]++; salvaged++; }
         mechRepair(&caught);
         mechReloadWeapons(&caught);
         caught.fw.data = 0;
@@ -537,7 +621,8 @@ void battleHack(void) {
         battle.hacked = 1;
         awardData(revisionDataForWild(&battle.enemyMech) / 2);
         battle.phase = BP_VICTORY;
-        snprintf(battle.log, sizeof(battle.log), "REPROGRAMMED %s! Added to team (%d/%d).", caught.name, teamSize, MAX_TEAM);
+        snprintf(battle.log, sizeof(battle.log), "REPROGRAMMED %s! Added to team (%d/%d). %d chips salvaged.",
+            caught.name, teamSize, MAX_TEAM, salvaged);
     }
     else {
         beginEnemyTurn();
@@ -560,6 +645,6 @@ void battleConfirm(void) {
     }
     else if (battle.phase == BP_DEFEAT) {
         mechRepair(rosterActive());   // recovered and repaired after being disabled
-        finish(RESULT_TO_WORLD);
+        finish(battle.revisionsGained > 0 ? RESULT_TO_REVISION : RESULT_TO_WORLD);
     }
 }

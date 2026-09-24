@@ -1,13 +1,16 @@
 #include "ui.h"
 #include "mech.h"
 #include <math.h>
+#include <stdio.h>
 
 // Two views: the team grid, and a loadout screen for one mech where refit
-// modules, weapons and firmware chips can be swapped (outside combat only).
+// modules, weapons and firmware chips can be swapped (outside combat only),
+// and chip loadouts saved to / loaded from Firmware Profiles.
 
 static int teamSel = 0;
 static int loadoutOpen = 0;
 static int loadoutRow = 0;
+static char profileMsg[64] = "";
 
 enum { ROW_REFIT = 0, ROW_WEAPON = NUM_REFIT_SLOTS, ROW_SOCKET = NUM_REFIT_SLOTS + MAX_WEAPONS };
 
@@ -22,6 +25,12 @@ static Rectangle loadoutRowRect(int i) {
     int group = i >= ROW_SOCKET ? 2 : (i >= ROW_WEAPON ? 1 : 0);
     return (Rectangle) { 30, 80.0f + i * 25 + group * 14, 440, 22 };
 }
+// Profile strip under the loadout rows: click the name to load, SAVE to overwrite
+static Rectangle profileRect(int i) { return (Rectangle) { 30.0f + i * 148, 518, 140, 30 }; }
+static Rectangle profileSaveRect(int i) {
+    Rectangle r = profileRect(i);
+    return (Rectangle) { r.x + r.width - 42, r.y + 4, 38, r.height - 8 };
+}
 static Rectangle arrowRect(int i, int right) {
     Rectangle r = loadoutRowRect(i);
     return (Rectangle) { right ? r.x + r.width - 24 : r.x + 90, r.y + 1, 20, 20 };
@@ -31,6 +40,7 @@ void uiTeamOpen(void) {
     teamSel = activeTeamSlot;
     loadoutOpen = 0;
     loadoutRow = 0;
+    profileMsg[0] = 0;
 }
 
 static int loadoutRows(const Mech* m) { return ROW_SOCKET + firmwareSockets(&m->fw); }
@@ -70,6 +80,20 @@ static void cycleChip(Mech* m, int socket, int dir) {
     }
 }
 
+static void loadProfile(Mech* m, int slot) {
+    int skipped = mechLoadProfile(m, slot);
+    const char* name = m->fw.profiles[slot].name;
+    if (skipped < 0) snprintf(profileMsg, sizeof(profileMsg), "%s is empty - [SHIFT+%d] to save", name, slot + 1);
+    else if (skipped > 0) snprintf(profileMsg, sizeof(profileMsg), "Loaded %s (%d chip%s unavailable)", name, skipped, skipped > 1 ? "s" : "");
+    else snprintf(profileMsg, sizeof(profileMsg), "Loaded %s", name);
+    if (loadoutRow >= loadoutRows(m)) loadoutRow = 0;
+}
+
+static void saveProfile(Mech* m, int slot) {
+    firmwareSaveProfile(&m->fw, slot, NULL);
+    snprintf(profileMsg, sizeof(profileMsg), "Saved current chips to %s", m->fw.profiles[slot].name);
+}
+
 static void changeRow(Mech* m, int row, int dir) {
     if (row < ROW_WEAPON) cycleRefit(m, row - ROW_REFIT, dir);
     else if (row < ROW_SOCKET) cycleWeapon(m, row - ROW_WEAPON, dir);
@@ -89,6 +113,12 @@ static void updateLoadout(void) {
     if (DOWN_PRESSED) loadoutRow = (loadoutRow + 1) % rows;
     if (LEFT_PRESSED)  changeRow(m, loadoutRow, -1);
     if (RIGHT_PRESSED || confirmPressed()) changeRow(m, loadoutRow, +1);
+    int shift = IsKeyDown(KEY_LEFT_SHIFT) || IsKeyDown(KEY_RIGHT_SHIFT);
+    for (int p = 0; p < MAX_PROFILES; p++) {
+        if (IsKeyPressed(KEY_ONE + p)) { if (shift) saveProfile(m, p); else loadProfile(m, p); }
+        if (clickedOn(profileSaveRect(p))) { saveProfile(m, p); consumeInput(); }
+        else if (clickedOn(profileRect(p))) { loadProfile(m, p); consumeInput(); }
+    }
     for (int i = 0; i < rows; i++) {
         if (mouseMoved() && mouseOver(loadoutRowRect(i))) loadoutRow = i;
         if (clickedOn(arrowRect(i, 0))) { loadoutRow = i; changeRow(m, i, -1); consumeInput(); }
@@ -259,8 +289,13 @@ static void drawLoadout(void) {
         px + 14, fy + 20, 12, WHITE);
     DrawText(TextFormat("Instruction Sockets: %d", firmwareSockets(&m->fw)), px + 14, fy + 36, 12, WHITE);
     DrawText(TextFormat("Revision Data: %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)), px + 14, fy + 52, 12, WHITE);
+    DrawText(TextFormat("TRAIT  %s", traitDefs[m->fw.trait].name), px + 14, fy + 68, 10, (Color) { 255, 220, 120, 255 });
+    const char* branches = m->fw.numBranches == 0 ? "none (first at 2.0)" : "";
+    for (int i = 0; i < m->fw.numBranches; i++)
+        branches = TextFormat("%s%s%s", branches, i ? ", " : "", branchDefs[m->fw.branches[i]].name);
+    DrawText(TextFormat("BRANCH %s", branches), px + 14, fy + 81, 10, (Color) { 255, 220, 120, 255 });
 
-    int dy = fy + 80;
+    int dy = fy + 100;
     DrawLine(px + 10, dy - 8, px + 280, dy - 8, (Color) { 60, 100, 150, 200 });
     if (loadoutRow < ROW_WEAPON) {
         int mod = m->refit[loadoutRow - ROW_REFIT];
@@ -296,13 +331,27 @@ static void drawLoadout(void) {
         }
         DrawText("Chips owned / free:", px + 10, dy + 58, 10, (Color) { 150, 170, 190, 255 });
         int line = 0;
-        for (int k = 0; k < NUM_CHIPS && line < 6; k++) {
+        for (int k = 0; k < NUM_CHIPS && line < 5; k++) {
             if (chipOwned[k] == 0) continue;
             DrawText(TextFormat("%s  %d/%d", chipDefs[k].name, chipOwned[k], chipAvailable(k)),
                 px + 14, dy + 72 + line * 13, 10, (Color) { 170, 190, 210, 255 });
             line++;
         }
     }
+
+    DrawText("FIRMWARE PROFILES  [1-3] load  [SHIFT+1-3] save", 30, 506, 10, (Color) { 120, 160, 200, 255 });
+    for (int p = 0; p < MAX_PROFILES; p++) {
+        const FirmwareProfile* prof = &m->fw.profiles[p];
+        Rectangle r = profileRect(p);
+        int n = 0;
+        for (int k = 0; k < MAX_SOCKETS; k++) if (prof->chips[k] >= 0) n++;
+        DrawRectangleRec(r, mouseOver(r) ? (Color) { 40, 70, 110, 230 } : (Color) { 15, 25, 45, 220 });
+        DrawRectangleLinesEx(r, 1, prof->saved ? (Color) { 200, 170, 255, 255 } : (Color) { 60, 80, 110, 255 });
+        DrawText(TextFormat("%d %s", p + 1, prof->name), (int)r.x + 6, (int)r.y + 4, 10, prof->saved ? WHITE : (Color) { 110, 120, 140, 255 });
+        DrawText(prof->saved ? TextFormat("%d chips", n) : "empty", (int)r.x + 6, (int)r.y + 17, 10, (Color) { 150, 170, 190, 255 });
+        drawButton(profileSaveRect(p), "SAVE", 10, 0, 1);
+    }
+    if (profileMsg[0]) DrawText(profileMsg, 490, 548, 10, (Color) { 120, 255, 180, 255 });
 
     drawButton(closeButtonRect(), "BACK [E/ESC]", 16, 0, 1);
     DrawText("[W/S] Select   [A/D/CLICK] Change", 250, SCREEN_H - 34, 16, (Color) { 150, 220, 255, 220 });

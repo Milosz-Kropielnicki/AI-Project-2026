@@ -187,6 +187,7 @@ Mech createMech(MechClass cls, MechRole role, int chassis, const Refit* refit, i
         m.refit[s] = (mod >= 0 && mod < NUM_REFIT_MODULES && refitModules[mod].slot == (RefitSlot)s) ? mod : refitStandard[s];
     }
     firmwareInit(&m.fw, level);
+    m.fw.trait = rand() % NUM_TRAITS;
     firmwareAutoSpend(&m.fw);
     mechRepair(&m);
     return m;
@@ -202,11 +203,19 @@ Mech team[MAX_TEAM];
 int teamSize = 0;
 int activeTeamSlot = 0;
 
+// Starter: FW 1.0 with 2 sockets and two saved profiles, one loaded
 void rosterInit(void) {
     team[0] = mechCreateStock(MODEL_NOVA, 0);
-    strncpy(team[0].name, "NOVA-7", sizeof(team[0].name) - 1);
-    firmwareInstall(&team[0].fw, 0, CHIP_PREDICTIVE_TARGETING);
-    mechRepair(&team[0]);   // also picks up the chip's stat bonus
+    Mech* m = &team[0];
+    strncpy(m->name, "NOVA-7", sizeof(m->name) - 1);
+    m->fw.trait = TRAIT_ADAPTIVE;
+    firmwareInstall(&m->fw, 0, CHIP_HARDENED_KERNEL);
+    firmwareInstall(&m->fw, 1, CHIP_COUNTER_INTRUSION);
+    firmwareSaveProfile(&m->fw, 1, "HARDENED");
+    firmwareInstall(&m->fw, 0, CHIP_PREDICTIVE_TARGETING);
+    firmwareInstall(&m->fw, 1, CHIP_PRECISION_STRIKE);
+    firmwareSaveProfile(&m->fw, 0, "PRECISION");
+    mechRepair(m);   // also picks up the chips' stat bonuses
     teamSize = 1;
     activeTeamSlot = 0;
 }
@@ -218,6 +227,23 @@ int rosterAdd(const Mech* m) {
 }
 
 Mech* rosterActive(void) { return &team[activeTeamSlot]; }
+
+// Swap the installed chips for a saved profile (outside combat). Chips that are
+// no longer owned, fitted elsewhere, or over sockets/capacity are skipped.
+int mechLoadProfile(Mech* m, int slot) {
+    if (slot < 0 || slot >= MAX_PROFILES || !m->fw.profiles[slot].saved) return -1;
+    const FirmwareProfile* p = &m->fw.profiles[slot];
+    for (int s = 0; s < MAX_SOCKETS; s++) firmwareInstall(&m->fw, s, -1);
+    int skipped = 0;
+    for (int s = 0; s < MAX_SOCKETS; s++) {
+        int c = p->chips[s];
+        if (c < 0) continue;
+        if (chipAvailable(c) > 0 && firmwareCanInstall(&m->fw, s, c)) firmwareInstall(&m->fw, s, c);
+        else skipped++;
+    }
+    mechRefreshStats(m);
+    return skipped;
+}
 
 int chipAvailable(int chip) {
     int used = 0;

@@ -577,8 +577,14 @@ static void drawReactor(const AttackPreview* p) {
         drawEnergyPip(x0 + i * spacing, 64, r, state, i);
     }
     DrawText(TextFormat("ROUND %d", battle.round), 340, 106, 14, (Color) { 150, 220, 255, 255 });
-    if (battle.player.actionsThisTurn == 0 && firmwareChipTotal(&battle.player.mech->fw, CFX_FIRST_ACTION_FREE) > 0)
+    if (battle.player.actionsThisTurn == 0 && firmwareEffect(&battle.player.mech->fw, CFX_FIRST_ACTION_FREE) > 0)
         DrawText("FIRST ACTION FREE", 420, 108, 10, (Color) { 120, 255, 180, 255 });
+    const Firmware* fw = &battle.player.mech->fw;
+    int corrupted = 0;
+    for (int k = 0; k < MAX_SOCKETS; k++) if (fw->chips[k] >= 0 && fw->corrupt[k] > 0) corrupted++;
+    if (corrupted > 0)
+        DrawText(TextFormat("FIRMWARE CORRUPTED: %d CHIP%s OFFLINE", corrupted, corrupted > 1 ? "S" : ""), 340, 122, 10,
+            (Color) { 255, 110, 90, 255 });
 }
 
 static void drawWeaponButton(int i) {
@@ -720,7 +726,7 @@ void uiBattleDraw(void) {
 }
 
 // ============ FIRMWARE REVISION SCREEN ============
-static int revFrom = 0, revTo = 0, optSel = 0;
+static int revFrom = 0, revTo = 0, optSel = 0, branchSel = 0;
 static float revTimer = 0;
 
 static Rectangle optionRect(int i) {
@@ -732,6 +738,7 @@ void uiRevisionOpen(void) {
     revFrom = battle.oldRevision;
     revTo = rosterActive()->fw.revision;
     optSel = 0;
+    branchSel = 0;
     revTimer = 0;
 }
 
@@ -758,6 +765,23 @@ void uiRevisionUpdate(float dt, GameState* state) {
         if (activate) {
             consumeInput();
             firmwareSpendOptimization(&m->fw, optSel);
+            mechRefreshStats(m);
+        }
+        return;
+    }
+    if (firmwareBranchesPending(&m->fw) > 0) {   // major revision: choose a Firmware Branch
+        if (RIGHT_PRESSED) branchSel = (branchSel + 1) % NUM_BRANCHES;
+        if (LEFT_PRESSED)  branchSel = (branchSel + NUM_BRANCHES - 1) % NUM_BRANCHES;
+        if (DOWN_PRESSED)  branchSel = (branchSel + 3) % NUM_BRANCHES;
+        if (UP_PRESSED)    branchSel = (branchSel + NUM_BRANCHES - 3) % NUM_BRANCHES;
+        int activate = confirmPressed();
+        for (int i = 0; i < NUM_BRANCHES; i++) {
+            if (mouseMoved() && mouseOver(optionRect(i))) branchSel = i;
+            if (clickedOn(optionRect(i))) { branchSel = i; activate = 1; }
+        }
+        if (activate && !firmwareHasBranch(&m->fw, branchSel)) {
+            consumeInput();
+            firmwarePickBranch(&m->fw, branchSel);
             mechRefreshStats(m);
         }
         return;
@@ -806,6 +830,13 @@ void uiRevisionDraw(void) {
             drawButton(optionRect(i), TextFormat("+%d %s", o->amount, statName(o->stat)), 16, i == optSel, 1);
         }
         drawTextCentered("[WASD/ARROWS] Select   [Z/ENTER/CLICK] Install", SCREEN_H - 30, 16, (Color) { 100, 240, 255, 255 });
+    }
+    else if (firmwareBranchesPending(&m->fw) > 0) {
+        drawTextCentered("MAJOR REVISION  -  choose a Firmware Branch", 400, 18, (Color) { 255, 220, 120, 255 });
+        for (int i = 0; i < NUM_BRANCHES; i++)
+            drawButton(optionRect(i), branchDefs[i].name, 14, i == branchSel, !firmwareHasBranch(&m->fw, i));
+        drawTextCentered(branchDefs[branchSel].desc, 530, 14, (Color) { 200, 220, 240, 255 });
+        drawTextCentered("[WASD/ARROWS] Select   [Z/ENTER/CLICK] Compile branch", SCREEN_H - 30, 16, (Color) { 100, 240, 255, 255 });
     }
     else if (revTimer > 0.4f)
         drawTextCentered("[Z/CLICK] to continue", SCREEN_H - 40, 20, (Color) { 100, 240, 255, 255 });
