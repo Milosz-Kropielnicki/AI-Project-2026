@@ -19,7 +19,11 @@
 #define MAX_REVISION 29         // 5.5
 #define MAX_MAJORS (MAX_REVISION / REVISION_STEPS)   // 2.0, 3.0, 4.0, 5.0
 #define MAX_PROFILES 3
-#define CORRUPT_TURNS 2         // a corrupted chip stays offline through the victim's next turn
+#define CORRUPT_TURNS 2         // a corrupted chip stays affected through the victim's next turn
+
+// Chip-level Firmware Corruption (design doc 7.19). Energy-cost and targeting
+// corruption live on the battle Combatant instead.
+typedef enum { CORRUPT_DISABLED, CORRUPT_REVERSED } CorruptKind;
 
 typedef enum {
     UNLOCK_BASE,            // 1.0  basic firmware
@@ -63,6 +67,7 @@ typedef enum {
     // prototype / black box
     CFX_OVERCHARGE,         // Energy munitions deal +value (fraction) damage and +50% Heat
     CFX_RECURSIVE_TARGETING,// every miss: +value Accuracy for the rest of the battle
+    CFX_DEAD_MAN,           // on reaching 0 Integrity: one final attack, free of Energy and Heat
     // branches and traits
     CFX_EXECUTE,            // +value (fraction) damage vs targets below 50% Integrity
     CFX_PEN_BONUS,          // +value Armor Penetration on every attack
@@ -92,7 +97,7 @@ enum {
     CHIP_ARMOR_ANALYSIS, CHIP_ARMOR_BREACH, CHIP_PRECISION_STRIKE, CHIP_EMERGENCY_EVASION,
     CHIP_EVASIVE_MANEUVER, CHIP_EMERGENCY_POWER, CHIP_COUNTER_INTRUSION, CHIP_TARGETING_SPOOF,
     CHIP_SYSTEM_RECOVERY, CHIP_LAST_STAND, CHIP_EMERGENCY_REPAIR, CHIP_COOLANT_DUMP, CHIP_OVERCHARGE,
-    CHIP_RECURSIVE_TARGETING,
+    CHIP_RECURSIVE_TARGETING, CHIP_DEAD_MAN,
     NUM_CHIPS
 };
 extern const ChipDef chipDefs[NUM_CHIPS];     // data_chips.c
@@ -131,6 +136,7 @@ typedef struct {
     int optPicks[NUM_OPTIMIZATIONS];    // times each optimization was taken
     int chips[MAX_SOCKETS];             // chip index per socket, -1 = empty
     int corrupt[MAX_SOCKETS];           // turns a socket stays corrupted (battle only)
+    int corruptKind[MAX_SOCKETS];       // CorruptKind
     int trait;                          // TRAIT_*
     int branches[MAX_MAJORS];           // BRANCH_* in pick order
     int numBranches;
@@ -163,12 +169,13 @@ float firmwareStatBonus(const Firmware* fw, StatId s);  // revision + optimizati
 int firmwareCanInstall(const Firmware* fw, int socket, int chip);  // capacity check
 void firmwareInstall(Firmware* fw, int socket, int chip);          // chip -1 = remove
 int firmwareChipActive(const Firmware* fw, int socket);    // installed, within sockets, not corrupted
-float firmwareEffect(const Firmware* fw, ChipEffect e);   // active chips + trait + branches
+int firmwareChipSign(const Firmware* fw, int socket);      // +1 working, -1 reversed, 0 offline / empty
+float firmwareEffect(const Firmware* fw, ChipEffect e);   // chips (reversed ones negated) + trait + branches
 float firmwareChipStat(const Firmware* fw, StatId s);
 int firmwareInstalledCount(const Firmware* fw);
 
 // ---- corruption (battle only) ----
-int firmwareCorruptRandom(Firmware* fw);         // corrupts an active chip, returns its chip index or -1
+int firmwareCorruptRandom(Firmware* fw, CorruptKind kind);   // hits an active chip, returns its index or -1
 void firmwareCorruptionTick(Firmware* fw);       // start of the victim's turn
 void firmwareClearCorruption(Firmware* fw);
 

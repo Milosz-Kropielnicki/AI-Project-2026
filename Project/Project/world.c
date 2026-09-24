@@ -123,42 +123,56 @@ static void initTrainers(void) {
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
         "Try the east route to reach Sector Beta.",
-        0, 0, { MODEL_WISP }, { 1 }, 1, 0
+        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
         "SCOUT DANE", "IRON LEGION", 22, 8, ZONE_ALPHA, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Beta's got tougher pilots.",
-        0, 0, { MODEL_HOUND }, { 1 }, 1, 0
+        0, 0, { ARCH_PROWLER }, { 1 }, 1, 0
     };
     trainers[2] = (Trainer){
         "COMMANDER VOLK", "IRON LEGION", 25, 18, ZONE_BETA, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "You've earned my respect, pilot.",
-        1, 0, { MODEL_BULWARK, MODEL_RAZOR }, { 3, 3 }, 2, 0
+        1, 0, { ARCH_BRAWLER, ARCH_BERSERKER }, { 3, 3 }, 2, 0
     };
     trainers[3] = (Trainer){
         "ENGINEER KESS", "IRON LEGION", 8, 22, ZONE_BETA, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "Gamma is the final frontier.",
-        1, 0, { MODEL_STATIC, MODEL_LONGBOW }, { 3, 3 }, 2, 0
+        1, 0, { ARCH_JAMMER, ARCH_SNIPER }, { 3, 3 }, 2, 0
     };
+<<<<<<< HEAD
+=======
+
+    // Zone Gamma - elite tier (Gamma's plasma lake covers rows 3-11 at x 26-35)
+>>>>>>> 0b0400e7fa8c48aacdc3122dd1bfc51da8893065
     trainers[4] = (Trainer){
         "WARDEN KRUX", "IRON LEGION", 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        2, 0, { MODEL_HAVOC, MODEL_BULWARK, MODEL_OBLIVION }, { 5, 5, 7 }, 3, 0
+        2, 0, { ARCH_BOMBARD, ARCH_BRAWLER, ARCH_ORDNANCE }, { 5, 5, 7 }, 3, 0
     };
     trainers[5] = (Trainer){
-        "GHOST ECHO", "IRON LEGION", 30, 8, ZONE_GAMMA, 0, { 200, 100, 255, 255 },
+        "GHOST ECHO", "IRON LEGION", 30, 12, ZONE_GAMMA, 0, { 200, 100, 255, 255 },
         "You cannot hit what you cannot see.",
         "Even my stealth... failed.",
         "Krux awaits at the center.",
-        2, 0, { MODEL_WISP, MODEL_RAZOR, MODEL_HAVOC }, { 5, 6, 6 }, 3, 0
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD }, { 5, 6, 6 }, 3, 0
+    };
+
+    // Gamma boss: the machine itself. Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
+    trainers[6] = (Trainer){
+        "FACTORY OVERSEER", "BLACK BOX", 32, 24, ZONE_GAMMA, 0, { 200, 60, 255, 255 },
+        "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
+        "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
+        "...the Overseer's chassis sits silent.",
+        3, 0, { ARCH_OVERSEER }, { 12 }, 1, 0
     };
 }
 

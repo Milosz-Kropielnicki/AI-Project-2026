@@ -99,7 +99,7 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->integrityDamage = out->split.integrityDamage;
 
     // Resources and scramble
-    out->energyCost = weaponCost(attacker, w, ctx->firstAction);
+    out->energyCost = weaponCost(attacker, w, ctx->firstAction) + ctx->energyTax;
     out->energyBefore = atk->energy;
     out->heat = weaponHeat(attacker, w);
     out->heatBefore = atk->heat;
@@ -119,7 +119,43 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     c.firstAction = 1;
     c.firstHitOnTarget = 1;
     c.targetLastMunition = -1;
+    c.energyTax = 0;
+    c.targetScrambled = 0;
     return c;
+}
+
+// ============ ENEMY AI ============
+float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
+                    const AttackContext* ctx, const AIProfile* ai) {
+    AttackPreview p;
+    attackPreview(attacker, w, target, ctx, &p);
+    const MechStats* as = &attacker->stats;
+    const MechStats* ds = &target->stats;
+
+    // Armor vs penetration: stripping Armor is worth less than Integrity damage
+    float value = ai->damage * (p.armorDamage * ai->armorBias + p.integrityDamage) * p.hitChance;
+    if (p.integrityDamage >= ds->integrity) value += ai->finisher * 40.0f * p.hitChance;
+
+    // Stability: a scramble is only worth what gets past the target's resistance,
+    // corruption scales with the chips it can hit, and stacking more effects on
+    // an already-scrambled target is worth progressively less.
+    if (p.scramble > 0) {
+        int chips = 0;
+        for (int i = 0; i < MAX_SOCKETS; i++) if (firmwareChipSign(&target->fw, i) > 0) chips++;
+        float payload = w->virus ? 10.0f + 5.0f * chips
+            : p.scramble >= 100 ? 30.0f : p.scramble >= 70 ? 18.0f : p.scramble >= 40 ? 12.0f : 6.0f;
+        float weight = ai->scramble * (as->integrity < as->maxIntegrity * 0.5f ? ai->desperation : 1.0f);
+        float stacked = 1.0f + ctx->targetScrambled;
+        value += weight * payload * p.hitChance * (1.0f - p.resist) / (stacked * stacked);
+    }
+
+    // Energy: value per point spent (a free action counts as half a point)
+    value /= p.energyCost > 0 ? (float)p.energyCost : 0.5f;
+
+    // Heat: past half capacity (after next turn's cooling), cautious machines back off
+    float after = (float)(as->heat + p.heat - as->cooling) / (float)(as->maxHeat > 0 ? as->maxHeat : 1);
+    if (after > 0.5f) value *= 1.0f - ai->heatCaution * clampf((after - 0.5f) / 0.5f, 0, 1);
+    return value;
 }
 
 // Hacking (capture): easier on damaged, common, low-Stability machines
@@ -171,6 +207,10 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     ctx.firstAction = a->actionsThisTurn == 0;
     ctx.firstHitOnTarget = !d->hitTaken;
     ctx.targetLastMunition = d->lastMunitionTaken;
+    ctx.energyTax = a->energyTax;
+    ctx.targetScrambled = 3 * d->nextSkipTurn + (d->nextDisabledWeapon >= 0) + (d->nextAccPenalty > 0) + d->nextEnergyLoss
+        + d->nextEnergyTax + d->nextRandomTargeting;
+    for (int i = 0; i < MAX_SOCKETS; i++) if (d->mech->fw.corrupt[i] > 0) ctx.targetScrambled++;
     return ctx;
 }
 
@@ -181,7 +221,7 @@ static int canFire(const Combatant* c, int mount, const char** reason) {
     if (!w) r = "EMPTY MOUNT";
     else if (mount == c->disabledWeapon) r = "WEAPON SCRAMBLED";
     else if (w->ammo > 0 && c->mech->weapons[mount].ammo <= 0) r = "NO AMMO";
-    else if (weaponCost(c->mech, w, c->actionsThisTurn == 0) > s->energy) r = "INSUFFICIENT ENERGY";
+    else if (weaponCost(c->mech, w, c->actionsThisTurn == 0) + c->energyTax > s->energy) r = "INSUFFICIENT ENERGY";
     else if (s->heat + weaponHeat(c->mech, w) > s->maxHeat) r = "THERMAL LIMIT";
     if (reason) *reason = r;
     return r == NULL;
@@ -192,12 +232,39 @@ static int anyFireable(const Combatant* c) {
     return 0;
 }
 
+// Best-scoring weapon for this side, -1 if none. ignoreResources skips the
+// Energy / Heat / scramble checks (Dead-Man Protocol's free final shot).
+static int aiChooseMount(const Combatant* a, const Combatant* d, int ignoreResources, float* bestScore) {
+    int best = -1;
+    float bestValue = -1;
+    AttackContext ctx = liveContext(a, d);
+    for (int i = 0; i < MAX_WEAPONS; i++) {
+        const Weapon* w = mechWeapon(a->mech, i);
+        if (!w) continue;
+        if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
+        float v = aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai);
+        if (v > bestValue) { bestValue = v; best = i; }
+    }
+    if (bestScore) *bestScore = bestValue;
+    return best;
+}
+
+// Random-targeting corruption: each attack has a 50% chance to fire a random
+// usable weapon instead of the chosen one.
+static int corruptedMount(const Combatant* c, int mount) {
+    if (!c->randomTargeting || rand() % 2) return mount;
+    int mounts[MAX_WEAPONS], n = 0;
+    for (int i = 0; i < MAX_WEAPONS; i++) if (canFire(c, i, NULL)) mounts[n++] = i;
+    return n > 0 ? mounts[rand() % n] : mount;
+}
+
 static void initCombatant(Combatant* c, Mech* m) {
     memset(c, 0, sizeof(*c));
     c->mech = m;
     c->disabledWeapon = -1;
     c->nextDisabledWeapon = -1;
     c->lastMunitionTaken = -1;
+    c->ai = &aiDefault;
     firmwareClearCorruption(&m->fw);
     mechRefreshStats(m);
     m->stats.heat = 0;
@@ -235,7 +302,11 @@ static const char* turnStart(Combatant* c) {
     c->accPenalty = c->nextAccPenalty;
     c->disabledWeapon = c->nextDisabledWeapon;
     c->skipTurn = c->nextSkipTurn;
-    c->nextEnergyLoss = c->nextAccPenalty = c->nextSkipTurn = 0;
+    if (c->skipTurn) c->skipImmune = 2;          // no stun-lock: two normal turns before the next loss
+    else if (c->skipImmune > 0) c->skipImmune--;
+    c->energyTax = c->nextEnergyTax;
+    c->randomTargeting = c->nextRandomTargeting;
+    c->nextEnergyLoss = c->nextAccPenalty = c->nextSkipTurn = c->nextEnergyTax = c->nextRandomTargeting = 0;
     c->nextDisabledWeapon = -1;
     c->evasiveBonus = 0;
     c->actionsThisTurn = 0;
@@ -290,18 +361,34 @@ int battlePreviewPlayer(int mount, AttackPreview* out) {
     return 1;
 }
 
-// Scramble outcome depends on strength (design doc 4.6); it hits the victim's
-// next turn. From strength 40 up, half the time it corrupts an installed chip
-// instead (design doc 7.19).
-static const char* applyScramble(Combatant* d, int strength) {
-    if (strength >= 100) { d->nextSkipTurn = 1; return "TURN LOST"; }
-    if (strength >= 40 && rand() % 2 == 0) {
-        int chip = firmwareCorruptRandom(&d->mech->fw);
-        if (chip >= 0) {
+// Firmware Corruption (design doc 7.19), one of four at random. The chip ones
+// need an active chip and fall through to the others when there is none.
+static const char* applyCorruption(Combatant* d) {
+    int order[4] = { 0, 1, 2, 3 };
+    for (int i = 3; i > 0; i--) { int j = rand() % (i + 1), t = order[i]; order[i] = order[j]; order[j] = t; }
+    for (int i = 0; i < 4; i++) {
+        switch (order[i]) {
+        case 0: case 1: {
+            CorruptKind kind = order[i] == 0 ? CORRUPT_DISABLED : CORRUPT_REVERSED;
+            int chip = firmwareCorruptRandom(&d->mech->fw, kind);
+            if (chip < 0) continue;
             mechRefreshStats(d->mech);
-            return TextFormat("FIRMWARE CORRUPTED (%s)", chipDefs[chip].name);
+            return TextFormat(kind == CORRUPT_DISABLED ? "CHIP OFFLINE (%s)" : "INSTRUCTIONS REVERSED (%s)", chipDefs[chip].name);
+        }
+        case 2: d->nextEnergyTax = 1; return "ENERGY COSTS +1";
+        default: d->nextRandomTargeting = 1; return "TARGETING RANDOMIZED";
         }
     }
+    return "ENERGY COSTS +1";
+}
+
+// Scramble outcome depends on strength (design doc 4.6); it hits the victim's
+// next turn. Virus weapons always corrupt firmware; other scrambles of strength
+// 40+ do so half the time.
+static const char* applyScramble(Combatant* d, int strength, int virus) {
+    if (virus) return TextFormat("CORRUPTION: %s", applyCorruption(d));
+    if (strength >= 100 && d->skipImmune <= 0) { d->nextSkipTurn = 1; return "TURN LOST"; }
+    if (strength >= 40 && rand() % 2 == 0) return TextFormat("CORRUPTION: %s", applyCorruption(d));
     if (strength >= 70) {
         int mounts[MAX_WEAPONS], n = 0;
         for (int i = 0; i < MAX_WEAPONS; i++) if (d->mech->weapons[i].weapon >= 0) mounts[n++] = i;
@@ -312,7 +399,8 @@ static const char* applyScramble(Combatant* d, int strength) {
     return "ENERGY -1";
 }
 
-static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
+// prefix, if set, is prepended to the log line (Dead-Man, corrupted targeting)
+static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer, const char* prefix) {
     const Weapon* w = mechWeapon(a->mech, mount);
     AttackContext ctx = liveContext(a, d);
     AttackPreview p;
@@ -346,7 +434,7 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
                 ds->integrity = clampi(ds->integrity + heal, 0, ds->maxIntegrity);
                 snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
             }
-            else snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p.scramble));
+            else snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p.scramble, w->virus));
         }
         if (total > 0)
             snprintf(battle.log, sizeof(battle.log), "%s fired %s! %d DMG (%d ARM / %d INT).%s",
@@ -360,6 +448,11 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer) {
         if (fwEffect(a->mech, CFX_RECURSIVE_TARGETING) > 0) a->missStacks++;
     }
 
+    if (prefix) {
+        char line[sizeof(battle.log)];
+        snprintf(line, sizeof(line), "%s%s", prefix, battle.log);
+        memcpy(battle.log, line, sizeof(line));
+    }
     a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
     pushEvent(w->fx, isPlayer, total, hit, munitionColor(w->munition));
     battle.animTimer = fxDuration(w->fx);
@@ -400,18 +493,16 @@ static void beginPlayerTurn(void) {
     }
 }
 
-static int enemyChooseWeapon(void) {
-    int choices[MAX_WEAPONS], n = 0;
-    for (int i = 0; i < MAX_WEAPONS; i++) if (canFire(&battle.enemy, i, NULL)) choices[n++] = i;
-    if (n == 0) return -1;
-    int pick = choices[rand() % n];
-    // Lean toward heavier weapons while energy allows
-    for (int i = 0; i < n; i++)
-        if (mechWeapon(battle.enemy.mech, choices[i])->energyCost >= 2 && rand() % 2 == 0) { pick = choices[i]; break; }
-    return pick;
+// ============ START ============
+static const AIProfile* enemyAI(void) {
+    return battle.enemyArchetype >= 0 ? &archetypes[battle.enemyArchetype].ai : &aiDefault;
 }
 
-// ============ START ============
+static void spawnArchetype(int archetype, int level) {
+    battle.enemyMech = archetypeBuild(archetype, level);
+    battle.enemyArchetype = archetype;
+}
+
 static void beginBattle(void) {
     battle.phase = BP_PLAYER_TURN;
     battle.dialogue = DLG_NONE;
@@ -427,6 +518,7 @@ static void beginBattle(void) {
     battle.oldRevision = rosterActive()->fw.revision;
     initCombatant(&battle.player, rosterActive());
     initCombatant(&battle.enemy, &battle.enemyMech);
+    battle.enemy.ai = enemyAI();
     beginPlayerTurn();
 }
 
@@ -443,8 +535,12 @@ void battleStartWild(void) {
         pick -= weights[i];
     }
     battle.trainer = -1;
-    battle.enemyMech = mechCreateStock(model, rand() % 4);
-    equipEnemyChips(&battle.enemyMech);
+    if (rand() % 10 < 7) spawnArchetype(rand() % NUM_WILD_ARCHETYPES, rand() % 4);
+    else {   // a stock chassis running random chips
+        battle.enemyMech = mechCreateStock(model, rand() % 4);
+        battle.enemyArchetype = -1;
+        equipEnemyChips(&battle.enemyMech);
+    }
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "HOSTILE %s detected! Reactor online (%d energy).",
         battle.enemyMech.name, battle.player.mech->stats.energy);
@@ -455,8 +551,7 @@ void battleStartTrainer(int trainerIdx) {
     Trainer* t = &trainers[trainerIdx];
     t->numDefeated = 0;
     battle.trainer = trainerIdx;
-    battle.enemyMech = mechCreateStock(t->teamModels[0], t->teamRevisions[0]);
-    equipEnemyChips(&battle.enemyMech);
+    spawnArchetype(t->teamArchetypes[0], t->teamRevisions[0]);
     beginBattle();
     snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (1/%d)", t->name, battle.enemyMech.name, t->numMechs);
     battle.dialogue = DLG_INTRO;
@@ -465,6 +560,7 @@ void battleStartTrainer(int trainerIdx) {
 
 void battleResetDummy(void) {
     battle.enemyMech = mechCreateStock(MODEL_DUMMY, 0);
+    battle.enemyArchetype = -1;
     snprintf(battle.enemyMech.name, sizeof(battle.enemyMech.name), "TARGET DUMMY");
     initCombatant(&battle.enemy, &battle.enemyMech);
 }
@@ -505,9 +601,9 @@ static void enemyScrapped(void) {
         t->numDefeated++;
         awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
         if (t->numDefeated < t->numMechs) {
-            battle.enemyMech = mechCreateStock(t->teamModels[t->numDefeated], t->teamRevisions[t->numDefeated]);
-            equipEnemyChips(&battle.enemyMech);
+            spawnArchetype(t->teamArchetypes[t->numDefeated], t->teamRevisions[t->numDefeated]);
             initCombatant(&battle.enemy, &battle.enemyMech);
+            battle.enemy.ai = enemyAI();
             battle.round = 0;
             beginPlayerTurn();
             snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (%d/%d)",
@@ -532,16 +628,35 @@ static void enemyScrapped(void) {
     }
 }
 
-// Returns 1 if the battle state changed because a mech went down
+// Dead-Man Protocol: a machine reduced to 0 Integrity fires one last shot,
+// its best weapon, free of Energy and Heat.
+static int tryDeadMan(Combatant* c, Combatant* target, int isPlayer) {
+    MechStats* s = &c->mech->stats;
+    if (s->integrity > 0 || c->deadManUsed || target->mech->stats.integrity <= 0) return 0;
+    if (fwEffect(c->mech, CFX_DEAD_MAN) <= 0) return 0;
+    c->deadManUsed = 1;
+    int mount = aiChooseMount(c, target, 1, NULL);
+    if (mount < 0) return 0;
+    int energy = s->energy, heat = s->heat;
+    doAttack(c, target, mount, isPlayer, "DEAD-MAN PROTOCOL! ");
+    s->energy = energy;
+    s->heat = heat;
+    return 1;
+}
+
+// Returns 1 if the battle state changed because a mech went down. Dead-Man
+// shots resolve first; if both machines end at 0, the player loses.
 static int checkOutcome(void) {
     battle.outcomePending = 0;
-    if (battle.enemyMech.stats.integrity <= 0) { enemyScrapped(); return 1; }
+    if (tryDeadMan(&battle.enemy, &battle.player, 0)) return 1;
+    if (tryDeadMan(&battle.player, &battle.enemy, 1)) return 1;
     if (battle.player.mech->stats.integrity <= 0) {
         if (!battle.testRange) awardData(revisionDataForParticipation(&battle.enemyMech));
         battle.phase = BP_DEFEAT;
         snprintf(battle.log, sizeof(battle.log), "%s DISABLED!", battle.player.mech->name);
         return 1;
     }
+    if (battle.enemyMech.stats.integrity <= 0) { enemyScrapped(); return 1; }
     return 0;
 }
 
@@ -574,8 +689,13 @@ void battleUpdate(float dt) {
         }
     }
     else if (battle.phase == BP_ENEMY_TURN) {
-        int mount = enemyChooseWeapon();
-        if (mount >= 0) doAttack(&battle.enemy, &battle.player, mount, 0);
+        float score;
+        int mount = aiChooseMount(&battle.enemy, &battle.player, 0, &score);
+        if (mount >= 0 && battle.enemy.actionsThisTurn > 0 && score < AI_HOLD_SCORE) mount = -1;   // hold fire
+        if (mount >= 0) {
+            int fired = corruptedMount(&battle.enemy, mount);
+            doAttack(&battle.enemy, &battle.player, fired, 0, fired != mount ? "TARGETING CORRUPTED! " : NULL);
+        }
         else beginPlayerTurn();
     }
 }
@@ -590,7 +710,13 @@ int battleCanFire(int mount, const char** reason) {
 
 void battleFire(int mount) {
     if (!battleCanFire(mount, NULL)) return;
-    doAttack(&battle.player, &battle.enemy, mount, 1);
+    int fired = corruptedMount(&battle.player, mount);
+    doAttack(&battle.player, &battle.enemy, fired, 1, fired != mount ? "TARGETING CORRUPTED! " : NULL);
+}
+
+int battleAIChooseForPlayer(void) {
+    if (battle.phase != BP_PLAYER_TURN || battleBusy()) return -1;
+    return aiChooseMount(&battle.player, &battle.enemy, 0, NULL);
 }
 
 void battleEndTurn(void) {

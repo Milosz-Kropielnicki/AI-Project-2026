@@ -112,7 +112,7 @@ void mechRefreshStats(Mech* m) {
     mechStatBreakdown(m, &b);
     const float* v = b.final.v;
     MechStats* s = &m->stats;
-    s->maxIntegrity = (int)v[STAT_INTEGRITY];
+    s->maxIntegrity = (int)v[STAT_INTEGRITY] * (m->boss ? 2 : 1);
     s->maxArmor = (int)v[STAT_ARMOR];
     s->power = v[STAT_POWER];
     s->mobility = (int)v[STAT_MOBILITY];
@@ -196,6 +196,32 @@ Mech createMech(MechClass cls, MechRole role, int chassis, const Refit* refit, i
 Mech mechCreateStock(int chassis, int level) {
     MechRole role = mechModels[chassis].role;
     return createMech(roleClass(role), role, chassis, NULL, level);
+}
+
+// ============ ENEMY ARCHETYPES ============
+Mech archetypeBuild(int archetype, int level) {
+    const EnemyArchetype* a = &archetypes[archetype];
+    Mech m = createMech(a->cls, a->role, a->chassis, &a->refit, level);
+    if (a->boss) {
+        snprintf(m.name, sizeof(m.name), "%s", a->name);
+        m.boss = 1;
+    }
+    Firmware* fw = &m.fw;
+    fw->trait = a->trait;
+    fw->numBranches = 0;   // replace createMech's random picks with the archetype's
+    for (int i = 0; i < a->numBranches; i++) firmwarePickBranch(fw, a->branches[i]);
+    firmwareAutoSpend(fw);
+    if (a->boss)   // bosses break the rules: every mount fits at full rating
+        for (int i = 0; i < MAX_WEAPONS; i++)
+            if (m.weapons[i].weapon >= 0) {
+                m.weapons[i].rating = 5;
+                m.weapons[i].fitted = weaponFit(m.weapons[i].weapon, 5);
+            }
+    int socket = 0;
+    for (int i = 0; i < a->numChips && socket < firmwareSockets(fw); i++)
+        if (a->boss || firmwareCanInstall(fw, socket, a->chips[i])) firmwareInstall(fw, socket++, a->chips[i]);
+    mechRepair(&m);
+    return m;
 }
 
 // ============ ROSTER ============

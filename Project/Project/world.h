@@ -58,13 +58,17 @@ typedef struct {
     const char* postLine;
     int tier;
     int defeated;
-    int teamModels[MAX_TEAM];
-    int teamRevisions[MAX_TEAM];
+    int teamArchetypes[MAX_TEAM];  // index into archetypes[]
+    int teamRevisions[MAX_TEAM];   // firmware revision step
     int numMechs;
     int numDefeated;
 } Trainer;
 
+<<<<<<< HEAD
 #define NUM_TRAINERS 6
+=======
+#define NUM_TRAINERS 7                 // 2 per zone, plus the Gamma boss
+>>>>>>> 0b0400e7fa8c48aacdc3122dd1bfc51da8893065
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);

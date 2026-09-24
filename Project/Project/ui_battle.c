@@ -522,7 +522,9 @@ static void drawEnemyHud(const AttackPreview* p) {
     }
     DrawText(m->name, 30, 38, 22, (Color) { 255, 210, 210, 255 });
     DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), 250, 40, 18, WHITE);
-    DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleName(mechRole(m))),
+    const char* arch = battle.enemyArchetype >= 0 ? TextFormat("  [%s%s]", archetypes[battle.enemyArchetype].boss ? "BOSS " : "",
+        archetypes[battle.enemyArchetype].name) : "";
+    DrawText(TextFormat("%s %s - %s%s", model->designation, model->name, roleName(mechRole(m)), arch),
         30, 60, 11, (Color) { 200, 200, 240, 255 });
     drawIntegrityBar(30, 76, 280, 10, s->integrity, s->maxIntegrity);
     drawArmorBar(30, 102, 280, 8, s->armor, s->maxArmor);
@@ -579,12 +581,19 @@ static void drawReactor(const AttackPreview* p) {
     DrawText(TextFormat("ROUND %d", battle.round), 340, 106, 14, (Color) { 150, 220, 255, 255 });
     if (battle.player.actionsThisTurn == 0 && firmwareEffect(&battle.player.mech->fw, CFX_FIRST_ACTION_FREE) > 0)
         DrawText("FIRST ACTION FREE", 420, 108, 10, (Color) { 120, 255, 180, 255 });
+    // Active Firmware Corruption on the player
     const Firmware* fw = &battle.player.mech->fw;
-    int corrupted = 0;
-    for (int k = 0; k < MAX_SOCKETS; k++) if (fw->chips[k] >= 0 && fw->corrupt[k] > 0) corrupted++;
-    if (corrupted > 0)
-        DrawText(TextFormat("FIRMWARE CORRUPTED: %d CHIP%s OFFLINE", corrupted, corrupted > 1 ? "S" : ""), 340, 122, 10,
-            (Color) { 255, 110, 90, 255 });
+    int offline = 0, reversed = 0;
+    for (int k = 0; k < MAX_SOCKETS; k++) {
+        if (fw->chips[k] < 0 || fw->corrupt[k] <= 0) continue;
+        if (fw->corruptKind[k] == CORRUPT_REVERSED) reversed++; else offline++;
+    }
+    const char* corrupt = "";
+    if (offline) corrupt = TextFormat("%s%d OFFLINE ", corrupt, offline);
+    if (reversed) corrupt = TextFormat("%s%d REVERSED ", corrupt, reversed);
+    if (battle.player.energyTax) corrupt = TextFormat("%sEN COST +%d ", corrupt, battle.player.energyTax);
+    if (battle.player.randomTargeting) corrupt = TextFormat("%sRANDOM TARGETING", corrupt);
+    if (corrupt[0]) DrawText(TextFormat("CORRUPTED: %s", corrupt), 340, 122, 10, (Color) { 255, 110, 90, 255 });
 }
 
 static void drawWeaponButton(int i) {

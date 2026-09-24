@@ -173,8 +173,9 @@ static void drawFirmware(const Mech* m, int x, int y) {
     for (int s = 0; s < firmwareSockets(fw) && line < 2; s++) {
         int c = fw->chips[s];
         if (c < 0) continue;
-        text(TextFormat("[%d] %s (%d) = %g%s", s + 1, chipDefs[c].name, chipDefs[c].cost, chipDefs[c].value,
-            fw->corrupt[s] > 0 ? "  CORRUPTED" : ""), x, y + 53 + line * 13, 10, fw->corrupt[s] > 0 ? colBad : colText);
+        const char* state = fw->corrupt[s] <= 0 ? "" : fw->corruptKind[s] == CORRUPT_REVERSED ? "  REVERSED" : "  OFFLINE";
+        text(TextFormat("[%d] %s (%d) = %g%s", s + 1, chipDefs[c].name, chipDefs[c].cost, chipDefs[c].value, state),
+            x, y + 53 + line * 13, 10, fw->corrupt[s] > 0 ? colBad : colText);
         line++;
     }
     if (line == 0) text("no chips installed", x, y + 53, 10, colDim);
@@ -194,8 +195,8 @@ static void drawAttack(const Mech* a, int mount, const Mech* d, int x, int y) {
     text(TextFormat("[%d] %s  %s / %s / %s   COST %d   HEAT +%d   AMMO %s", mount + 1, w->name, platformNames[w->platform],
         munitionNames[w->munition], targetingNames[w->targeting], p.energyCost, p.heat, w->ammo > 0 ? TextFormat("%d", w->ammo) : "INF"),
         x, y, 10, munitionColor(w->munition));
-    text(TextFormat("MOUNT %d/5 (P%d M%d) -> upside x%.2f", rating, platformRating[w->platform][mechClass(a)],
-        munitionRating[w->munition][mechClass(a)], refitRatingFactor(rating)), x + 560, y, 10,
+    text(TextFormat("MOUNT %d/5 (P%d M%d) x%.2f  AI %.1f", rating, platformRating[w->platform][mechClass(a)],
+        munitionRating[w->munition][mechClass(a)], refitRatingFactor(rating), aiScoreAttack(a, w, d, &ctx, &aiDefault)), x + 560, y, 10,
         rating >= 4 ? colGood : rating >= 3 ? colText : colBad);
     text(TextFormat("HIT  %d%% x ACC %d/100=%.2f x (1 - MOB %d/200)=%.3f = %.1f%%  x spoof %.2f  -> clamp 5-95%% = %.1f%%",
         p.weaponAcc, p.accuracy, p.accMod, p.mobility, p.evasionMod, p.hitUnclamped * 100, p.spoofMod,
