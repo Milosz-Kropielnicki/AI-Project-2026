@@ -1,5 +1,7 @@
 #include "firmware.h"
 #include "raylib.h"
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 // Optimization Points (design doc 7.15)
@@ -15,13 +17,13 @@ const Optimization optimizations[NUM_OPTIMIZATIONS] = {
 int chipOwned[NUM_CHIPS];
 
 // ============ REVISIONS ============
+// Milestones (design doc 7.4): x.1 Socket, x.2 Optimization, x.3 Socket,
+// x.4 Capacity, x.5 Socket, then the next major revision.
 RevisionUnlock firmwareUnlockAt(int revision) {
     if (revision <= 0) return UNLOCK_BASE;
     switch (revision % REVISION_STEPS) {
     case 0: return UNLOCK_MAJOR;
-    case 1: return UNLOCK_MINOR_TUNING;
     case 2: return UNLOCK_OPTIMIZATION;
-    case 3: return UNLOCK_MINOR_HARDENING;
     case 4: return UNLOCK_CAPACITY;
     default: return UNLOCK_SOCKET;
     }
@@ -29,13 +31,11 @@ RevisionUnlock firmwareUnlockAt(int revision) {
 
 const char* firmwareUnlockDesc(RevisionUnlock u) {
     switch (u) {
-    case UNLOCK_BASE:            return "Basic firmware";
-    case UNLOCK_MINOR_TUNING:    return "Minor revision: +2 Accuracy, +2 Stability";
-    case UNLOCK_OPTIMIZATION:    return "Firmware optimization: +1 Optimization Point";
-    case UNLOCK_MINOR_HARDENING: return "Minor revision: +5 Heat capacity, +5 Armor";
-    case UNLOCK_CAPACITY:        return "Algorithmic Capacity +2";
-    case UNLOCK_SOCKET:          return "Instruction Socket +1";
-    default:                     return "MAJOR REVISION: Instruction Socket +1, Capacity +2";
+    case UNLOCK_BASE:         return "Basic firmware";
+    case UNLOCK_SOCKET:       return "Instruction Socket +1";
+    case UNLOCK_OPTIMIZATION: return "Firmware optimization: +1 Optimization Point";
+    case UNLOCK_CAPACITY:     return "Processing Capacity +2";
+    default:                  return "MAJOR REVISION: Capacity +2, choose a Firmware Branch";
     }
 }
 
@@ -60,6 +60,10 @@ void firmwareInit(Firmware* fw, int revision) {
     fw->revision = revision;
     fw->optPoints = countUnlocks(revision, UNLOCK_OPTIMIZATION);
     for (int i = 0; i < MAX_SOCKETS; i++) fw->chips[i] = -1;
+    for (int p = 0; p < MAX_PROFILES; p++) {
+        snprintf(fw->profiles[p].name, sizeof(fw->profiles[p].name), "PROFILE %c", 'A' + p);
+        for (int i = 0; i < MAX_SOCKETS; i++) fw->profiles[p].chips[i] = -1;
+    }
 }
 
 int firmwareAddData(Firmware* fw, int amount) {
@@ -84,11 +88,30 @@ void firmwareSpendOptimization(Firmware* fw, int option) {
 void firmwareAutoSpend(Firmware* fw) {
     for (int i = 0; fw->optPoints > 0; i++)
         firmwareSpendOptimization(fw, i % NUM_OPTIMIZATIONS);
+    while (firmwareBranchesPending(fw) > 0) {
+        int b = rand() % NUM_BRANCHES;
+        while (firmwareHasBranch(fw, b)) b = (b + 1) % NUM_BRANCHES;
+        firmwarePickBranch(fw, b);
+    }
+}
+
+// ============ BRANCHES ============
+int firmwareMajors(const Firmware* fw) { return countUnlocks(fw->revision, UNLOCK_MAJOR); }
+int firmwareBranchesPending(const Firmware* fw) { return firmwareMajors(fw) - fw->numBranches; }
+
+int firmwareHasBranch(const Firmware* fw, int branch) {
+    for (int i = 0; i < fw->numBranches; i++) if (fw->branches[i] == branch) return 1;
+    return 0;
+}
+
+void firmwarePickBranch(Firmware* fw, int branch) {
+    if (branch < 0 || branch >= NUM_BRANCHES || firmwareBranchesPending(fw) <= 0 || firmwareHasBranch(fw, branch)) return;
+    fw->branches[fw->numBranches++] = branch;
 }
 
 // ============ DERIVED ============
 int firmwareSockets(const Firmware* fw) {
-    int s = BASE_SOCKETS + countUnlocks(fw->revision, UNLOCK_SOCKET) + countUnlocks(fw->revision, UNLOCK_MAJOR);
+    int s = BASE_SOCKETS + countUnlocks(fw->revision, UNLOCK_SOCKET);
     return s > MAX_SOCKETS ? MAX_SOCKETS : s;
 }
 
@@ -103,12 +126,10 @@ int firmwareCapacityUsed(const Firmware* fw) {
     return used;
 }
 
+// Firmware is behavioral (doc 7.14): the only flat stat bonuses are the
+// player's Optimization Points.
 float firmwareStatBonus(const Firmware* fw, StatId s) {
     float bonus = 0;
-    int tuning = countUnlocks(fw->revision, UNLOCK_MINOR_TUNING);
-    int hardening = countUnlocks(fw->revision, UNLOCK_MINOR_HARDENING);
-    if (s == STAT_ACCURACY || s == STAT_STABILITY) bonus += 2.0f * tuning;
-    if (s == STAT_HEAT || s == STAT_ARMOR) bonus += 5.0f * hardening;
     for (int i = 0; i < NUM_OPTIMIZATIONS; i++)
         if (optimizations[i].stat == s) bonus += (float)(optimizations[i].amount * fw->optPicks[i]);
     return bonus;
@@ -126,24 +147,65 @@ int firmwareCanInstall(const Firmware* fw, int socket, int chip) {
 void firmwareInstall(Firmware* fw, int socket, int chip) {
     if (socket < 0 || socket >= MAX_SOCKETS) return;
     fw->chips[socket] = chip < 0 ? -1 : chip;
+    fw->corrupt[socket] = 0;
 }
 
-float firmwareChipTotal(const Firmware* fw, ChipEffect e) {
+int firmwareChipActive(const Firmware* fw, int socket) {
+    return socket >= 0 && socket < firmwareSockets(fw) && fw->chips[socket] >= 0 && fw->corrupt[socket] <= 0;
+}
+
+static float kernelEffect(const KernelDef* k, ChipEffect e) {
+    return (k->effect == e ? k->value : 0) + (k->effect2 == e ? k->value2 : 0);
+}
+
+float firmwareEffect(const Firmware* fw, ChipEffect e) {
     float total = 0;
-    int sockets = firmwareSockets(fw);
-    for (int i = 0; i < sockets; i++)
-        if (fw->chips[i] >= 0 && chipDefs[fw->chips[i]].effect == e) total += chipDefs[fw->chips[i]].value;
+    for (int i = 0; i < MAX_SOCKETS; i++)
+        if (firmwareChipActive(fw, i) && chipDefs[fw->chips[i]].effect == e) total += chipDefs[fw->chips[i]].value;
+    total += kernelEffect(&traitDefs[fw->trait], e);
+    for (int i = 0; i < fw->numBranches; i++) total += kernelEffect(&branchDefs[fw->branches[i]], e);
     return total;
 }
 
 float firmwareChipStat(const Firmware* fw, StatId s) {
     float total = 0;
-    int sockets = firmwareSockets(fw);
-    for (int i = 0; i < sockets; i++) {
-        int c = fw->chips[i];
-        if (c >= 0 && chipDefs[c].effect == CFX_STAT && chipDefs[c].stat == s) total += chipDefs[c].value;
+    for (int i = 0; i < MAX_SOCKETS; i++) {
+        if (!firmwareChipActive(fw, i)) continue;
+        const ChipDef* c = &chipDefs[fw->chips[i]];
+        if (c->effect == CFX_STAT && c->stat == s) total += c->value;
     }
     return total;
+}
+
+int firmwareInstalledCount(const Firmware* fw) {
+    int n = 0;
+    for (int i = 0; i < firmwareSockets(fw); i++) if (fw->chips[i] >= 0) n++;
+    return n;
+}
+
+// ============ CORRUPTION ============
+int firmwareCorruptRandom(Firmware* fw) {
+    int sockets[MAX_SOCKETS], n = 0;
+    for (int i = 0; i < MAX_SOCKETS; i++) if (firmwareChipActive(fw, i)) sockets[n++] = i;
+    if (n == 0) return -1;
+    int s = sockets[rand() % n];
+    fw->corrupt[s] = CORRUPT_TURNS;
+    return fw->chips[s];
+}
+
+void firmwareCorruptionTick(Firmware* fw) {
+    for (int i = 0; i < MAX_SOCKETS; i++) if (fw->corrupt[i] > 0) fw->corrupt[i]--;
+}
+
+void firmwareClearCorruption(Firmware* fw) { memset(fw->corrupt, 0, sizeof(fw->corrupt)); }
+
+// ============ PROFILES ============
+void firmwareSaveProfile(Firmware* fw, int slot, const char* name) {
+    if (slot < 0 || slot >= MAX_PROFILES) return;
+    FirmwareProfile* p = &fw->profiles[slot];
+    if (name) snprintf(p->name, sizeof(p->name), "%s", name);
+    memcpy(p->chips, fw->chips, sizeof(p->chips));
+    p->saved = 1;
 }
 
 const char* chipCategoryName(ChipCategory c) {
@@ -158,7 +220,7 @@ const char* chipRarityName(ChipRarity r) {
     return names[r];
 }
 
-// Starting chip collection (temporary until chips drop from battles / shops)
+// Starting chip collection; more are salvaged from reprogrammed machines
 void chipCollectionInit(void) {
     memset(chipOwned, 0, sizeof(chipOwned));
     chipOwned[CHIP_PREDICTIVE_TARGETING] = 2;
@@ -167,4 +229,5 @@ void chipCollectionInit(void) {
     chipOwned[CHIP_EVASIVE_MANEUVER] = 1;
     chipOwned[CHIP_COUNTER_INTRUSION] = 1;
     chipOwned[CHIP_PRECISION_STRIKE] = 1;
+    chipOwned[CHIP_COOLANT_DUMP] = 1;
 }
