@@ -146,11 +146,7 @@ static void initTrainers(void) {
         "Gamma is the final frontier.",
         1, 0, { ARCH_JAMMER, ARCH_SNIPER }, { 3, 3 }, 2, 0
     };
-<<<<<<< HEAD
-=======
-
     // Zone Gamma - elite tier (Gamma's plasma lake covers rows 3-11 at x 26-35)
->>>>>>> 0b0400e7fa8c48aacdc3122dd1bfc51da8893065
     trainers[4] = (Trainer){
         "WARDEN KRUX", "IRON LEGION", 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",

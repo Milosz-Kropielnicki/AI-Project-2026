@@ -40,10 +40,10 @@ typedef struct {
 } StarterLine;
 
 extern const StarterLine starters[NUM_STARTERS];
-extern int playerStarter;       // which starter the player picked (-1 = none)
-extern int starterStage;        // current evolution stage of the starter
-extern int starterSlot;         // which team slot the starter lives in
-extern int obtainedStarters;    // bitmask of starters acquired
+extern int playerStarter;
+extern int starterStage;
+extern int starterSlot;
+extern int obtainedStarters;
 
 // ============ TRAINERS ============
 typedef struct {
@@ -58,18 +58,14 @@ typedef struct {
     const char* postLine;
     int tier;
     int defeated;
-    int teamArchetypes[MAX_TEAM];  // index into archetypes[]
-    int teamRevisions[MAX_TEAM];   // firmware revision step
+    int teamArchetypes[MAX_TEAM];
+    int teamRevisions[MAX_TEAM];
     int numMechs;
     int numDefeated;
 } Trainer;
 
-<<<<<<< HEAD
-#define NUM_TRAINERS 6
-=======
 #define NUM_TRAINERS 7                 // 2 per zone, plus the Gamma boss
->>>>>>> 0b0400e7fa8c48aacdc3122dd1bfc51da8893065
-extern Trainer trainers[NUM_TRAINERS];
+extern Trainer trainers[NUM_TRAINERS];    // <-- THIS is what battle.c needs
 
 void worldInit(void);
 void worldInitNewGame(int starterIdx);
