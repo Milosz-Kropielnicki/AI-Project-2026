@@ -242,8 +242,12 @@ typedef struct {
     int boss;                   // ignores Processing Capacity and weapon ratings; trainer-only, so never hacked
 } EnemyArchetype;
 
-enum { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SNIPER, ARCH_SKIRMISHER, ARCH_JAMMER, ARCH_OVERSEER, NUM_ARCHETYPES };
-#define NUM_WILD_ARCHETYPES ARCH_OVERSEER   // the boss never roams
+enum {
+    ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SNIPER, ARCH_SKIRMISHER, ARCH_JAMMER, ARCH_PROWLER, ARCH_BOMBARD,
+    ARCH_ORDNANCE, ARCH_OVERSEER,   // trainer-only
+    NUM_ARCHETYPES
+};
+#define NUM_WILD_ARCHETYPES ARCH_ORDNANCE   // everything before it can roam
 extern const EnemyArchetype archetypes[NUM_ARCHETYPES];   // data_mechs.c
 Mech archetypeBuild(int archetype, int level);
 

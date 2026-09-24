@@ -198,6 +198,30 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       { CHIP_COUNTER_INTRUSION, CHIP_SYSTEM_RECOVERY }, 2,
       TRAIT_ADAPTIVE, { BRANCH_SIGNAL }, 1,
       { 0.6f, 0.6f, 2.0f, 0.5f, 1.0f, 1.5f }, 0 },
+    // Ambusher: burst damage up close, dives in for the kill.
+    { "PROWLER", "Quadruped ambush Recon. Shotgun and blade bursts, hunts damaged targets.",
+      CLASS_RECON, ROLE_PROWLER, MODEL_HOUND,
+      { { W_SHOTGUN, W_PLASMA_BLADE, W_CORROSIVE_SPRAY, -1 },
+        { REFIT_STANDARD_OPTICS, REFIT_LIGHT_PLATING, REFIT_STANDARD_MOUNTS, REFIT_JUMP_JETS } },
+      { CHIP_PRECISION_STRIKE, CHIP_EMERGENCY_EVASION }, 2,
+      TRAIT_AGGRESSIVE, { BRANCH_HUNTER }, 1,
+      { 1.2f, 0.5f, 0.0f, 0.3f, 2.5f, 1.0f }, 0 },
+    // Limited-ammo salvos: empties its missiles and mortars, then falls back to the MG.
+    { "BOMBARD", "Missile Bombard. Heavy explosive salvos until the racks run dry.",
+      CLASS_ARTILLERY, ROLE_BOMBARD, MODEL_HAVOC,
+      { { W_ROCKET_POD, W_AA_MISSILE, W_SIEGE_MORTAR, W_MACHINE_GUN },
+        { REFIT_LONG_RANGE_RADAR, REFIT_CRYO_COOLING, REFIT_STABILIZED_MOUNTS, REFIT_TREADS } },
+      { CHIP_ARMOR_ANALYSIS, CHIP_COOLANT_DUMP }, 2,
+      TRAIT_DEFENSIVE, { BRANCH_SIEGE }, 1,
+      { 1.0f, 0.7f, 0.0f, 0.6f, 1.2f, 1.0f }, 0 },
+    // Trainer-only armor cracker on the OBLIVION chassis.
+    { "ORDNANCE", "Heavy gun platform. Strips armor, then jams what is left.",
+      CLASS_ARTILLERY, ROLE_ORDNANCE, MODEL_OBLIVION,
+      { { W_RAILGUN, W_SIEGE_MORTAR, W_PULSE_LASER, W_JAMMER },
+        { REFIT_STANDARD_OPTICS, REFIT_CRYO_COOLING, REFIT_STANDARD_MOUNTS, REFIT_BIPEDAL_LEGS } },
+      { CHIP_ARMOR_ANALYSIS, CHIP_ARMOR_BREACH, CHIP_COUNTER_INTRUSION }, 3,
+      TRAIT_ADAPTIVE, { BRANCH_SIEGE }, 1,
+      { 1.0f, 0.9f, 0.6f, 0.5f, 1.5f, 1.0f }, 0 },
     // BOSS: misses make it deadlier, killing it triggers one last free shot, and
     // once below half Integrity it turns to corrupting your firmware.
     { "FACTORY OVERSEER", "Ancient Ordnance platform running Black Box firmware.",

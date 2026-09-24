@@ -6,98 +6,172 @@
 #include <string.h>
 #include <math.h>
 
+// ============ ZONE DEFINITIONS ============
+const Zone zones[NUM_ZONES] = {
+    { "SECTOR ALPHA", "- CALIBRATION FIELD -",  {255, 255, 255, 255}, 14, 5, -1, ZONE_BETA },
+    { "SECTOR BETA",  "- INDUSTRIAL RUINS -",   {255, 220, 200, 255}, 18, 7, ZONE_ALPHA, ZONE_GAMMA },
+    { "SECTOR GAMMA", "- APEX WASTELAND -",     {220, 200, 255, 255}, 22, 9, ZONE_BETA, -1 },
+};
+
 Trainer trainers[NUM_TRAINERS];
 
-static unsigned char map[MAP_H][MAP_W];
+// Per-zone maps
+static unsigned char zoneMaps[NUM_ZONES][MAP_H][MAP_W];
+
+// Current zone state
+static int currentZone = ZONE_ALPHA;
 static int px, py;
 static float pxF, pyF;
 static int facing;
-static int encounterChance = 14;
 
-static int moving = 0;           // walking between two tiles
-static float moveT = 0;          // 0..1 progress of the current step
+static int moving = 0;
+static float moveT = 0;
 static float moveFromX, moveFromY;
-static int lastDir = -1;         // most recently pressed direction (facing convention)
+static int lastDir = -1;
+static int justEnteredZone = 0;    // suppress encounter roll on spawn tile
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
 
 #define TERMINAL_MESSAGE "[TERMINAL] Repair bay: team restored. Hack mechs to grow your team!"
 
+static unsigned char (*map)[MAP_W] = zoneMaps[ZONE_ALPHA];
+
 // ============ MAP GEN ============
-static void genMap(void) {
+// Generic layout generator parameterized by zone. Every zone has the same
+// walkable structure (borders, ruins clusters, cross paths, bunkers, terminal)
+// but zones get their own random seed and cluster counts so they feel different.
+static void genZoneMap(int zoneIdx) {
+    unsigned char (*m)[MAP_W] = zoneMaps[zoneIdx];
     for (int y = 0; y < MAP_H; y++)
         for (int x = 0; x < MAP_W; x++)
-            map[y][x] = T_GRID;
-    for (int x = 0; x < MAP_W; x++) { map[0][x] = T_BLOCK; map[MAP_H - 1][x] = T_BLOCK; }
-    for (int y = 0; y < MAP_H; y++) { map[y][0] = T_BLOCK; map[y][MAP_W - 1] = T_BLOCK; }
-    for (int y = 5; y < 10; y++)
-        for (int x = 28; x < 36; x++) map[y][x] = T_PLASMA;
-    srand(42);
-    for (int i = 0; i < 5; i++) {
+            m[y][x] = T_GRID;
+
+    // Solid border
+    for (int x = 0; x < MAP_W; x++) { m[0][x] = T_BLOCK; m[MAP_H - 1][x] = T_BLOCK; }
+    for (int y = 0; y < MAP_H; y++) { m[y][0] = T_BLOCK; m[y][MAP_W - 1] = T_BLOCK; }
+
+    // Plasma lake (bigger in later zones)
+    int plasmaY0 = 5 - zoneIdx, plasmaY1 = 10 + zoneIdx;
+    int plasmaX0 = 28 - zoneIdx, plasmaX1 = 36;
+    if (plasmaY0 < 2) plasmaY0 = 2;
+    if (plasmaY1 > MAP_H - 2) plasmaY1 = MAP_H - 2;
+    for (int y = plasmaY0; y < plasmaY1; y++)
+        for (int x = plasmaX0; x < plasmaX1; x++)
+            m[y][x] = T_PLASMA;
+
+    // Ruins clusters - seeds differ per zone
+    srand(42 + zoneIdx * 1000);
+    int clusters = zones[zoneIdx].ruinsCount;
+    for (int i = 0; i < clusters; i++) {
         int cx = 5 + rand() % 25, cy = 3 + rand() % 20;
         for (int y = cy; y < cy + 3 && y < MAP_H - 1; y++)
             for (int x = cx; x < cx + 4 && x < MAP_W - 1; x++)
-                if (map[y][x] == T_GRID) map[y][x] = T_RUINS;
+                if (m[y][x] == T_GRID) m[y][x] = T_RUINS;
     }
-    for (int x = 3; x < MAP_W - 3; x++) map[15][x] = T_PAD;
-    for (int y = 3; y < 25; y++) map[y][15] = T_PAD;
-    map[6][8] = T_BUNKER; map[6][9] = T_BUNKER;
-    map[7][8] = T_BUNKER; map[7][9] = T_BUNKER;
-    map[20][30] = T_BUNKER; map[20][31] = T_BUNKER;
-    map[21][30] = T_BUNKER; map[21][31] = T_BUNKER;
-    map[14][15] = T_TERMINAL;
+
+    // Cross paths
+    for (int x = 3; x < MAP_W - 3; x++) m[15][x] = T_PAD;
+    for (int y = 3; y < 25; y++) m[y][15] = T_PAD;
+
+    // Bunkers
+    m[6][8] = T_BUNKER; m[6][9] = T_BUNKER;
+    m[7][8] = T_BUNKER; m[7][9] = T_BUNKER;
+    m[20][30] = T_BUNKER; m[20][31] = T_BUNKER;
+    m[21][30] = T_BUNKER; m[21][31] = T_BUNKER;
+
+    // Terminal
+    m[14][15] = T_TERMINAL;
+
+    // Route gates to neighboring zones (left and right edges, on the cross path)
+    if (zones[zoneIdx].gateWest >= 0)  m[15][1] = T_GATE;
+    if (zones[zoneIdx].gateEast >= 0)  m[15][MAP_W - 2] = T_GATE;
+
+    // Make sure the tile in front of each gate is walkable (a path lead-in)
+    if (zones[zoneIdx].gateWest >= 0) { m[15][2] = T_PAD; }
+    if (zones[zoneIdx].gateEast >= 0) { m[15][MAP_W - 3] = T_PAD; }
 }
 
 static int isSolid(int x, int y) {
     if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return 1;
     int t = map[y][x];
+    // Gates are walkable (they trigger zone transition)
     return (t == T_BLOCK || t == T_PLASMA || t == T_BUNKER || t == T_TERMINAL);
 }
 
 // ============ TRAINERS ============
 static void initTrainers(void) {
+    // Zone Alpha - tutorial tier
     trainers[0] = (Trainer){
-        "PILOT RHEA", "IRON LEGION", 10, 12, 0, { 255, 120, 200, 255 },
+        "PILOT RHEA", "IRON LEGION", 10, 12, ZONE_ALPHA, 0, { 255, 120, 200, 255 },
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
-        "Good luck out there, pilot.",
-        0, 0,
-        { ARCH_SKIRMISHER }, { 1 }, 1, 0
+        "Try the east route to reach Sector Beta.",
+        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
-        "COMMANDER VOLK", "IRON LEGION", 25, 18, 0, { 255, 180, 60, 255 },
+        "SCOUT DANE", "IRON LEGION", 22, 8, ZONE_ALPHA, 0, { 255, 200, 100, 255 },
+        "Fast mechs win wars, rookie!",
+        "Speed wasn't enough...",
+        "Beta's got tougher pilots.",
+        0, 0, { ARCH_PROWLER }, { 1 }, 1, 0
+    };
+
+    // Zone Beta - mid tier
+    trainers[2] = (Trainer){
+        "COMMANDER VOLK", "IRON LEGION", 25, 18, ZONE_BETA, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "You've earned my respect, pilot.",
-        1, 0,
-        { ARCH_BRAWLER, ARCH_BERSERKER }, { 2, 2 }, 2, 0
+        1, 0, { ARCH_BRAWLER, ARCH_BERSERKER }, { 3, 3 }, 2, 0
     };
-    trainers[2] = (Trainer){
-        "WARDEN KRUX", "IRON LEGION", 14, 22, 0, { 255, 60, 60, 255 },
+    trainers[3] = (Trainer){
+        "ENGINEER KESS", "IRON LEGION", 8, 22, ZONE_BETA, 0, { 120, 220, 160, 255 },
+        "My machines never break. Yours will.",
+        "Fascinating... your tactics are... effective.",
+        "Gamma is the final frontier.",
+        1, 0, { ARCH_JAMMER, ARCH_SNIPER }, { 3, 3 }, 2, 0
+    };
+
+    // Zone Gamma - elite tier (Gamma's plasma lake covers rows 3-11 at x 26-35)
+    trainers[4] = (Trainer){
+        "WARDEN KRUX", "IRON LEGION", 14, 22, ZONE_GAMMA, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        2, 0,
-        { ARCH_SNIPER, ARCH_JAMMER, ARCH_BRAWLER }, { 4, 4, 6 }, 3, 0
+        2, 0, { ARCH_BOMBARD, ARCH_BRAWLER, ARCH_ORDNANCE }, { 5, 5, 7 }, 3, 0
     };
-    // Boss: the machine itself. Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
-    trainers[3] = (Trainer){
-        "FACTORY OVERSEER", "BLACK BOX", 32, 24, 0, { 200, 60, 255, 255 },
+    trainers[5] = (Trainer){
+        "GHOST ECHO", "IRON LEGION", 30, 12, ZONE_GAMMA, 0, { 200, 100, 255, 255 },
+        "You cannot hit what you cannot see.",
+        "Even my stealth... failed.",
+        "Krux awaits at the center.",
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD }, { 5, 6, 6 }, 3, 0
+    };
+
+    // Gamma boss: the machine itself. Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
+    trainers[6] = (Trainer){
+        "FACTORY OVERSEER", "BLACK BOX", 32, 24, ZONE_GAMMA, 0, { 200, 60, 255, 255 },
         "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
         "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
         "...the Overseer's chassis sits silent.",
-        3, 0,
-        { ARCH_OVERSEER }, { 12 }, 1, 0
+        3, 0, { ARCH_OVERSEER }, { 12 }, 1, 0
     };
 }
 
 void worldInit(void) {
-    genMap();
+    for (int z = 0; z < NUM_ZONES; z++) genZoneMap(z);
     initTrainers();
+    currentZone = ZONE_ALPHA;
+    map = zoneMaps[currentZone];
     px = 15; py = 16; facing = 0;
     pxF = (float)(px * TILE_SIZE); pyF = (float)(py * TILE_SIZE);
+    justEnteredZone = 1;
 }
+
+int worldCurrentZone(void) { return currentZone; }
+const char* worldCurrentZoneName(void) { return zones[currentZone].name; }
+const char* worldCurrentZoneSubtitle(void) { return zones[currentZone].subtitle; }
 
 void showMessage(const char* msg, float dur) {
     strncpy(message, msg, sizeof(message) - 1);
@@ -105,7 +179,40 @@ void showMessage(const char* msg, float dur) {
     messageTimer = dur;
 }
 
-// Returns 1 if a battle started
+// ============ ZONE TRANSITION ============
+static void enterZone(int zoneIdx, int fromEast) {
+    currentZone = zoneIdx;
+    map = zoneMaps[currentZone];
+    // Spawn on the opposite edge from where we came
+    if (fromEast) { px = MAP_W - 3; }
+    else { px = 2; }
+    py = 15;
+    facing = fromEast ? 2 : 3;   // face away from the gate
+    pxF = (float)(px * TILE_SIZE);
+    pyF = (float)(py * TILE_SIZE);
+    moving = 0;
+    moveT = 0;
+    justEnteredZone = 1;
+    showMessage(TextFormat(">> %s  %s", zones[zoneIdx].name, zones[zoneIdx].subtitle), 2.5f);
+}
+
+// Returns 1 if the tile at (x,y) is a gate and the player can step through
+static int tryGateTransition(int x, int y) {
+    if (x < 0 || y < 0 || x >= MAP_W || y >= MAP_H) return 0;
+    if (map[y][x] != T_GATE) return 0;
+    if (x <= 1) {
+        // West gate
+        int target = zones[currentZone].gateWest;
+        if (target >= 0) { enterZone(target, 0); return 1; }
+    }
+    else if (x >= MAP_W - 2) {
+        int target = zones[currentZone].gateEast;
+        if (target >= 0) { enterZone(target, 1); return 1; }
+    }
+    return 0;
+}
+
+// ============ BATTLE TRIGGER ============
 static int triggerTrainerEncounter(int trainerIdx) {
     Trainer* t = &trainers[trainerIdx];
     if (t->defeated) {
@@ -128,9 +235,8 @@ void worldUpdate(float dt, GameState* state) {
     if (IsKeyPressed(KEY_TAB)) { *state = STATE_TEAM; return; }
     if (IsKeyPressed(KEY_ESCAPE)) { *state = STATE_MENU; return; }
 
-    // Advance the current step between tiles
     int arrived = 0;
-    float carry = 0;   // leftover step progress, so continuous walking doesn't stutter
+    float carry = 0;
     if (moving) {
         moveT += dt / MOVE_TIME;
         if (moveT >= 1) {
@@ -143,11 +249,16 @@ void worldUpdate(float dt, GameState* state) {
         pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
     }
 
-    if (arrived && map[py][px] == T_RUINS && rand() % 100 < encounterChance) {
-        battleStartWild();
-        *state = STATE_BATTLE;
-        return;
+    // Encounter roll on arrival (skip the very first tile after a zone load)
+    if (arrived && !justEnteredZone && map[py][px] == T_RUINS) {
+        if (rand() % 100 < zones[currentZone].baseEncounter) {
+            battleStartWild();
+            *state = STATE_BATTLE;
+            return;
+        }
     }
+    justEnteredZone = 0;
+
     if (messageTimer > 0) {
         messageTimer -= dt;
         if (confirmPressed() || clickPressed()) { messageTimer = 0; consumeInput(); }
@@ -162,7 +273,9 @@ void worldUpdate(float dt, GameState* state) {
         else if (facing == 1) fy--;
         else if (facing == 2) fx--;
         else if (facing == 3) fx++;
+        // Interact with trainer in facing tile, only if in the current zone
         for (int i = 0; i < NUM_TRAINERS; i++) {
+            if (trainers[i].zone != currentZone) continue;
             if (trainers[i].x == fx && trainers[i].y == fy) {
                 if (triggerTrainerEncounter(i)) { *state = STATE_BATTLE; return; }
                 break;
@@ -170,33 +283,48 @@ void worldUpdate(float dt, GameState* state) {
         }
         if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_TERMINAL)
             useTerminal();
+        // Interact with a gate directly in front: step through
+        if (fx >= 0 && fy >= 0 && fx < MAP_W && fy < MAP_H && map[fy][fx] == T_GATE)
+            tryGateTransition(fx, fy);
     }
 
-    // Pick a direction: the most recently pressed one wins while it is held
+    // Direction selection
     for (int d = 0; d < 4; d++) if (dirPressed(d)) lastDir = d;
     int dir = -1;
     if (lastDir >= 0 && dirDown(lastDir)) dir = lastDir;
     else for (int d = 0; d < 4; d++) if (dirDown(d)) { dir = d; break; }
     if (dir < 0 || messageTimer > 0) return;
 
-    // Bumping into things only reacts to a fresh press or walking into them,
-    // not to a key that is still held from before (e.g. after a battle).
     int fresh = dirPressed(dir) || arrived;
     int dx = (dir == 3) - (dir == 2);
     int dy = (dir == 0) - (dir == 1);
     int nx = px + dx, ny = py + dy;
     facing = dir;
 
+    // Trainer bumping (only trainers in the current zone)
     for (int i = 0; i < NUM_TRAINERS; i++) {
+        if (trainers[i].zone != currentZone) continue;
         if (trainers[i].x == nx && trainers[i].y == ny) {
             if (fresh && triggerTrainerEncounter(i)) *state = STATE_BATTLE;
             return;
         }
     }
+
+    // Gate step-through: attempt transition, and if it fails (dead-end gate),
+    // treat the gate as a solid wall so the player is blocked
+    if (map[ny][nx] == T_GATE) {
+        if (fresh && tryGateTransition(nx, ny)) {
+            // Zone changed, position already set, done for this frame
+            return;
+        }
+        return;
+    }
+
     if (isSolid(nx, ny)) {
         if (fresh && map[ny][nx] == T_TERMINAL) useTerminal();
         return;
     }
+
     moveFromX = (float)(px * TILE_SIZE);
     moveFromY = (float)(py * TILE_SIZE);
     px = nx; py = ny;
@@ -217,9 +345,13 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
     DrawRectangle(screenX + 30, screenY + 12, 6, 8, (Color) { primary.r / 2, primary.g / 2, primary.b / 2, 255 });
     Color cape = { primary.r / 3, primary.g / 3, primary.b / 3, 220 };
     DrawTriangle((Vector2) { screenX + 8.0f, screenY + 14.0f }, (Vector2) { screenX + 4.0f, screenY + 36.0f },
-        (Vector2) { screenX + 16.0f, screenY + 28.0f }, cape);
+        (Vector2) {
+        screenX + 16.0f, screenY + 28.0f
+    }, cape);
     DrawTriangle((Vector2) { screenX + 32.0f, screenY + 14.0f }, (Vector2) { screenX + 36.0f, screenY + 36.0f },
-        (Vector2) { screenX + 24.0f, screenY + 28.0f }, cape);
+        (Vector2) {
+        screenX + 24.0f, screenY + 28.0f
+    }, cape);
     DrawRectangle(screenX + 12, screenY + 4, 16, 10, (Color) { 60, 60, 70, 255 });
     DrawRectangle(screenX + 12, screenY + 4, 16, 2, primary);
     DrawRectangle(screenX + 14, screenY + 8, 12, 3, (Color) { 255, 255, 220, 255 });
@@ -231,56 +363,84 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
     }
 }
 
+// Zone tint multiplies the base colors so each sector has its own mood
+static Color tint(Color c) {
+    Color t = zones[currentZone].tint;
+    return (Color) {
+        (unsigned char)(c.r * t.r / 255),
+            (unsigned char)(c.g * t.g / 255),
+            (unsigned char)(c.b * t.b / 255),
+            c.a
+    };
+}
+
 static void drawTile(int x, int y, int screenX, int screenY) {
     int t = map[y][x];
     Rectangle r = { (float)screenX, (float)screenY, TILE_SIZE, TILE_SIZE };
     float pulse = 0.5f + 0.5f * sinf(glowTimer * 3.0f + x * 0.5f + y * 0.3f);
     switch (t) {
     case T_GRID:
-        DrawRectangleRec(r, (Color) { 28, 32, 44, 255 });
-        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, (Color) { 45, 60, 90, 120 });
-        DrawRectangle(screenX + 18, screenY + 18, 4, 4, (Color) { 60, 140, 200, 80 });
+        DrawRectangleRec(r, tint((Color) { 28, 32, 44, 255 }));
+        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, tint((Color) { 45, 60, 90, 120 }));
+        DrawRectangle(screenX + 18, screenY + 18, 4, 4, tint((Color) { 60, 140, 200, 80 }));
         break;
     case T_RUINS:
-        DrawRectangleRec(r, (Color) { 50, 30, 30, 255 });
+        DrawRectangleRec(r, tint((Color) { 50, 30, 30, 255 }));
         for (int i = 0; i < 5; i++)
-            DrawRectangle(screenX + 4 + i * 8, screenY + 8, 5, 24, (Color) { 180, 80, 40, 200 });
-        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, (Color) { 255, 120, 40, 100 });
+            DrawRectangle(screenX + 4 + i * 8, screenY + 8, 5, 24, tint((Color) { 180, 80, 40, 200 }));
+        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, tint((Color) { 255, 120, 40, 100 }));
         break;
     case T_BLOCK:
-        DrawRectangleRec(r, (Color) { 55, 60, 80, 255 });
-        DrawRectangle(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8, (Color) { 75, 82, 105, 255 });
-        DrawRectangle(screenX + 8, screenY + 8, TILE_SIZE - 16, TILE_SIZE - 16, (Color) { 45, 50, 70, 255 });
-        DrawRectangleLines(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8, (Color) { 110, 130, 180, 200 });
+        DrawRectangleRec(r, tint((Color) { 55, 60, 80, 255 }));
+        DrawRectangle(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8, tint((Color) { 75, 82, 105, 255 }));
+        DrawRectangle(screenX + 8, screenY + 8, TILE_SIZE - 16, TILE_SIZE - 16, tint((Color) { 45, 50, 70, 255 }));
+        DrawRectangleLines(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8, tint((Color) { 110, 130, 180, 200 }));
         break;
     case T_PLASMA:
-        DrawRectangleRec(r, (Color) { 20, 10, 50, 255 });
+        DrawRectangleRec(r, tint((Color) { 20, 10, 50, 255 }));
         DrawRectangle(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8,
-            (Color) { 100, 60, 255, (unsigned char)(140 + pulse * 80) });
+            tint((Color) { 100, 60, 255, (unsigned char)(140 + pulse * 80) }));
         DrawRectangle(screenX + 10, screenY + 10, TILE_SIZE - 20, TILE_SIZE - 20,
-            (Color) { 180, 100, 255, (unsigned char)(120 + pulse * 80) });
-        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, (Color) { 220, 150, 255, 200 });
+            tint((Color) { 180, 100, 255, (unsigned char)(120 + pulse * 80) }));
+        DrawRectangleLines(screenX, screenY, TILE_SIZE, TILE_SIZE, tint((Color) { 220, 150, 255, 200 }));
         break;
     case T_PAD:
-        DrawRectangleRec(r, (Color) { 20, 40, 55, 255 });
+        DrawRectangleRec(r, tint((Color) { 20, 40, 55, 255 }));
         DrawRectangle(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12,
-            (Color) { 30, (unsigned char)(180 + pulse * 50), 220, 255 });
+            tint((Color) { 30, (unsigned char)(180 + pulse * 50), 220, 255 }));
         DrawRectangleLines(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12, WHITE);
-        DrawText("< >", screenX + 12, screenY + 12, 16, (Color) { 255, 255, 255, 180 });
+        DrawText("< >", screenX + 12, screenY + 12, 16, tint((Color) { 255, 255, 255, 180 }));
         break;
     case T_BUNKER:
-        DrawRectangleRec(r, (Color) { 40, 45, 65, 255 });
-        DrawRectangle(screenX + 3, screenY + 3, TILE_SIZE - 6, TILE_SIZE - 6, (Color) { 70, 80, 110, 255 });
-        DrawRectangle(screenX + 8, screenY + 14, TILE_SIZE - 16, TILE_SIZE - 20, (Color) { 30, 35, 50, 255 });
-        DrawRectangleLines(screenX + 8, screenY + 14, TILE_SIZE - 16, TILE_SIZE - 20, (Color) { 140, 180, 220, 200 });
+        DrawRectangleRec(r, tint((Color) { 40, 45, 65, 255 }));
+        DrawRectangle(screenX + 3, screenY + 3, TILE_SIZE - 6, TILE_SIZE - 6, tint((Color) { 70, 80, 110, 255 }));
+        DrawRectangle(screenX + 8, screenY + 14, TILE_SIZE - 16, TILE_SIZE - 20, tint((Color) { 30, 35, 50, 255 }));
+        DrawRectangleLines(screenX + 8, screenY + 14, TILE_SIZE - 16, TILE_SIZE - 20, tint((Color) { 140, 180, 220, 200 }));
         if ((int)(glowTimer * 2) % 2 == 0) DrawCircle(screenX + 20, screenY + 8, 2, RED);
         break;
     case T_TERMINAL:
-        DrawRectangleRec(r, (Color) { 28, 32, 44, 255 });
-        DrawRectangle(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12, (Color) { 20, 60, 60, 255 });
+        DrawRectangleRec(r, tint((Color) { 28, 32, 44, 255 }));
+        DrawRectangle(screenX + 6, screenY + 6, TILE_SIZE - 12, TILE_SIZE - 12, tint((Color) { 20, 60, 60, 255 }));
         DrawRectangle(screenX + 10, screenY + 10, TILE_SIZE - 20, TILE_SIZE - 20,
-            (Color) { 40, (unsigned char)(180 + pulse * 60), 160, 255 });
+            tint((Color) { 40, (unsigned char)(180 + pulse * 60), 160, 255 }));
         DrawText("T", screenX + 15, screenY + 10, 18, BLACK);
+        break;
+    case T_GATE:
+        // A neon gateway: pulsing frame, arrows pointing to the destination
+        DrawRectangleRec(r, tint((Color) { 10, 20, 40, 255 }));
+        {
+            Color g = tint((Color) { 100, 240, 255, 255 });
+            int glow = (int)(pulse * 90);
+            DrawRectangle(screenX + 4, screenY + 4, TILE_SIZE - 8, TILE_SIZE - 8,
+                (Color) {
+                g.r, g.g, g.b, (unsigned char)(120 + glow)
+            });
+            DrawRectangleLinesEx(r, 2, WHITE);
+            // Animated chevrons
+            const char* arrow = (x <= 1) ? "<<" : ">>";
+            DrawText(arrow, screenX + 6, screenY + 12, 16, (Color) { 10, 20, 40, 255 });
+            DrawCircle(screenX + 20, screenY + 20, 3 + (int)(pulse * 2), WHITE);
+        }
         break;
     }
 }
@@ -288,31 +448,60 @@ static void drawTile(int x, int y, int screenX, int screenY) {
 static void drawHud(void) {
     Mech* m = rosterActive();
     const MechModel* model = mechModel(m);
-    DrawRectangle(10, 10, 300, 124, (Color) { 15, 25, 45, 220 });
-    DrawRectangleLines(10, 10, 300, 124, model->accent);
+    DrawRectangle(10, 10, 340, 146, (Color) { 15, 25, 45, 220 });
+    DrawRectangleLines(10, 10, 340, 146, model->accent);
     DrawText("PILOT STATUS", 20, 15, 12, model->accent);
     DrawText(TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)), 20, 30, 20, WHITE);
     DrawText(TextFormat("%s %s  -  %s", model->designation, model->name, roleName(mechRole(m))),
         20, 52, 12, (Color) { 180, 200, 220, 255 });
     const MechStats* s = &m->stats;
-    drawIntegrityBar(20, 68, 280, 12, s->integrity, s->maxIntegrity);
+    drawIntegrityBar(20, 68, 320, 12, s->integrity, s->maxIntegrity);
     DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), 20, 82, 11, WHITE);
-    drawArmorBar(20, 96, 280, 6, s->armor, s->maxArmor);
-    DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), 160, 82, 11, (Color) { 150, 190, 240, 255 });
-    drawDataBar(20, 110, 280, 6, m->fw.data, firmwareDataToNext(m->fw.revision));
+    drawArmorBar(20, 96, 320, 6, s->armor, s->maxArmor);
+    DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), 180, 82, 11, (Color) { 150, 190, 240, 255 });
+    drawDataBar(20, 110, 320, 6, m->fw.data, firmwareDataToNext(m->fw.revision));
     DrawText(TextFormat("DATA %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)),
         20, 119, 10, (Color) { 200, 170, 255, 255 });
+    DrawText(TextFormat("FIRMWARE %s", firmwareLabel(m->fw.revision)), 20, 134, 12, (Color) { 200, 170, 255, 255 });
 
-    // Trainer tracker
-    int defeated = 0;
-    for (int i = 0; i < NUM_TRAINERS; i++) if (trainers[i].defeated) defeated++;
-    DrawRectangle(screenW - 200, 10, 190, 60, (Color) { 15, 25, 45, 200 });
-    DrawRectangleLines(screenW - 200, 10, 190, 60, (Color) { 255, 200, 100, 180 });
-    DrawText("IRON LEGION", screenW - 190, 16, 14, (Color) { 255, 220, 100, 255 });
-    DrawText(TextFormat("Defeated: %d / %d", defeated, NUM_TRAINERS), screenW - 190, 36, 14, WHITE);
-    DrawText(TextFormat("SECTOR %02d-%02d", px, py), screenW - 190, 54, 12, (Color) { 150, 200, 255, 200 });
+    // Zone + trainer tracker
+    int defeated = 0, total = 0;
+    for (int i = 0; i < NUM_TRAINERS; i++) {
+        if (trainers[i].zone == currentZone) {
+            total++;
+            if (trainers[i].defeated) defeated++;
+        }
+    }
+    DrawRectangle(screenW - 240, 10, 230, 76, (Color) { 15, 25, 45, 200 });
+    DrawRectangleLines(screenW - 240, 10, 230, 76, (Color) { 255, 200, 100, 180 });
+    DrawText(zones[currentZone].name, screenW - 230, 16, 16, (Color) { 255, 220, 100, 255 });
+    DrawText(zones[currentZone].subtitle, screenW - 230, 34, 10, (Color) { 200, 220, 240, 200 });
+    DrawText(TextFormat("Legion: %d / %d", defeated, total), screenW - 230, 48, 12, WHITE);
+    DrawText(TextFormat("SECTOR %02d-%02d", px, py), screenW - 230, 64, 11, (Color) { 150, 200, 255, 200 });
 
-    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk   [TAB] Team   [F1] Debug   [ESC] Menu",
+    // Route indicator at bottom of HUD panel
+    const Zone* z = &zones[currentZone];
+    int rx = screenW - 240;
+    DrawRectangle(rx, 92, 230, 42, (Color) { 15, 25, 45, 200 });
+    DrawRectangleLines(rx, 92, 230, 42, (Color) { 100, 220, 255, 180 });
+    DrawText("ROUTES", rx + 8, 96, 10, (Color) { 100, 240, 255, 255 });
+    int ry = 110;
+    if (z->gateWest >= 0) {
+        DrawText(TextFormat("< WEST: %s", zones[z->gateWest].name), rx + 8, ry, 11,
+            (Color) {
+            180, 240, 255, 255
+        });
+    }
+    if (z->gateEast >= 0) {
+        DrawText(TextFormat("> EAST: %s", zones[z->gateEast].name), rx + 8, ry, 11,
+            (Color) {
+            180, 240, 255, 255
+        });
+    }
+    if (z->gateWest < 0 && z->gateEast < 0)
+        DrawText("no routes", rx + 8, ry, 11, (Color) { 150, 150, 150, 255 });
+
+    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Enter Gate   [TAB] Team   [F1] Debug   [ESC] Menu",
         10, SCREEN_H - 28, 16, (Color) { 150, 220, 255, 220 });
 
     if (messageTimer > 0) {
@@ -343,7 +532,9 @@ void worldDraw(void) {
         for (int x = startX; x < endX; x++)
             drawTile(x, y, x * TILE_SIZE, y * TILE_SIZE);
 
+    // Only draw trainers that live in the current zone
     for (int i = 0; i < NUM_TRAINERS; i++) {
+        if (trainers[i].zone != currentZone) continue;
         if (!trainers[i].defeated)
             drawTrainer(&trainers[i], trainers[i].x * TILE_SIZE, trainers[i].y * TILE_SIZE);
         else {

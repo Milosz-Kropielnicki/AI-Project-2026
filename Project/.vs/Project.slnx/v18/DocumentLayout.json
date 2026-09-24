@@ -1,9 +1,21 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\",
+  "WorkspaceRootPath": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\firmware.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\firmware.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\main.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\main.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     }
   ],
@@ -19,12 +31,55 @@
             {
               "$type": "Document",
               "DocumentIndex": 0,
+              "Title": "firmware.h",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\firmware.h",
+              "RelativeDocumentMoniker": "Project\\firmware.h",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\firmware.h",
+              "RelativeToolTip": "Project\\firmware.h",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2026-09-24T08:39:27.153Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 1,
+              "Title": "world.c",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
+              "RelativeDocumentMoniker": "Project\\world.c",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
+              "RelativeToolTip": "Project\\world.c",
+              "ViewState": "AgIAAJwBAAAAAAAAAAAhwL4BAAANAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-09-24T08:30:55.322Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 2,
+              "Title": "world.h",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeDocumentMoniker": "Project\\world.h",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeToolTip": "Project\\world.h",
+              "ViewState": "AgIAAAIAAAAAAAAAAAAAADoAAAAGAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2026-09-24T08:30:39.008Z",
+              "EditorCaption": ""
+            },
+            {
+              "$type": "Document",
+              "DocumentIndex": 3,
               "Title": "main.c",
-              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\main.c",
               "RelativeDocumentMoniker": "Project\\main.c",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\main.c",
               "RelativeToolTip": "Project\\main.c",
+<<<<<<< HEAD
               "ViewState": "AgIAAAMAAAAAAAAAAAAAABgAAAAAAAAAAAAAAA==",
+=======
+              "ViewState": "AgIAACQAAAAAAAAAAAAAABUAAAATAAAAAAAAAA==",
+>>>>>>> 0689cf3f88cd0f7dcaa82c0d32cbb1a4c63dea14
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-23T10:54:43.91Z",
               "EditorCaption": ""
