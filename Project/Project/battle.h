@@ -146,7 +146,24 @@ typedef struct {
     int randomTargeting, nextRandomTargeting;   // corruption: attacks may fire a random weapon
     int deadManUsed;
     int skipImmune;         // normal turns left before this side can lose a turn again
+    int archetype;          // enemy archetype it was built from, -1 = none
+    int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
+
+// ============ SIDES ============
+// Each side owns battle copies of its mechs. Slots hold the whole squad
+// (field + reserves); field[] says which slots are on the field. The player's
+// copies are written back to team[] when the battle ends.
+#define MAX_FIELD 1
+#define SIDE_ENEMY 0
+#define SIDE_PLAYER 1
+typedef struct {
+    Mech mech[MAX_TEAM];
+    Combatant slot[MAX_TEAM];
+    int rosterIndex[MAX_TEAM];  // team[] index the slot writes back to, -1 = none
+    int field[MAX_FIELD];       // slot on each field position, -1 = empty
+    int count, numField;
+} Side;
 
 // A visual cue for ui_battle.c; battle logic never touches effects directly
 typedef struct {
@@ -163,9 +180,7 @@ typedef struct {
     BattleDialogue dialogue;
     char dialogueText[256];
     char log[256];
-    Combatant player, enemy;
-    Mech enemyMech;
-    int enemyArchetype;     // -1 = stock chassis with random chips
+    Side side[2];           // SIDE_ENEMY, SIDE_PLAYER
     int trainer;            // -1 = wild
     int testRange;          // player vs a passive, self-rebuilding dummy
     int dummyKills;
@@ -181,6 +196,11 @@ typedef struct {
 } Battle;
 
 extern Battle battle;
+
+Combatant* battleField(int side, int pos);  // NULL if that field position is empty
+Combatant* battleFieldPlayer(void);         // the player's mech on the field
+Combatant* battleFieldEnemy(void);          // the enemy mech on the field
+Mech* battleRosterMech(int teamIdx);        // battle copy of team[teamIdx], NULL if not in this battle
 
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);

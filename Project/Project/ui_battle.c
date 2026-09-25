@@ -535,7 +535,7 @@ static void battleSounds(void) {
         if (strstr(newest->text, "SCRAMBLED") || strstr(newest->text, "CORRUPT")) sfxPlay(SFX_SCRAMBLE);
         lastSeenLog = newest;
     }
-    const MechStats* s = &battle.player.mech->stats;
+    const MechStats* s = &battleFieldPlayer()->mech->stats;
     int critical = s->maxHeat > 0 && s->heat >= s->maxHeat * HEAT_CRITICAL;
     if (critical && !heatWasCritical) sfxPlay(SFX_HEAT_WARN);
     heatWasCritical = critical;
@@ -637,7 +637,7 @@ void uiBattleUpdate(float dt, GameState* state) {
             reselectAfterShot = 1;
         }
         else {
-            const Weapon* w = mechWeapon(battle.player.mech, weaponSel);
+            const Weapon* w = mechWeapon(battleFieldPlayer()->mech, weaponSel);
             snprintf(battle.log, sizeof(battle.log), "%s: %s", w ? w->name : "MOUNT", reason);
             sfxPlay(SFX_UI_DENY);
         }
@@ -717,7 +717,7 @@ static int previewSelected(AttackPreview* p) {
 }
 
 static void drawEnemyHud(const AttackPreview* p) {
-    const Mech* m = &battle.enemyMech;
+    const Mech* m = battleFieldEnemy()->mech;
     const MechStats* s = &m->stats;
     const MechModel* model = mechModel(m);
     DrawRectangle(20, 20, 300, 132, (Color) { 20, 25, 40, 230 });
@@ -740,8 +740,8 @@ static void drawEnemyHud(const AttackPreview* p) {
         DrawText(TextFormat("HACK %d%%", (int)roundf(battleHackChance() * 100)), 240, 24, 12, (Color) { 120, 255, 220, 255 });
     DrawText(m->name, 30, 38, 22, (Color) { 255, 210, 210, 255 });
     DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), 250, 40, 18, WHITE);
-    const char* arch = battle.enemyArchetype >= 0 ? TextFormat("  [%s%s]", archetypes[battle.enemyArchetype].boss ? "BOSS " : "",
-        archetypes[battle.enemyArchetype].name) : "";
+    const char* arch = battleFieldEnemy()->archetype >= 0 ? TextFormat("  [%s%s]", archetypes[battleFieldEnemy()->archetype].boss ? "BOSS " : "",
+        archetypes[battleFieldEnemy()->archetype].name) : "";
     DrawText(TextFormat("%s %s - %s%s", model->designation, model->name, roleName(mechRole(m)), arch),
         30, 60, 11, (Color) { 200, 200, 240, 255 });
     drawIntegrityBar(30, 76, 280, 10, s->integrity, s->maxIntegrity);
@@ -752,7 +752,7 @@ static void drawEnemyHud(const AttackPreview* p) {
     }
     DrawText(TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity), 30, 88, 11, WHITE);
     DrawText(TextFormat("ARMOR %d/%d", s->armor, s->maxArmor), 30, 112, 11, (Color) { 150, 190, 240, 255 });
-    drawReadouts(s, combatMobility(&battle.enemy), combatAccuracy(&battle.enemy), 30, 132);
+    drawReadouts(s, combatMobility(battleFieldEnemy()), combatAccuracy(battleFieldEnemy()), 30, 132);
     tipText((Rectangle) { 30, 74, 280, 26 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "The machine's health. At 0 it is scrapped. Penetrating damage and anything Armor can't absorb lands here.");
     tipText((Rectangle) { 30, 100, 280, 24 }, TextFormat("ARMOR %d/%d", s->armor, s->maxArmor),
@@ -761,7 +761,7 @@ static void drawEnemyHud(const AttackPreview* p) {
 }
 
 static void drawPlayerHud(const AttackPreview* p) {
-    const Combatant* c = &battle.player;
+    const Combatant* c = battleFieldPlayer();
     const Mech* m = c->mech;
     const MechStats* s = &m->stats;
     const MechModel* model = mechModel(m);
@@ -801,7 +801,7 @@ static void drawPlayerHud(const AttackPreview* p) {
 }
 
 static void drawReactor(const AttackPreview* p) {
-    const MechStats* s = &battle.player.mech->stats;
+    const MechStats* s = &battleFieldPlayer()->mech->stats;
     int pips = s->maxEnergy > s->energy ? s->maxEnergy : s->energy;
     int spend = p ? p->energyCost : 0;
     DrawRectangle(330, 20, 200, 80, (Color) { 15, 25, 45, 230 });
@@ -818,10 +818,10 @@ static void drawReactor(const AttackPreview* p) {
     tipText((Rectangle) { 330, 20, 200, 80 }, TextFormat("ENERGY %d/%d", s->energy, s->maxEnergy),
         "Actions this turn. Each weapon costs its pips (shown on the weapon). Energy refills at the start of your turn; "
         "blinking pips are what the selected weapon would spend.");
-    if (battle.player.actionsThisTurn == 0 && firmwareEffect(&battle.player.mech->fw, CFX_FIRST_ACTION_FREE) > 0)
+    if (battleFieldPlayer()->actionsThisTurn == 0 && firmwareEffect(&battleFieldPlayer()->mech->fw, CFX_FIRST_ACTION_FREE) > 0)
         DrawText("FIRST ACTION FREE", 420, 108, 10, (Color) { 120, 255, 180, 255 });
     // Active Firmware Corruption on the player
-    const Firmware* fw = &battle.player.mech->fw;
+    const Firmware* fw = &battleFieldPlayer()->mech->fw;
     int offline = 0, reversed = 0;
     for (int k = 0; k < MAX_SOCKETS; k++) {
         if (fw->chips[k] < 0 || fw->corrupt[k] <= 0) continue;
@@ -830,8 +830,8 @@ static void drawReactor(const AttackPreview* p) {
     const char* corrupt = "";
     if (offline) corrupt = TextFormat("%s%d OFFLINE ", corrupt, offline);
     if (reversed) corrupt = TextFormat("%s%d REVERSED ", corrupt, reversed);
-    if (battle.player.energyTax) corrupt = TextFormat("%sEN COST +%d ", corrupt, battle.player.energyTax);
-    if (battle.player.randomTargeting) corrupt = TextFormat("%sRANDOM TARGETING", corrupt);
+    if (battleFieldPlayer()->energyTax) corrupt = TextFormat("%sEN COST +%d ", corrupt, battleFieldPlayer()->energyTax);
+    if (battleFieldPlayer()->randomTargeting) corrupt = TextFormat("%sRANDOM TARGETING", corrupt);
     if (corrupt[0]) {
         DrawText(TextFormat("CORRUPTED: %s", corrupt), 340, 122, 10, (Color) { 255, 110, 90, 255 });
         tipText((Rectangle) { 340, 120, 300, 14 }, "FIRMWARE CORRUPTION",
@@ -843,7 +843,7 @@ static void drawReactor(const AttackPreview* p) {
 static void drawWeaponButton(int i) {
     Rectangle r = weaponButtonRect(i);
     int bx = (int)r.x, by = (int)r.y;
-    const Weapon* w = mechWeapon(battle.player.mech, i);
+    const Weapon* w = mechWeapon(battleFieldPlayer()->mech, i);
     int selected = (i == weaponSel);
     if (!w) {
         DrawRectangleLinesEx(r, 1, selected ? (Color) { 120, 120, 120, 255 } : (Color) { 50, 70, 100, 200 });
@@ -883,7 +883,7 @@ static void drawWeaponButton(int i) {
     if (!usable && reason) info = reason;
     DrawText(info, bx + 24, by + 18, 10, usable ? (Color) { 150, 200, 220, 255 } : (Color) { 255, 120, 120, 255 });
     if (w->ammo > 0)
-        DrawText(TextFormat("AMMO %d/%d", battle.player.mech->weapons[i].ammo, w->ammo), bx + 225, by + 18, 10,
+        DrawText(TextFormat("AMMO %d/%d", battleFieldPlayer()->mech->weapons[i].ammo, w->ammo), bx + 225, by + 18, 10,
             (Color) { 150, 200, 220, 255 });
     for (int e = 0; e < w->energyCost; e++) {
         int ex = bx + (int)r.width - 14 - e * 14, ey = by + 10;
@@ -892,15 +892,15 @@ static void drawWeaponButton(int i) {
     }
     Explanation why;
     if (battleExplainPlayer(i, &why))
-        tipWhy(r, w->name, TextFormat("%s  Mount rating %d/5.", munitionPlain(w->munition), battle.player.mech->weapons[i].rating), &why);
+        tipWhy(r, w->name, TextFormat("%s  Mount rating %d/5.", munitionPlain(w->munition), battleFieldPlayer()->mech->weapons[i].rating), &why);
 }
 
 // Plain-language summary of the selected weapon: what it will do and what to watch out for
 static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, good = { 120, 255, 160, 255 }, warn = { 255, 150, 110, 255 };
-    const MechStats* ds = &battle.enemyMech.stats;
+    const MechStats* ds = &battleFieldEnemy()->mech->stats;
     int hitPct = (int)roundf(p->hitChance * 100);
-    DrawText(TextFormat("%s > %s", w->name, battle.enemyMech.name), x, y, 12, munitionColor(w->munition));
+    DrawText(TextFormat("%s > %s", w->name, battleFieldEnemy()->mech->name), x, y, 12, munitionColor(w->munition));
     int ly = y + 17;
     DrawText(TextFormat("%d%% TO HIT", hitPct), x, ly, 14, hitPct >= 70 ? good : hitPct >= 40 ? (Color) { 255, 220, 120, 255 } : warn);
     if (w->baseDamage > 0) {
@@ -930,7 +930,7 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
             char names[96] = "";
             for (int k = 0; k < nb; k++)
                 snprintf(names + strlen(names), sizeof(names) - strlen(names), "%s%s", k ? ", " : "",
-                    mechWeapon(battle.player.mech, blocked[k])->name);
+                    mechWeapon(battleFieldPlayer()->mech, blocked[k])->name);
             DrawText(TextFormat("Heat %d/%d. Locks %s next turn.", after, p->maxHeat, names), x, ly, 10, warn);
         }
         else DrawText(TextFormat("Heat %d/%d after this shot - safe.", after, p->maxHeat), x, ly, 10,
@@ -944,7 +944,7 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
 // Every step of the attack formula for the selected weapon, before it is fired
 static void drawPreviewPanel(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, dim = { 130, 150, 175, 255 }, res = { 120, 255, 160, 255 };
-    DrawText(TextFormat("PREVIEW  %s > %s", w->name, battle.enemyMech.name), x, y, 12, munitionColor(w->munition));
+    DrawText(TextFormat("PREVIEW  %s > %s", w->name, battleFieldEnemy()->mech->name), x, y, 12, munitionColor(w->munition));
     int ly = y + 16, lh = 12;
     DrawText(TextFormat("HIT  %d%% x %d/100 x (1 - %d/200) = %.1f%%%s", p->weaponAcc, p->accuracy, p->mobility,
         p->hitUnclamped * 100, p->spoofMod < 1 ? TextFormat(" x spoof %.2f", p->spoofMod) : ""), x, ly, 10, txt);
@@ -1020,8 +1020,8 @@ void uiBattleDraw(void) {
     tip.active = 0;
 
     BeginMode2D(layoutCamera());
-    drawMechBattle(battle.enemyMech.model, (int)(enemyMechPos.x + sx), (int)(enemyMechPos.y + sy), 14, 1);
-    drawMechBattle(battle.player.mech->model, (int)(playerMechPos.x + sx), (int)(playerMechPos.y + sy), 14, 0);
+    drawMechBattle(battleFieldEnemy()->mech->model, (int)(enemyMechPos.x + sx), (int)(enemyMechPos.y + sy), 14, 1);
+    drawMechBattle(battleFieldPlayer()->mech->model, (int)(playerMechPos.x + sx), (int)(playerMechPos.y + sy), 14, 0);
     drawEffects();
     drawParticles();
     drawDamageNums();
@@ -1045,8 +1045,8 @@ void uiBattleDraw(void) {
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
         drawButton(endTurnButtonRect(), "END TURN [X]", 12, 0, 1);
         DrawLine(393, ROW_Y, 393, ROW_Y + 134, (Color) { 50, 90, 130, 200 });
-        if (p && formulaView) drawPreviewPanel(p, mechWeapon(battle.player.mech, weaponSel), 402, ROW_Y);
-        else if (p) drawPlainPreview(p, mechWeapon(battle.player.mech, weaponSel), 402, ROW_Y);
+        if (p && formulaView) drawPreviewPanel(p, mechWeapon(battleFieldPlayer()->mech, weaponSel), 402, ROW_Y);
+        else if (p) drawPlainPreview(p, mechWeapon(battleFieldPlayer()->mech, weaponSel), 402, ROW_Y);
         else if (!battleBusy()) DrawText("No weapon on this mount.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         DrawText(battle.testRange ? "[Z] FIRE  [W/S] SELECT  [X] END TURN  [R] NEW DUMMY  [L] LOG  [M] MUTE  [ESC] LEAVE"
                                   : "[Z] FIRE  [W/S] SELECT  [X] END TURN  [C] HACK  [L] LOG  [I] WHY  [M] MUTE",
@@ -1054,7 +1054,7 @@ void uiBattleDraw(void) {
         tipText(hackButtonRect(), "HACK (REPROGRAM)", battleCanHack()
             ? TextFormat("Chance %d%% = your hack Strength %d / (Strength + their Stability %d). Scramble them first: every "
                 "pending scramble or corruption lowers their Stability by %d. Costs the rest of your turn.",
-                (int)roundf(battleHackChance() * 100), hackStrength(battle.player.mech), battleHackStability(), HACK_STABILITY_PER_EFFECT)
+                (int)roundf(battleHackChance() * 100), hackStrength(battleFieldPlayer()->mech), battleHackStability(), HACK_STABILITY_PER_EFFECT)
             : "Only unmanned rogue AI machines can be reprogrammed, and your team needs a free slot.");
     }
     else {
@@ -1090,7 +1090,7 @@ void uiBattleDraw(void) {
     else if (infoOpen && p) {   // keyboard route to the same breakdown the weapon tooltip shows
         Explanation why;
         if (battleExplainPlayer(weaponSel, &why)) {
-            const Weapon* w = mechWeapon(battle.player.mech, weaponSel);
+            const Weapon* w = mechWeapon(battleFieldPlayer()->mech, weaponSel);
             tip.active = 1;
             tip.fixed = 1;
             tip.hasWhy = 1;

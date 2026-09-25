@@ -57,11 +57,12 @@ void uiDebugOpen(GameState returnTo) {
     returnState = returnTo;
     poolSize = 0;
     for (int i = 0; i < teamSize; i++) {
-        pool[poolSize] = &team[i];
+        Mech* live = returnTo == STATE_BATTLE ? battleRosterMech(i) : NULL;   // in battle, edit the battle copy
+        pool[poolSize] = live ? live : &team[i];
         snprintf(poolTag[poolSize++], sizeof(poolTag[0]), "TEAM %d", i + 1);
     }
     if (returnTo == STATE_BATTLE) {
-        pool[poolSize] = &battle.enemyMech;
+        pool[poolSize] = battleFieldEnemy()->mech;
         snprintf(poolTag[poolSize++], sizeof(poolTag[0]), "ENEMY");
     }
     makeBuilds();
@@ -76,7 +77,7 @@ void uiDebugOpen(GameState returnTo) {
     if (target >= poolSize) target = 0;
 }
 
-static int isBattleEnemy(const Mech* m) { return returnState == STATE_BATTLE && m == &battle.enemyMech; }
+static int isBattleEnemy(const Mech* m) { return returnState == STATE_BATTLE && m == battleFieldEnemy()->mech; }
 
 void uiDebugUpdate(GameState* state) {
     if (IsKeyPressed(KEY_F1) || IsKeyPressed(KEY_ESCAPE)) {
