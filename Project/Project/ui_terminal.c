@@ -299,7 +299,8 @@ static void drawDetail(int x, int y, int w) {
         DrawText(TextFormat("%s  %s  CAPACITY %d", chipCategoryName(c->category), chipRarityName(c->rarity), c->cost),
             x, y + 26, 12, colHead);
         drawWrapped(c->desc, x, y + 46, w, 12, colText);
-        DrawText(TextFormat("Owned %d, free %d", chipOwned[r.index], chipAvailable(r.index)), x, y + 132, 12, colText);
+        drawWrapped(c->plain, x, y + 66, w, 12, colDim);
+        DrawText(TextFormat("Owned %d, free %d", chipOwned[r.index], chipAvailable(r.index)), x, y + 160, 12, colText);
         DrawText(TextFormat("[Z] Buy for %d CR", chipPrice(r.index)), x, y + 380, 14, colHead);
         break;
     }

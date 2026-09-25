@@ -6,6 +6,7 @@
 #include "firmware.h"
 #include "ui.h"
 #include "game.h"
+#include "audio.h"
 #include <stdlib.h>
 
 // Called once when the game switches screens. Returning from the debug
@@ -40,6 +41,7 @@ int main(void) {
     SetExitKey(KEY_NULL);   // ESC opens menus; quit via the EXIT button
     SetTargetFPS(60);
     displayInit();
+    audioInit();
 
     gameNew();              // a fresh campaign; the menu can load a save over it
 
@@ -53,6 +55,8 @@ int main(void) {
 
         // Only the screen that was active at the start of the frame gets updated,
         // so a key press that changes screens isn't handled twice.
+        if (IsKeyPressed(KEY_M)) audioToggleMute();
+
         GameState frameState = state;
         if (IsKeyPressed(KEY_F1) && debugAllowedFrom(frameState)) {
             consumeInput();
@@ -88,6 +92,7 @@ int main(void) {
         presentCanvas();
     }
 
+    audioShutdown();
     displayShutdown();
     CloseWindow();
     return 0;

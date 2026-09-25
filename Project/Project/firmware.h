@@ -89,7 +89,8 @@ typedef struct {
     ChipEffect effect;
     StatId stat;            // stat the effect relates to; only CFX_STAT adds it to Stats
     float value;
-    const char* desc;
+    const char* desc;       // short, numeric ("+5 Accuracy.")
+    const char* plain;      // what it means in play, for tooltips and shops
 } ChipDef;
 
 enum {

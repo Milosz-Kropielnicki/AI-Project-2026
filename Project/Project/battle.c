@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
+#include <stdarg.h>
 
 Battle battle;
 
@@ -187,6 +188,38 @@ int revisionDataForTrainer(const Mech* enemy, int tier) {
 int revisionDataForParticipation(const Mech* enemy) { return 5 + enemy->fw.revision * 2; }
 
 // ============ COMBATANTS ============
+// ============ BATTLE LOG ============
+static LogEntry logHistory[LOG_HISTORY];
+static int logHead = 0, logSize = 0;
+static char lastLogged[256] = "";
+
+int battleLogCount(void) { return logSize; }
+const LogEntry* battleLogEntry(int back) {
+    if (back < 0 || back >= logSize) return NULL;
+    return &logHistory[(logHead - 1 - back + LOG_HISTORY) % LOG_HISTORY];
+}
+
+static LogEntry* logPush(const char* text, int side, int munition) {
+    LogEntry* e = &logHistory[logHead];
+    memset(e, 0, sizeof(*e));
+    snprintf(e->text, sizeof(e->text), "%s", text);
+    e->side = side;
+    e->munition = munition;
+    e->round = battle.round;
+    logHead = (logHead + 1) % LOG_HISTORY;
+    if (logSize < LOG_HISTORY) logSize++;
+    snprintf(lastLogged, sizeof(lastLogged), "%s", text);
+    return e;
+}
+
+// System messages are written straight into battle.log all over this file;
+// anything new there is copied into the history.
+static void syncLog(void) {
+    if (battle.log[0] && strcmp(battle.log, lastLogged) != 0) logPush(battle.log, -1, -1);
+}
+
+static void logClear(void) { logHead = logSize = 0; lastLogged[0] = 0; }
+
 static int integrityBelow(const Combatant* c, float fraction) {
     return c->mech->stats.integrity < c->mech->stats.maxIntegrity * fraction;
 }
@@ -228,6 +261,106 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     return ctx;
 }
 
+// ============ EXPLANATION ============
+static void say(Explanation* x, int warn, const char* fmt, ...) {
+    if (x->n >= EXPLAIN_LINES) return;
+    va_list args;
+    va_start(args, fmt);
+    vsnprintf(x->line[x->n], EXPLAIN_LEN, fmt, args);
+    va_end(args);
+    x->warn[x->n++] = warn;
+}
+
+static const char* scrambleOutcome(int strength, int virus) {
+    if (virus) return "corrupts target firmware";
+    if (strength >= 100) return "costs the target a turn (or corrupts a chip)";
+    if (strength >= 70) return "disables a weapon (or corrupts a chip)";
+    if (strength >= 40) return "cuts target Accuracy by 15 (or corrupts a chip)";
+    return "drains 1 Energy";
+}
+
+// Plain-language reasons for every number in p. Built from the same battle
+// state attackPreview used, so the text always matches the result.
+static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* w, const AttackPreview* p, Explanation* x) {
+    const MechStats* as = &a->mech->stats;
+    const MechStats* ds = &d->mech->stats;
+    x->n = 0;
+
+    // ---- hit chance ----
+    char accWhy[96] = "", mobWhy[96] = "";
+    int precision = a->actionsThisTurn == 0 ? (int)fwEffect(a->mech, CFX_PRECISION_STRIKE) : 0;
+    int recursive = a->missStacks * (int)fwEffect(a->mech, CFX_RECURSIVE_TARGETING);
+    if (precision) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Precision Strike +%d", precision);
+    if (recursive) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Recursive Targeting +%d", recursive);
+    if (a->accPenalty) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", scrambled -%d", a->accPenalty);
+    if (d->evasiveBonus) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", evading +%d", d->evasiveBonus);
+    if (integrityBelow(d, 0.25f) && fwEffect(d->mech, CFX_EMERGENCY_EVASION) > 0)
+        snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", Emergency Evasion +%d", (int)fwEffect(d->mech, CFX_EMERGENCY_EVASION));
+    say(x, 0, "HIT %d%%: weapon %d%% x Accuracy %d%%%s", (int)roundf(p->hitChance * 100), p->weaponAcc, p->accuracy,
+        accWhy[0] ? TextFormat(" (%s)", accWhy + 2) : "");
+    say(x, 0, "   x target evasion: Mobility %d%%%s dodges %d%% of shots", p->mobility,
+        mobWhy[0] ? TextFormat(" (%s)", mobWhy + 2) : "", (int)roundf(p->mobility / 2.0f));
+    if (p->spoofMod < 1) say(x, 1, "   Targeting Spoof: first attack on target this round is x%.2f", p->spoofMod);
+    if (p->hitUnclamped * p->spoofMod > HIT_CHANCE_MAX) say(x, 0, "   (capped at 95%% - nothing is certain)");
+    if (p->hitUnclamped * p->spoofMod < HIT_CHANCE_MIN) say(x, 1, "   (floored at 5%% - a lucky shot is still possible)");
+
+    // ---- damage ----
+    if (p->baseDamage > 0) {
+        char mods[112] = "";
+        if (p->power > as->power + 0.001f) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Aggressive Kernel +%.2f PWR", p->power - as->power);
+        if (p->executeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Hunter +%d%% (target under half)", (int)roundf((p->executeMod - 1) * 100));
+        if (p->overchargeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Overcharge +%d%%", (int)roundf((p->overchargeMod - 1) * 100));
+        if (p->reductionMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target Bastion -%d%%", (int)roundf((1 - p->reductionMod) * 100));
+        if (p->firstHitMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target Defensive Kernel -%d%%", (int)roundf((1 - p->firstHitMod) * 100));
+        if (p->adaptiveMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", adapted to %s -%d%%", munitionNames[w->munition], (int)roundf((1 - p->adaptiveMod) * 100));
+        say(x, 0, "DAMAGE %.0f: %d base x %.2f Power%s", p->raw, p->baseDamage, p->power,
+            p->dmgMod != 1 ? TextFormat(" x %.2f firmware", p->dmgMod) : "");
+        if (mods[0]) say(x, 0, "   %s", mods + 2);
+
+        // ---- armor vs penetration ----
+        int analysis = ds->armor > ARMORED_THRESHOLD ? (int)roundf(fwEffect(a->mech, CFX_PEN_VS_ARMORED) * 100) : 0;
+        int siege = (int)fwEffect(a->mech, CFX_PEN_BONUS);
+        const char* penWhy = analysis || siege ? TextFormat(" (weapon %d%%%s%s)", w->armorPen,
+            analysis ? TextFormat(" + Armor Analysis %d", analysis) : "", siege ? TextFormat(" + Siege %d", siege) : "") : "";
+        if (p->armorBefore <= 0)
+            say(x, 0, "ARMOR: none left - all %.0f goes into Integrity", p->raw);
+        else {
+            say(x, 0, "PENETRATION %d%%%s: %.0f bypasses Armor, %.0f hits Armor", p->pen, penWhy, p->split.toIntegrity, p->split.toArmor);
+            if (p->split.spill > 0) say(x, 1, "   Armor %d can't hold it: %d spills through to Integrity", p->armorBefore, p->split.spill);
+            else if (p->pen < 25 && p->split.toArmor > p->split.toIntegrity * 2)
+                say(x, 1, "   Mostly stopped by Armor - a higher-penetration weapon would hurt more");
+            if (p->breachBonus > 0) say(x, 0, "   Armor Breach Routine: +%d extra Armor damage", p->breachBonus);
+        }
+        say(x, 0, "ON HIT: Armor -%d, Integrity -%d%s", p->armorDamage, p->integrityDamage,
+            p->integrityDamage >= ds->integrity ? "  -> SCRAPS TARGET" : "");
+    }
+
+    // ---- scramble ----
+    if (p->scramble > 0) {
+        int stab = ds->stability + (int)fwEffect(d->mech, CFX_COUNTER_INTRUSION);
+        say(x, 0, "SCRAMBLE %d vs target Stability %d: %d%% chance it lands, then it %s", p->scramble, stab,
+            (int)roundf((1 - p->resist) * 100), scrambleOutcome(p->scramble, w->virus));
+    }
+
+    // ---- energy and heat ----
+    const char* costWhy = p->energyCost == 0 ? " (first action free)" : a->energyTax ? TextFormat(" (+%d corruption)", a->energyTax) : "";
+    int after = p->heatBefore + p->heat;
+    float heatMult = w->heat > 0 ? (float)p->heat / w->heat : 1;
+    say(x, after > p->maxHeat, "COST %d EN%s   HEAT +%d%s -> %d/%d%s", p->energyCost, costWhy, p->heat,
+        heatMult > 1.01f || heatMult < 0.99f ? TextFormat(" (x%.2f)", heatMult) : "", after, p->maxHeat,
+        after > p->maxHeat ? " OVER THE LIMIT" : "");
+}
+
+int battleExplainPlayer(int mount, Explanation* out) {
+    const Weapon* w = mechWeapon(battle.player.mech, mount);
+    if (!w) return 0;
+    AttackPreview p;
+    AttackContext ctx = liveContext(&battle.player, &battle.enemy);
+    attackPreview(battle.player.mech, w, battle.enemy.mech, &ctx, &p);
+    explainAttack(&battle.player, &battle.enemy, w, &p, out);
+    return 1;
+}
+
 static int canFire(const Combatant* c, int mount, const char** reason) {
     const char* r = NULL;
     const MechStats* s = &c->mech->stats;
@@ -239,6 +372,20 @@ static int canFire(const Combatant* c, int mount, const char** reason) {
     else if (s->heat + weaponHeat(c->mech, w) > s->maxHeat) r = "THERMAL LIMIT";
     if (reason) *reason = r;
     return r == NULL;
+}
+
+int battleHeatBlocksNextTurn(int mount, int* blocked, int max) {
+    const Combatant* c = &battle.player;
+    const Weapon* w = mechWeapon(c->mech, mount);
+    if (!w) return 0;
+    const MechStats* s = &c->mech->stats;
+    int next = formulaHeatAfterCooling(s->heat + weaponHeat(c->mech, w), s->cooling);
+    int n = 0;
+    for (int i = 0; i < MAX_WEAPONS && n < max; i++) {
+        const Weapon* o = mechWeapon(c->mech, i);
+        if (o && next + weaponHeat(c->mech, o) > s->maxHeat) blocked[n++] = i;
+    }
+    return n;
 }
 
 static int anyFireable(const Combatant* c) {
@@ -344,9 +491,10 @@ static const char* turnStart(Combatant* c) {
 }
 
 // ============ EVENTS ============
-static void pushEvent(int fx, int fromPlayer, int damage, int hit, Color color) {
-    if (battle.numEvents >= MAX_BATTLE_EVENTS) return;
-    battle.events[battle.numEvents++] = (BattleEvent){ fx, fromPlayer, damage, hit, color };
+static BattleEvent* pushEvent(int fx, int fromPlayer, int damage, int hit, Color color) {
+    if (battle.numEvents >= MAX_BATTLE_EVENTS) return NULL;
+    battle.events[battle.numEvents] = (BattleEvent){ fx, fromPlayer, damage, hit, color, -1, 0, 0, 0 };
+    return &battle.events[battle.numEvents++];
 }
 
 int battlePopEvent(BattleEvent* out) {
@@ -419,17 +567,23 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer, const 
     AttackContext ctx = liveContext(a, d);
     AttackPreview p;
     attackPreview(a->mech, w, d->mech, &ctx, &p);
+    Explanation why;
+    explainAttack(a, d, w, &p, &why);   // before any state changes, so it matches p
 
     MechStats* as = &a->mech->stats;
     MechStats* ds = &d->mech->stats;
+    int lethalBefore = p.integrityDamage >= ds->integrity;
     as->energy -= p.energyCost;
     as->heat += p.heat;
     if (w->ammo > 0) a->mech->weapons[mount].ammo--;
     a->actionsThisTurn++;
     d->attackedThisRound = 1;
 
+
     const char* who = isPlayer ? a->mech->name : TextFormat("Enemy %s", a->mech->name);
-    int hit = frand() < p.hitChance;
+    float roll = frand();
+    int hit = roll < p.hitChance;
+    float scrambleRoll = -1;
     int total = 0;
     char extra[96] = "";
     if (hit) {
@@ -443,7 +597,8 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer, const 
             d->lastMunitionTaken = w->munition;
         }
         if (p.scramble > 0 && ds->integrity > 0) {
-            if (frand() < p.resist) {
+            scrambleRoll = frand();
+            if (scrambleRoll < p.resist) {
                 int heal = (int)fwEffect(d->mech, CFX_SYSTEM_RECOVERY);
                 ds->integrity = clampi(ds->integrity + heal, 0, ds->maxIntegrity);
                 snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
@@ -467,8 +622,23 @@ static void doAttack(Combatant* a, Combatant* d, int mount, int isPlayer, const 
         snprintf(line, sizeof(line), "%s%s", prefix, battle.log);
         memcpy(battle.log, line, sizeof(line));
     }
+
+    // History entry: the roll first, then the reasons
+    LogEntry* le = logPush(battle.log, isPlayer, w->munition);
+    le->why.n = 0;
+    say(&le->why, !hit, "ROLL %d vs %d%% to hit -> %s", (int)(roll * 100), (int)roundf(p.hitChance * 100), hit ? "HIT" : "MISS");
+    if (scrambleRoll >= 0)
+        say(&le->why, 0, "SCRAMBLE ROLL %d vs %d%% resist -> %s", (int)(scrambleRoll * 100), (int)roundf(p.resist * 100),
+            scrambleRoll < p.resist ? "resisted" : "landed");
+    for (int i = 0; i < why.n; i++) say(&le->why, why.warn[i], "%s", why.line[i]);
+
     a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
     pushEvent(w->fx, isPlayer, total, hit, munitionColor(w->munition));
+    BattleEvent* ev = &battle.events[battle.numEvents - 1];
+    ev->munition = w->munition;
+    ev->armorDamage = hit ? p.armorDamage : 0;
+    ev->integrityDamage = hit ? p.integrityDamage : 0;
+    ev->lethal = hit && lethalBefore;
     battle.animTimer = fxDuration(w->fx);
     battle.outcomePending = 1;
 }
@@ -531,10 +701,18 @@ static void beginBattle(void) {
     battle.result = RESULT_NONE;
     battle.numEvents = 0;
     battle.oldRevision = rosterActive()->fw.revision;
+    logClear();
     initCombatant(&battle.player, rosterActive());
     initCombatant(&battle.enemy, &battle.enemyMech);
     battle.enemy.ai = enemyAI();
-    beginPlayerTurn();
+    // Initiative (balance rule, not in the design doc): the faster machine opens
+    // the fight; ties go to the player.
+    int pm = battle.player.mech->stats.mobility, em = battle.enemyMech.stats.mobility;
+    if (em > pm) {
+        logPush(TextFormat("%s is faster (Mobility %d vs %d) and moves first.", battle.enemyMech.name, em, pm), -1, -1);
+        beginEnemyTurn();
+    }
+    else beginPlayerTurn();
 }
 
 void battleStartWild(void) {
@@ -634,12 +812,17 @@ static void encounterMechDown(void) {
     t->numDefeated++;
     awardData(revisionDataForTrainer(&battle.enemyMech, t->tier));
     if (t->numDefeated < t->numMechs) {
+        // Breather between squad mechs (balance): Armor replated, Heat vented.
+        // Integrity damage carries over, so a squad is still an endurance fight.
+        MechStats* ps = &battle.player.mech->stats;
+        ps->armor = ps->maxArmor;
+        ps->heat = 0;
         spawnArchetype(t->teamArchetypes[t->numDefeated], t->teamRevisions[t->numDefeated]);
         initCombatant(&battle.enemy, &battle.enemyMech);
         battle.enemy.ai = enemyAI();
         battle.round = 0;
         beginPlayerTurn();
-        snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (%d/%d)",
+        snprintf(battle.log, sizeof(battle.log), "%s sent out %s! (%d/%d)  Your Armor is replated and Heat vented.",
             t->name, battle.enemyMech.name, t->numDefeated + 1, t->numMechs);
     }
     else {
@@ -701,7 +884,13 @@ static void finish(BattleResult result) {
 // ============ UPDATE / INPUT ============
 int battleBusy(void) { return battle.dialogue != DLG_NONE || battle.animTimer > 0; }
 
+static void battleUpdateInner(float dt);
 void battleUpdate(float dt) {
+    battleUpdateInner(dt);
+    syncLog();
+}
+
+static void battleUpdateInner(float dt) {
     if (battle.dialogue != DLG_NONE) return;
     if (battle.animTimer > 0) {
         battle.animTimer -= dt;
@@ -739,6 +928,7 @@ void battleFire(int mount) {
     if (!battleCanFire(mount, NULL)) return;
     int fired = corruptedMount(&battle.player, mount);
     doAttack(&battle.player, &battle.enemy, fired, 1, fired != mount ? "TARGETING CORRUPTED! " : NULL);
+    syncLog();
 }
 
 int battleAIChooseForPlayer(void) {
@@ -749,7 +939,9 @@ int battleAIChooseForPlayer(void) {
 void battleEndTurn(void) {
     if (battle.phase != BP_PLAYER_TURN || battleBusy()) return;
     snprintf(battle.log, sizeof(battle.log), "Ending turn. Enemy taking action...");
+    syncLog();
     beginEnemyTurn();
+    syncLog();
 }
 
 // Wild machines are rogue AI; encounter squads only if their faction is rogue

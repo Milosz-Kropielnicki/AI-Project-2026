@@ -66,6 +66,9 @@
     <ClCompile Include="ui_terminal.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="audio.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ui_starter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -93,6 +96,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="audio.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

@@ -56,6 +56,29 @@ typedef struct {
     float resist;           // target's chance to resist the scramble
 } AttackPreview;
 
+// ============ ATTACK EXPLANATION ============
+// The reasons behind one attack's numbers in plain language. The same lines
+// feed the weapon tooltip (before firing) and the battle log (after).
+#define EXPLAIN_LINES 12
+#define EXPLAIN_LEN 120
+typedef struct {
+    int n;
+    char line[EXPLAIN_LINES][EXPLAIN_LEN];
+    int warn[EXPLAIN_LINES];            // 1 = draw as a warning
+} Explanation;
+
+// ============ BATTLE LOG ============
+#define LOG_HISTORY 48
+typedef struct {
+    char text[256];
+    int side;                           // 1 = player, 0 = enemy, -1 = system
+    int munition;                       // -1 = not an attack
+    int round;
+    Explanation why;                    // empty for system lines
+} LogEntry;
+int battleLogCount(void);
+const LogEntry* battleLogEntry(int back);   // 0 = newest
+
 // Per-attack conditions that come from battle state rather than stats
 typedef struct {
     int attackerAccuracy;   // effective (scramble penalties / precision strike applied)
@@ -126,7 +149,13 @@ typedef struct {
 } Combatant;
 
 // A visual cue for ui_battle.c; battle logic never touches effects directly
-typedef struct { int fx; int fromPlayer; int damage; int hit; Color color; } BattleEvent;
+typedef struct {
+    int fx, fromPlayer, damage, hit;
+    Color color;
+    int munition;                       // drives impact particles and sound
+    int armorDamage, integrityDamage;   // shown as separate numbers
+    int lethal;
+} BattleEvent;
 #define MAX_BATTLE_EVENTS 8
 
 typedef struct {
@@ -163,7 +192,10 @@ int battleBusy(void);                       // animating or showing dialogue
 int battleCanFire(int mount, const char** reason);
 void battleFire(int mount);
 void battleEndTurn(void);
-int battleAIChooseForPlayer(void);          // the enemy AI's pick for the player's side (tests / autoplay)
+int battleAIChooseForPlayer(void);
+int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
+// Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
+int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)
 int battleCanHack(void);
 int battleHackStability(void);              // enemy's effective Stability against a hack
 float battleHackChance(void);

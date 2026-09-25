@@ -37,6 +37,7 @@
     <ClCompile Include="game.c" />
     <ClCompile Include="data_game.c" />
     <ClCompile Include="ui_terminal.c" />
+    <ClCompile Include="audio.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="display.h" />
@@ -47,6 +48,7 @@
     <ClInclude Include="stats.h" />
     <ClInclude Include="ui.h" />
     <ClInclude Include="game.h" />
+    <ClInclude Include="audio.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>18.0</VCProjectVersion>
