@@ -161,7 +161,7 @@ static void grantReward(RewardKind kind, int item) {
     case REWARD_MODULE: moduleOwned[item]++; break;
     case REWARD_CHIP:   chipOwned[item]++; break;
     case REWARD_MECH: {
-        Mech m = mechCreateStock(item, gameWildLevel(ZONE_BETA));
+        Mech m = mechCreateStock(item, gameWildLevel(REGION_BETA));
         partsAddFromMech(&m);
         rosterAdd(&m);
         break;
@@ -182,7 +182,7 @@ const char* jobClaim(int job) {
 
 const char* jobObjective(int job) {
     const JobDef* d = &jobDefs[job];
-    const char* zone = zones[d->zone].name;
+    const char* zone = regions[d->zone].name;
     switch (d->type) {
     case JOB_BOUNTY:  return TextFormat("Defeat %s in %s", d->trainer, zone);
     case JOB_CULL:    return TextFormat("Scrap rogue machines in %s  %d/%d", zone, jobProgress[job], d->count);
@@ -202,7 +202,7 @@ const char* rewardName(RewardKind kind, int item) {
 
 // ============ BATTLE EVENTS ============
 int gameWildLevel(int zone) {
-    static const int lo[NUM_ZONES] = { 0, 2, 5 }, hi[NUM_ZONES] = { 1, 4, 7 };
+    static const int lo[NUM_REGIONS] = { 0, 2, 5 }, hi[NUM_REGIONS] = { 1, 4, 7 };
     return lo[zone] + rand() % (hi[zone] - lo[zone] + 1);
 }
 
@@ -211,9 +211,9 @@ static void append(char* note, int size, const char* s) {
 }
 
 void gameOnWildScrapped(const Mech* enemy, char* note, int size) {
-    int pay = 15 + 8 * enemy->fw.revision;
-    credits += pay;
-    snprintf(note, size, " +%d CR.", pay);
+    int payOut = 15 + 8 * enemy->fw.revision;
+    credits += payOut;
+    snprintf(note, size, " +%d CR.", payOut);
     // Salvage: a 30% chance to pull one of its weapons out intact
     int mounts[MAX_WEAPONS], n = 0;
     for (int i = 0; i < MAX_WEAPONS; i++) if (enemy->weapons[i].weapon >= 0) mounts[n++] = i;
