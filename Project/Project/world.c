@@ -8,12 +8,15 @@
 #include <math.h>
 
 // ============ REGIONS ============
-// Regions are now compact "hub" areas: settlement-sized zones connected by
-// narrow route corridors. The map is much bigger and mostly empty wilderness.
+// Five hubs. The chain alternates "wide" and "narrow" shapes so each region
+// reads differently even though they all sit in the same 120x60 grid.
 const Region regions[NUM_REGIONS] = {
-    { "SECTOR ALPHA", "- CALIBRATION FIELD -",  {255, 255, 255, 255}, 14,  1, 1, 30, 28 },
-    { "SECTOR BETA",  "- INDUSTRIAL RUINS -",   {255, 220, 200, 255}, 18, 46, 18, 76, 44 },
-    { "SECTOR GAMMA", "- APEX WASTELAND -",     {220, 200, 255, 255}, 22, 90, 4, 118, 56 },
+    // name           subtitle                  tint                     enc  minX minY maxX maxY
+    { "SECTOR ALPHA", "- CALIBRATION FIELD -", {255, 255, 255, 255}, 14,   3,  4, 26, 26 },
+    { "SECTOR BETA",  "- INDUSTRIAL RUINS -",  {255, 220, 200, 255}, 18,  46,  4, 76, 24 },
+    { "SECTOR GAMMA", "- APEX WASTELAND -",    {220, 200, 255, 255}, 20,  86,  4,116, 24 },
+    { "SECTOR DELTA", "- FROZEN FOUNDRY -",    {200, 230, 255, 255}, 18,  46, 38, 76, 56 },
+    { "SECTOR OMEGA", "- DEAD ZONE -",         {255, 180, 180, 255}, 24,  86, 38,116, 56 },
 };
 
 int worldRegionAt(int tileX, int tileY) {
@@ -71,7 +74,7 @@ static int moving = 0;
 static float moveT = 0;
 static float moveFromX, moveFromY;
 static int lastDir = -1;
-static int justEnteredZone = 0;    // suppress encounter roll on spawn tile
+static int justEnteredZone = 0;
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
@@ -93,39 +96,148 @@ static void fillRect(int x0, int y0, int x1, int y1, int t) {
             setTile(x, y, t);
 }
 
-// A route is a 2-tile-wide corridor. This carves one along a rectangle of
-// grass with rubble framing, then re-carves the walkable floor. The rubble
-// framing makes the corridor visually distinct from the open wilderness.
+// A route is a 2-tile-wide corridor. No more rubble frame — the surrounding
+// wilderness stays solid T_BLOCK, so the corridor reads as a clean carved
+// road through the map. A sparse scattering of ruins tiles is placed on the
+// floor afterward for flavor and to keep encounters meaningful.
 static void carveRouteRect(int x0, int y0, int x1, int y1) {
-    // Frame: a 1-tile ring of rubble around the corridor rect
-    for (int x = x0 - 1; x <= x1 + 1; x++) {
-        if (getTile(x, y0 - 1) == T_GRID) setTile(x, y0 - 1, T_RUINS);
-        if (getTile(x, y1 + 1) == T_GRID) setTile(x, y1 + 1, T_RUINS);
-    }
-    for (int y = y0 - 1; y <= y1 + 1; y++) {
-        if (getTile(x0 - 1, y) == T_GRID) setTile(x0 - 1, y, T_RUINS);
-        if (getTile(x1 + 1, y) == T_GRID) setTile(x1 + 1, y, T_RUINS);
-    }
-    // Floor: fill with grass first (so encounters roll), then overlay the
-    // path so the corridor reads as walkable
     for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
             setTile(x, y, T_GRASS);
-    // A thin path stripe down the middle of the corridor
     for (int y = y0; y <= y1; y++)
         for (int x = x0; x <= x1; x++)
             if ((x - x0) == 0 || (y - y0) % 3 == 1)
                 setTile(x, y, T_PAD);
 }
 
-// Cleaner helper for horizontal routes: 2 tiles tall
 static void carveRouteH(int x0, int x1, int y) {
+    if (x0 > x1) { int t = x0; x0 = x1; x1 = t; }
     carveRouteRect(x0, y, x1, y + 1);
 }
 
-// Cleaner helper for vertical routes: 2 tiles wide
 static void carveRouteV(int y0, int y1, int x) {
+    if (y0 > y1) { int t = y0; y0 = y1; y1 = t; }
     carveRouteRect(x, y0, x + 1, y1);
+}
+
+// Sprinkles a small number of ruins tiles on the route floors. Called after
+// every route is carved so the scattering spreads across the whole network
+// without clustering. Uses its own seed so it's deterministic.
+static void scatterRouteRuins(void) {
+    srand(4242);
+    // Try a lot of random positions and only place a ruins tile if the target
+    // is currently part of a route (a T_GRASS or T_PAD outside any region).
+    int placed = 0;
+    int attempts = 0;
+    while (placed < 40 && attempts < 4000) {
+        attempts++;
+        int x = rand() % MAP_W;
+        int y = rand() % MAP_H;
+        if (worldRegionAt(x, y) >= 0) continue;   // skip hubs
+        int t = getTile(x, y);
+        if (t != T_GRASS && t != T_PAD) continue;   // only route floor
+        // Leave the pad stripe intact so the corridor still reads as a road
+        if (t == T_PAD) continue;
+        setTile(x, y, T_RUINS);
+        placed++;
+    }
+}
+
+// Fills a hub with its terrain features. Density and composition vary by
+// region so the player immediately reads where they are. Only carves into the
+// hub's interior (leaves a 1-tile margin of the region rect untouched so the
+// route lead-ins can punch through cleanly).
+static void decorateHub(int region) {
+    const Region* r = &regions[region];
+    int x0 = r->minX + 1, y0 = r->minY + 1;
+    int x1 = r->maxX - 1, y1 = r->maxY - 1;
+    if (x1 <= x0 || y1 <= y0) return;
+    int w = x1 - x0, h = y1 - y0;
+
+    // Every hub is a walkable floor first
+    fillRect(x0, y0, x1, y1, T_GRID);
+
+    srand(100 + region * 7919);
+
+    switch (region) {
+    case REGION_ALPHA: {
+        for (int i = 0; i < 6; i++) {
+            int cx = x0 + 1 + rand() % (w - 4);
+            int cy = y0 + 1 + rand() % (h - 4);
+            for (int y = cy; y < cy + 3; y++)
+                for (int x = cx; x < cx + 4; x++)
+                    if (getTile(x, y) == T_GRID) setTile(x, y, T_GRASS);
+        }
+        fillRect(x0 + 3, y0 + 3, x0 + 5, y0 + 4, T_BLOCK);
+        fillRect(x1 - 5, y1 - 4, x1 - 3, y1 - 3, T_BLOCK);
+        setTile(x0 + 8, (y0 + y1) / 2, T_TERMINAL);
+        break;
+    }
+    case REGION_BETA: {
+        for (int i = 0; i < 8; i++) {
+            int cx = x0 + 1 + rand() % (w - 4);
+            int cy = y0 + 1 + rand() % (h - 4);
+            for (int y = cy; y < cy + 3; y++)
+                for (int x = cx; x < cx + 4; x++)
+                    if (getTile(x, y) == T_GRID) setTile(x, y, T_RUINS);
+        }
+        for (int i = 0; i < 4; i++)
+            setTile(x0 + 2 + rand() % (w - 4), y0 + 2 + rand() % (h - 4), T_BUNKER);
+        fillRect(x0 + w / 2, y0 + h / 2, x0 + w / 2 + 3, y0 + h / 2 + 2, T_PLASMA);
+        setTile((x0 + x1) / 2, (y0 + y1) / 2 + 4, T_TERMINAL);
+        break;
+    }
+    case REGION_GAMMA: {
+        for (int i = 0; i < 7; i++) {
+            int cx = x0 + 1 + rand() % (w - 3);
+            int cy = y0 + 1 + rand() % (h - 3);
+            for (int y = cy; y < cy + 2; y++)
+                for (int x = cx; x < cx + 3; x++)
+                    if (getTile(x, y) == T_GRID) setTile(x, y, T_RUINS);
+        }
+        for (int i = 0; i < 4; i++) {
+            int cx = x0 + 1 + rand() % (w - 4);
+            int cy = y0 + 1 + rand() % (h - 1);
+            int len = 2 + rand() % 3;
+            for (int j = 0; j < len; j++)
+                if (getTile(cx + j, cy) == T_GRID) setTile(cx + j, cy, T_BLOCK);
+        }
+        fillRect(x0 + 2, y0 + 2, x0 + 5, y0 + 4, T_PLASMA);
+        fillRect(x1 - 5, y1 - 4, x1 - 2, y1 - 2, T_PLASMA);
+        setTile(x0 + 8, y0 + 2, T_TERMINAL);
+        break;
+    }
+    case REGION_DELTA: {
+        fillRect(x0 + 2, y0 + 3, x0 + 3, y1 - 3, T_BLOCK);
+        fillRect(x1 - 3, y0 + 3, x1 - 2, y1 - 3, T_BLOCK);
+        for (int i = 0; i < 5; i++)
+            setTile(x0 + 3 + rand() % (w - 6), y0 + 3 + rand() % (h - 6), T_BUNKER);
+        for (int i = 0; i < 4; i++) {
+            int cx = x0 + 1 + rand() % (w - 5);
+            int cy = y0 + 1 + rand() % (h - 4);
+            for (int y = cy; y < cy + 3; y++)
+                for (int x = cx; x < cx + 5; x++)
+                    if (getTile(x, y) == T_GRID) setTile(x, y, T_GRASS);
+        }
+        setTile((x0 + x1) / 2, y1 - 2, T_TERMINAL);
+        break;
+    }
+    default: {   // REGION_OMEGA
+        int cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+        fillRect(cx - 3, cy - 1, cx + 3, cy + 1, T_PLASMA);
+        for (int i = 0; i < 11; i++) {
+            int bx = x0 + 1 + rand() % (w - 3);
+            int by = y0 + 1 + rand() % (h - 3);
+            for (int y = by; y < by + 2; y++)
+                for (int x = bx; x < bx + 3; x++)
+                    if (getTile(x, y) == T_GRID) setTile(x, y, T_RUINS);
+        }
+        for (int i = 0; i < 6; i++)
+            setTile(x0 + 2 + rand() % (w - 4), y0 + 2 + rand() % (h - 4), T_BLOCK);
+        setTile(x1 - 3, cy, T_TERMINAL);
+        break;
+    }
+    }
 }
 
 // ============ MAP GEN ============
@@ -135,76 +247,74 @@ static void genWorld(void) {
         for (int x = 0; x < MAP_W; x++)
             map[y][x] = T_BLOCK;
 
-    // ---- Alpha hub: an open settlement area ----
-    fillRect(3, 4, 28, 26, T_GRID);
-    srand(1000);
-    for (int i = 0; i < 6; i++) {
-        int cx = 6 + rand() % 20;
-        int cy = 6 + rand() % 18;
-        for (int y = cy; y < cy + 3 && y < 26; y++)
-            for (int x = cx; x < cx + 4 && x < 28; x++)
-                setTile(x, y, T_GRASS);
-    }
-    fillRect(6, 8, 8, 8, T_BLOCK);
-    fillRect(22, 20, 24, 21, T_BLOCK);
-    setTile(8, 15, T_TERMINAL);
+    // Decorate every hub first. This leaves the hub floor walkable but does
+    // NOT carve through the hub's 1-tile border margin.
+    for (int i = 0; i < NUM_REGIONS; i++) decorateHub(i);
 
-    // ---- Route 1: Alpha -> Beta, narrow winding corridor ----
-    carveRouteH(28, 40, 8);
-    carveRouteV(8, 20, 40);
-    carveRouteH(40, 46, 20);
+    // Now carve the routes. Each route starts at the OUTER edge of one hub
+    // and ends at the OUTER edge of the next, punching through the 1-tile
+    // border on both sides so the corridor is truly continuous.
+    //
+    // Hub borders (region rects):
+    //   ALPHA ( 3,  4)-( 26, 26)
+    //   BETA  (46,  4)-( 76, 24)
+    //   GAMMA (86,  4)-(116, 24)
+    //   DELTA (46, 38)-( 76, 56)
+    //   OMEGA (86, 38)-(116, 56)
+    //
+    // Layout:
+    //     ALPHA ──R1── BETA ──R2── GAMMA
+    //       │                        │
+    //       R3 (L)                   R6
+    //       │                        │
+    //       └──east──┐               │
+    //                ▼               │
+    //               DELTA ──R4──────▶│
+    //                │               │
+    //                R5              │
+    //                │               │
+    //                ▼               ▼
+    //               OMEGA ◀──────────┘
 
-    // ---- Beta hub: industrial zone ----
-    fillRect(46, 18, 76, 44, T_GRID);
-    srand(2000);
-    for (int i = 0; i < 8; i++) {
-        int cx = 48 + rand() % 26;
-        int cy = 20 + rand() % 22;
-        for (int y = cy; y < cy + 3 && y < 44; y++)
-            for (int x = cx; x < cx + 4 && x < 76; x++)
-                setTile(x, y, T_RUINS);
-    }
-    for (int i = 0; i < 8; i++) {
-        int cx = 50 + rand() % 24;
-        int cy = 20 + rand() % 22;
-        setTile(cx, cy, T_BUNKER);
-    }
-    fillRect(60, 26, 66, 30, T_PLASMA);
-    setTile(52, 30, T_TERMINAL);
+    // ---- ROUTE 1: ALPHA east wall -> BETA west wall ----
+    carveRouteH(26, 46, 12);
 
-    // ---- Route 2: Beta -> Gamma, long winding corridor ----
-    carveRouteH(76, 90, 32);
-    carveRouteV(20, 32, 88);
-    carveRouteH(88, 92, 20);
+    // ---- ROUTE 2: BETA east wall -> GAMMA west wall ----
+    carveRouteH(76, 86, 12);
 
-    // ---- Gamma hub: apex wasteland ----
-    fillRect(90, 4, 116, 56, T_GRID);
-    srand(3000);
-    for (int i = 0; i < 12; i++) {
-        int cx = 92 + rand() % 22;
-        int cy = 6 + rand() % 48;
-        for (int y = cy; y < cy + 3 && y < 56; y++)
-            for (int x = cx; x < cx + 4 && x < 116; x++)
-                setTile(x, y, T_RUINS);
-    }
-    fillRect(100, 8, 110, 14, T_PLASMA);
-    fillRect(96, 38, 112, 48, T_PLASMA);
-    for (int i = 0; i < 10; i++) {
-        int cx = 92 + rand() % 22;
-        int cy = 6 + rand() % 48;
-        int len = 2 + rand() % 4;
-        for (int j = 0; j < len; j++)
-            if (getTile(cx + j, cy) == T_GRID) setTile(cx + j, cy, T_BLOCK);
-    }
-    setTile(94, 28, T_TERMINAL);
+    // ---- ROUTE 3: ALPHA south wall -> DELTA west wall (L-shaped) ----
+    carveRouteV(26, 48, 12);      // south leg
+    carveRouteH(12, 46, 48);      // east leg to Delta's west wall
 
-    // ---- Make sure the route corridors are still walkable ----
-    carveRouteH(28, 40, 8);
-    carveRouteV(8, 20, 40);
-    carveRouteH(40, 46, 20);
-    carveRouteH(76, 90, 32);
-    carveRouteV(20, 32, 88);
-    carveRouteH(88, 92, 20);
+    // ---- ROUTE 4: DELTA east wall -> GAMMA south wall (L-shaped) ----
+    carveRouteH(76, 100, 48);     // east leg
+    carveRouteV(24, 48, 100);     // north leg to Gamma's south wall
+
+    // ---- ROUTE 5: DELTA west wall -> OMEGA west wall ----
+    carveRouteH(46, 86, 48);
+
+    // ---- ROUTE 6: GAMMA south wall -> OMEGA north wall ----
+    carveRouteV(24, 38, 100);
+
+    // ---- LEAD-IN STUBS: connect each hub's interior to the routes ----
+    // Alpha
+    carveRouteH(20, 26, 12);
+    carveRouteV(20, 26, 12);
+    // Beta
+    carveRouteH(46, 54, 12);
+    carveRouteH(70, 76, 12);
+    // Gamma
+    carveRouteH(86, 94, 12);
+    carveRouteV(24, 32, 100);
+    // Delta
+    carveRouteH(46, 54, 48);
+    carveRouteH(70, 76, 48);
+    // Omega
+    carveRouteH(86, 94, 48);
+    carveRouteV(38, 46, 100);
+
+    // ---- Sparsely scatter ruins onto the route floors for encounters ----
+    scatterRouteRuins();
 }
 
 static int isSolid(int x, int y) {
@@ -212,15 +322,11 @@ static int isSolid(int x, int y) {
     return (t == T_BLOCK || t == T_PLASMA || t == T_BUNKER || t == T_TERMINAL);
 }
 
-// An "encounter" tile is anything a mech might hide in
 static int isEncounterTile(int x, int y) {
     int t = getTile(x, y);
     return (t == T_GRASS || t == T_RUINS);
 }
 
-// Is this tile inside a route corridor? Routes are marked by having a GRASS
-// or PAD tile that sits outside every region rect. Used only for flavor
-// (the HUD shows "ROUTE" instead of "WILDS" when the player is between hubs).
 static int isRouteTile(int x, int y) {
     if (worldRegionAt(x, y) >= 0) return 0;
     int t = getTile(x, y);
@@ -228,79 +334,143 @@ static int isRouteTile(int x, int y) {
 }
 
 // ============ TRAINERS ============
-// Placed in hubs AND along the route corridors, so the player fights on the
-// way from one region to the next.
 static void initTrainers(void) {
-    // --- Alpha hub (x 3..28, y 4..26) ---
+    // --- Alpha hub ---
     trainers[0] = (Trainer){
-        "PILOT RHEA", FAC_IRON_LEGION, 14, 22, 0, { 255, 120, 200, 255 },
+        "PILOT RHEA", FAC_IRON_LEGION, 14, 20, 0, { 255, 120, 200, 255 },
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
-        "Follow the east road. It leads to Route 1.",
+        "Head east or south when you're ready.",
         0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
-        "SCOUT DANE", FAC_IRON_LEGION, 22, 12, 0, { 255, 200, 100, 255 },
+        "SCOUT DANE", FAC_IRON_LEGION, 20, 8, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
-        "Route 1's where the real fights start.",
+        "Route 1 is at the top of the map.",
         0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0
     };
-
-    // --- Route 1 (between Alpha and Beta) ---
     trainers[2] = (Trainer){
-        "ROUTE GUARD", FAC_IRON_LEGION, 34, 8, 0, { 255, 160, 100, 255 },
-        "No one passes this road without a fight.",
-        "Fine... you've earned the crossing.",
-        "Keep heading east. Beta's not far.",
+        "MECHANIC VOSS", FAC_CHROME_SYNDICATE, 8, 22, 0, { 120, 220, 255, 255 },
+        "Nice frame. Let's see if it holds.",
+        "Hmph. Not bad at all.",
+        "Delta is south, past the west route.",
         1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0
     };
 
-    // --- Beta hub (x 46..76, y 18..44) ---
+    // --- Route 1 (Alpha -> Beta) ---
     trainers[3] = (Trainer){
-        "COMMANDER VOLK", FAC_IRON_LEGION, 56, 24, 0, { 255, 180, 60, 255 },
+        "ROUTE GUARD", FAC_IRON_LEGION, 36, 12, 0, { 255, 160, 100, 255 },
+        "No one passes this road without a fight.",
+        "Fine... you've earned the crossing.",
+        "Beta is straight ahead.",
+        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0
+    };
+
+    // --- Beta hub ---
+    trainers[4] = (Trainer){
+        "COMMANDER VOLK", FAC_IRON_LEGION, 60, 14, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
-        "Route 2 leads to the wasteland beyond.",
-        1, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0
+        "Gamma lies east. Watch the ruins.",
+        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0
     };
-    trainers[4] = (Trainer){
-        "ENGINEER KESS", FAC_CHROME_SYNDICATE, 66, 38, 0, { 120, 220, 160, 255 },
+    trainers[5] = (Trainer){
+        "ENGINEER KESS", FAC_CHROME_SYNDICATE, 70, 20, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
-        "Gamma is the final frontier.",
-        1, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0
+        "The wasteland is further east still.",
+        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0
+    };
+    trainers[6] = (Trainer){
+        "FOREMAN GRELL", FAC_IRON_LEGION, 54, 20, 0, { 200, 180, 100, 255 },
+        "This rubble is ours. Move along.",
+        "You move well for a freelancer.",
+        "Two entrances, don't get lost.",
+        1, 0, { ARCH_ORDNANCE }, { 3 }, 1, 0
     };
 
-    // --- Route 2 (between Beta and Gamma) ---
-    trainers[5] = (Trainer){
-        "ROADBLOCK UNIT", FAC_CHROME_SYNDICATE, 88, 26, 0, { 255, 100, 100, 255 },
+    // --- Route 2 (Beta -> Gamma) ---
+    trainers[7] = (Trainer){
+        "SIGNAL RELAY", FAC_CHROME_SYNDICATE, 81, 12, 0, { 100, 200, 255, 255 },
+        "Transmission intercepted. Terminating.",
+        "Transmission... lost.",
+        "Gamma's just past me.",
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 4, 4 }, 2, 0
+    };
+
+    // --- Gamma hub ---
+    trainers[8] = (Trainer){
+        "GHOST ECHO", FAC_CHROME_SYNDICATE, 96, 12, 0, { 200, 100, 255, 255 },
+        "You cannot hit what you cannot see.",
+        "Even my stealth... failed.",
+        "Delta is south. Omega is further.",
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0
+    };
+    trainers[9] = (Trainer){
+        "IRON SENTINEL", FAC_IRON_LEGION, 110, 20, 0, { 220, 220, 100, 255 },
+        "Perimeter breach. Terminating.",
+        "Perimeter... lost.",
+        "The long loop is down the east side.",
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5 }, 2, 0
+    };
+
+    // --- Route 4 (Delta -> Gamma, east leg) ---
+    trainers[10] = (Trainer){
+        "ROADBLOCK UNIT", FAC_CHROME_SYNDICATE, 88, 48, 0, { 255, 100, 100, 255 },
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
-        "Warden Krux is waiting up north.",
-        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 4, 4 }, 2, 0
+        "Gamma's just north.",
+        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0
     };
 
-    // --- Gamma hub (x 90..116, y 4..56) ---
-    trainers[6] = (Trainer){
-        "WARDEN KRUX", FAC_IRON_LEGION, 108, 30, 0, { 255, 60, 60, 255 },
+    // --- Route 3 (Alpha -> Delta) ---
+    trainers[11] = (Trainer){
+        "PATROL LEAD", FAC_IRON_LEGION, 12, 32, 0, { 200, 160, 100, 255 },
+        "Halt. State your business.",
+        "Business concluded. Move on.",
+        "Delta's to the east from here.",
+        1, 0, { ARCH_SKIRMISHER, ARCH_BRAWLER }, { 4, 4 }, 2, 0
+    };
+
+    // --- Delta hub ---
+    trainers[12] = (Trainer){
+        "FORGE MASTER", FAC_IRON_LEGION, 60, 48, 0, { 220, 240, 255, 255 },
+        "This foundry forges war. Care to test?",
+        "The forge... dims.",
+        "Two ways out: east and west.",
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER, ARCH_BOMBARD }, { 6, 6, 6 }, 3, 0
+    };
+    trainers[13] = (Trainer){
+        "ICE RUNNER", FAC_CHROME_SYNDICATE, 70, 42, 0, { 180, 220, 255, 255 },
+        "Cold steel cuts deepest.",
+        "Frozen solid...",
+        "Omega lies east.",
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 5, 5 }, 2, 0
+    };
+
+    // --- Route 5 (Delta -> Omega) ---
+    trainers[14] = (Trainer){
+        "SALVAGE TEAM", FAC_CHROME_SYNDICATE, 66, 48, 0, { 180, 240, 120, 255 },
+        "That chassis is Legion issue. Drop it.",
+        "Legion's really slipping...",
+        "Omega is due east.",
+        2, 0, { ARCH_JAMMER, ARCH_ORDNANCE }, { 6, 6 }, 2, 0
+    };
+
+    // --- Omega hub ---
+    trainers[15] = (Trainer){
+        "WARDEN KRUX", FAC_IRON_LEGION, 108, 48, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        2, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5, 7, 5 }, 4, 0
-    };
-    trainers[7] = (Trainer){
-        "GHOST ECHO", FAC_CHROME_SYNDICATE, 112, 20, 0, { 200, 100, 255, 255 },
-        "You cannot hit what you cannot see.",
-        "Even my stealth... failed.",
-        "Krux awaits at the center.",
-        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0
+        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0
     };
 
-    // --- Gamma, far south: the boss, the machine itself, flanked by two escorts.
+    // --- Omega, far corner: the boss, the machine itself, flanked by escorts.
     // Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
-    trainers[8] = (Trainer){
-        "FACTORY OVERSEER", FAC_BLACK_BOX, 104, 52, 0, { 200, 60, 255, 255 },
+    trainers[16] = (Trainer){
+        "FACTORY OVERSEER", FAC_BLACK_BOX, 112, 53, 0, { 200, 60, 255, 255 },
         "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
         "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
         "...the Overseer's chassis sits silent.",
@@ -312,7 +482,7 @@ void worldInit(void) {
     genWorld();
     initTrainers();
     currentZone = REGION_ALPHA;
-    px = 6; py = 15; facing = 3;   // start in Alpha's hub
+    px = 10; py = 15; facing = 3;
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
     justEnteredZone = 1;
@@ -339,8 +509,7 @@ void worldInitNewGame(int starterIdx) {
     mechRepair(&team[0]);
     teamSize = 1;
 
-    // Drop the player in the middle of Alpha's hub
-    px = 6; py = 15; facing = 3;
+    px = 10; py = 15; facing = 3;
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
 }
@@ -361,8 +530,8 @@ static int checkStarterEvolution(void) {
     Mech evolved = mechCreateStock(newModel, keptRevision);
     snprintf(evolved.name, sizeof(evolved.name), "%s-%s",
         line->name, starterStage == 1 ? "MK2" : "PRIME");
-    partsAddFromMech(&evolved);   // the new chassis' weapons/modules; the old ones stay in the inventory
-    evolved.fw = m->fw;           // firmware carries over whole: chips, trait, branches, profiles, data
+    partsAddFromMech(&evolved);
+    evolved.fw = m->fw;
     mechRepair(&evolved);
     team[starterSlot] = evolved;
 
@@ -387,7 +556,7 @@ void worldOfferAlternateStarters(void) {
     }
     if (missingCount == 0) return;
 
-    if (totalDefeated >= 2 && missing[0] >= 0 && teamSize < MAX_TEAM) {
+    if (totalDefeated >= 5 && missing[0] >= 0 && teamSize < MAX_TEAM) {
         Mech m = mechCreateStock(starters[missing[0]].stages[0], 0);
         snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[0]].name);
         int idx = missing[0];
@@ -401,7 +570,7 @@ void worldOfferAlternateStarters(void) {
             showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[0]].name), 4.0f);
         }
     }
-    if (totalDefeated >= 4 && missingCount >= 2 && missing[1] >= 0 && teamSize < MAX_TEAM) {
+    if (totalDefeated >= 10 && missingCount >= 2 && missing[1] >= 0 && teamSize < MAX_TEAM) {
         Mech m = mechCreateStock(starters[missing[1]].stages[0], 0);
         snprintf(m.name, sizeof(m.name), "%s-01", starters[missing[1]].name);
         int idx = missing[1];
@@ -428,6 +597,10 @@ void worldGetPlayer(int* zone, int* x, int* y) {
 }
 
 void worldSetPlayer(int zone, int x, int y) {
+    if (x < 1) x = 1;
+    if (y < 1) y = 1;
+    if (x >= MAP_W - 1) x = MAP_W - 2;
+    if (y >= MAP_H - 1) y = MAP_H - 2;
     currentZone = zone;
     px = x; py = y;
     pxF = (float)(px * TILE_SIZE);
@@ -480,13 +653,11 @@ void worldUpdate(float dt, GameState* state) {
         pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
     }
 
-    // Wild encounters: routes have their own encounter rate (a bit lower than
-    // a region hub so corridors feel like travel, not a grind).
     if (arrived && !justEnteredZone && isEncounterTile(px, py)) {
         int region = worldRegionAt(px, py);
         int rate;
         if (region >= 0) rate = regions[region].baseEncounter;
-        else             rate = 12;   // routes: gentler than a full region
+        else             rate = 12;
         if ((rand() % 100) < rate) {
             battleStartWild();
             *state = STATE_BATTLE;
@@ -502,7 +673,6 @@ void worldUpdate(float dt, GameState* state) {
     }
     if (moving) return;
 
-    // Interact with the tile in front of us
     if (confirmPressed()) {
         consumeInput();
         int fx = px, fy = py;
@@ -523,7 +693,6 @@ void worldUpdate(float dt, GameState* state) {
         }
     }
 
-    // Movement
     for (int d = 0; d < 4; d++) if (dirPressed(d)) lastDir = d;
     int dir = -1;
     if (lastDir >= 0 && dirDown(lastDir)) dir = lastDir;
@@ -536,7 +705,6 @@ void worldUpdate(float dt, GameState* state) {
     int nx = px + dx, ny = py + dy;
     facing = dir;
 
-    // Trainer bumping
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].x == nx && trainers[i].y == ny) {
             if (fresh && triggerTrainerEncounter(i)) *state = STATE_BATTLE;
@@ -587,8 +755,6 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
     }
 }
 
-// Tint a base color by the region at a given tile. Outside any region (i.e.
-// on a route) tiles use a cool dim tint so corridors read as "in between".
 static Color regionTint(int tx, int ty, Color c) {
     int region = worldRegionAt(tx, ty);
     if (region < 0) {
@@ -671,8 +837,6 @@ static void drawTile(int x, int y, int screenX, int screenY) {
     }
 }
 
-// Shared with the full-screen map tab. Draws the whole world compressed into
-// the given rectangle, plus region boxes, trainer pins and the player marker.
 void worldDrawMinimap(int mx, int my, int mw, int mh) {
     DrawRectangle(mx, my, mw, mh, (Color) { 10, 15, 30, 255 });
     DrawRectangleLines(mx, my, mw, mh, (Color) { 80, 160, 220, 200 });
@@ -692,7 +856,6 @@ void worldDrawMinimap(int mx, int my, int mw, int mh) {
                 (int)(sx)+1, (int)(sy)+1, c);
         }
     }
-    // Region bounding boxes for orientation
     for (int i = 0; i < NUM_REGIONS; i++) {
         const Region* r = &regions[i];
         DrawRectangleLines(
@@ -702,14 +865,12 @@ void worldDrawMinimap(int mx, int my, int mw, int mh) {
             (int)((r->maxY - r->minY + 1) * sy),
             regions[i].tint);
     }
-    // Trainers
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].defeated) continue;
         int dx = mx + (int)(trainers[i].x * sx);
         int dy = my + (int)(trainers[i].y * sy);
         DrawRectangle(dx - 1, dy - 1, 3, 3, trainers[i].color);
     }
-    // Player (blinking)
     int bl = (int)(glowTimer * 4) % 2;
     int plx = mx + (int)(px * sx);
     int ply = my + (int)(py * sy);
@@ -736,7 +897,6 @@ static void drawHud(void) {
     DrawText(TextFormat("FIRMWARE %s", firmwareLabel(m->fw.revision)), 20, 134, 12, (Color) { 200, 170, 255, 255 });
     DrawText(TextFormat("%d CR", credits), 250, 134, 12, (Color) { 255, 220, 100, 255 });
 
-    // Location label: region, route, or wilderness
     int region = worldRegionAt(px, py);
     int onRoute = (region < 0) && isRouteTile(px, py);
     int worldDefeated = 0;
@@ -763,12 +923,10 @@ static void drawHud(void) {
     DrawText(TextFormat("Position %3d,%2d", px, py),
         screenW - 240, 70, 11, (Color) { 150, 200, 255, 200 });
 
-    // Map tab button (the map itself lives on its own screen now)
     DrawRectangle(screenW - 250, 116, 240, 26, (Color) { 15, 25, 45, 200 });
     DrawRectangleLines(screenW - 250, 116, 240, 26, (Color) { 100, 200, 255, 180 });
     DrawText("[M] OPEN MAP", screenW - 240, 122, 12, (Color) { 140, 220, 255, 255 });
 
-    // Active jobs
     int jy = SCREEN_H - 50;
     for (int j = NUM_JOBS - 1; j >= 0; j--) {
         if (jobState[j] != JS_ACTIVE && jobState[j] != JS_READY) continue;
@@ -811,6 +969,8 @@ void worldDraw(void) {
             drawTile(x, y, x * TILE_SIZE, y * TILE_SIZE);
 
     for (int i = 0; i < NUM_TRAINERS; i++) {
+        if (trainers[i].x < startX - 2 || trainers[i].x > endX + 2 ||
+            trainers[i].y < startY - 2 || trainers[i].y > endY + 2) continue;
         if (!trainers[i].defeated)
             drawTrainer(&trainers[i], trainers[i].x * TILE_SIZE, trainers[i].y * TILE_SIZE);
         else {

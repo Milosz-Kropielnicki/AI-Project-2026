@@ -1,26 +1,4 @@
-﻿  main.c
-  display.c
-  ui_map.c
-  ui_starter.c
-  world.c
-C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\ui_starter.c(176,27): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
-  battle.c
-  mech.c
-  firmware.c
-  data_mechs.c
-  data_weapons.c
-  data_chips.c
-  ui_battle.c
-  ui_team.c
-  ui_menu.c
-  ui_debug.c
-  ui_sprites.c
-  game.c
-  data_game.c
-  ui_terminal.c
-  audio.c
-  Generating Code...
-  LINK : C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\Project.exe not found or not built by the last incremental link; performing full link
+﻿  LINK : C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\Project.exe not found or not built by the last incremental link; performing full link
 LINK : warning LNK4098: defaultlib 'MSVCRT' conflicts with use of other libs; use /NODEFAULTLIB:library
 raylib.lib(raudio.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(raudio.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
 raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info

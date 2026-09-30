@@ -63,7 +63,7 @@ const JobDef jobDefs[NUM_JOBS] = {
         250, REWARD_MECH, MODEL_BULWARK,
         "Clear four rogue machines from our Beta supply route. Payment includes a demo BULWARK." },
         // ---- SECTOR GAMMA ----
-        { "WARDEN'S END", "Sector Watch", JOB_BOUNTY, REGION_GAMMA, "WARDEN KRUX", -1, 1,
+        { "WARDEN'S END", "Sector Watch", JOB_BOUNTY, REGION_OMEGA, "WARDEN KRUX", -1, 1,
           700, REWARD_CHIP, CHIP_OVERCHARGE,
           "Warden Krux commands the Legion from the wasteland. End it." },
         { "GHOST HUNT", "Helios Ordnance", JOB_BOUNTY, REGION_GAMMA, "GHOST ECHO", -1, 1,
@@ -72,7 +72,7 @@ const JobDef jobDefs[NUM_JOBS] = {
         { "ARTILLERY SURVEY", "Helios Ordnance", JOB_RECOVER, REGION_GAMMA, NULL, ARCH_BOMBARD, 1,
           500, REWARD_WEAPON, W_SIEGE_MORTAR,
           "Reprogram a rogue BOMBARD in Gamma. We want to see what the wasteland did to our design." },
-        { "BLACK BOX", "Sector Watch", JOB_BOUNTY, REGION_GAMMA, "FACTORY OVERSEER", -1, 1,
+        { "BLACK BOX", "Sector Watch", JOB_BOUNTY, REGION_OMEGA, "FACTORY OVERSEER", -1, 1,
           1500, REWARD_CHIP, CHIP_DEAD_MAN,
           "The Factory Overseer is building an army out of Gamma scrap. Destroy the core." },
 };

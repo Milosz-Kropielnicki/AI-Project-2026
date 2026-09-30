@@ -202,7 +202,7 @@ const char* rewardName(RewardKind kind, int item) {
 
 // ============ BATTLE EVENTS ============
 int gameWildLevel(int zone) {
-    static const int lo[NUM_REGIONS] = { 0, 2, 5 }, hi[NUM_REGIONS] = { 1, 4, 7 };
+    static const int lo[NUM_REGIONS] = { 0, 2, 4, 5, 7 }, hi[NUM_REGIONS] = { 1, 4, 6, 7, 9 };   // Alpha Beta Gamma Delta Omega
     return lo[zone] + rand() % (hi[zone] - lo[zone] + 1);
 }
 
