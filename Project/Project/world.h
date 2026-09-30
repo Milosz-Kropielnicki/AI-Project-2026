@@ -90,4 +90,9 @@ int worldTryStarterEvolution(void);            // 1 if the starter evolved
 void worldOfferAlternateStarters(void);        // grants unpicked starters after enough encounters
 int worldStarterSlot(void);
 
+// ============ MAP SCREEN ============
+// Draws the whole world scaled into the given rectangle, with region boxes,
+// trainer pins and the player marker. Shared by the full-screen map tab.
+void worldDrawMinimap(int x, int y, int w, int h);
+
 #endif

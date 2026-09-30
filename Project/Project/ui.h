@@ -26,6 +26,11 @@ void uiTerminalOpen(void);
 void uiTerminalUpdate(GameState* state);
 void uiTerminalDraw(void);
 
+// ============ ui_map.c ============
+void uiMapOpen(void);
+void uiMapUpdate(GameState* state);
+void uiMapDraw(void);
+
 // ============ ui_menu.c ============
 extern int gameStarted;
 extern int quitRequested;

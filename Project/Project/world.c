@@ -60,7 +60,7 @@ Trainer trainers[NUM_TRAINERS];
 // The one big map
 static unsigned char map[MAP_H][MAP_W];
 
-// Current zone state (region index; kept for save/load compatibility)
+// Current region (kept for save/load compatibility)
 static int currentZone = REGION_ALPHA;
 
 static int px, py;
@@ -447,6 +447,7 @@ static int triggerTrainerEncounter(int trainerIdx) {
 void worldUpdate(float dt, GameState* state) {
     if (IsKeyPressed(KEY_TAB)) { *state = STATE_TEAM; return; }
     if (IsKeyPressed(KEY_ESCAPE)) { *state = STATE_MENU; return; }
+    if (IsKeyPressed(KEY_M)) { *state = STATE_MAP; return; }
 
     int arrived = 0;
     float carry = 0;
@@ -574,7 +575,6 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
 static Color regionTint(int tx, int ty, Color c) {
     int region = worldRegionAt(tx, ty);
     if (region < 0) {
-        // Route tint: dim blue-grey to make corridors feel enclosed
         return (Color) {
             (unsigned char)(c.r * 190 / 255),
                 (unsigned char)(c.g * 200 / 255),
@@ -654,6 +654,51 @@ static void drawTile(int x, int y, int screenX, int screenY) {
     }
 }
 
+// Shared with the full-screen map tab. Draws the whole world compressed into
+// the given rectangle, plus region boxes, trainer pins and the player marker.
+void worldDrawMinimap(int mx, int my, int mw, int mh) {
+    DrawRectangle(mx, my, mw, mh, (Color) { 10, 15, 30, 255 });
+    DrawRectangleLines(mx, my, mw, mh, (Color) { 80, 160, 220, 200 });
+    float sx = (float)mw / MAP_W, sy = (float)mh / MAP_H;
+    for (int y = 0; y < MAP_H; y++) {
+        for (int x = 0; x < MAP_W; x++) {
+            int t = getTile(x, y);
+            Color c;
+            if (t == T_BLOCK) c = (Color){ 40, 45, 65, 255 };
+            else if (t == T_PLASMA) c = (Color){ 100, 60, 200, 255 };
+            else if (t == T_BUNKER || t == T_TERMINAL) c = (Color){ 90, 100, 130, 255 };
+            else if (t == T_PAD) c = (Color){ 90, 140, 190, 255 };
+            else if (t == T_GRASS) c = (Color){ 60, 120, 70, 255 };
+            else if (t == T_RUINS) c = (Color){ 140, 70, 40, 255 };
+            else c = (Color){ 40, 50, 70, 255 };
+            DrawRectangle(mx + (int)(x * sx), my + (int)(y * sy),
+                (int)(sx)+1, (int)(sy)+1, c);
+        }
+    }
+    // Region bounding boxes for orientation
+    for (int i = 0; i < NUM_REGIONS; i++) {
+        const Region* r = &regions[i];
+        DrawRectangleLines(
+            mx + (int)(r->minX * sx),
+            my + (int)(r->minY * sy),
+            (int)((r->maxX - r->minX + 1) * sx),
+            (int)((r->maxY - r->minY + 1) * sy),
+            regions[i].tint);
+    }
+    // Trainers
+    for (int i = 0; i < NUM_TRAINERS; i++) {
+        if (trainers[i].defeated) continue;
+        int dx = mx + (int)(trainers[i].x * sx);
+        int dy = my + (int)(trainers[i].y * sy);
+        DrawRectangle(dx - 1, dy - 1, 3, 3, trainers[i].color);
+    }
+    // Player (blinking)
+    int bl = (int)(glowTimer * 4) % 2;
+    int plx = mx + (int)(px * sx);
+    int ply = my + (int)(py * sy);
+    DrawRectangle(plx - 2, ply - 2, 5, 5, bl ? WHITE : (Color) { 120, 240, 255, 255 });
+}
+
 static void drawHud(void) {
     Mech* m = rosterActive();
     const MechModel* model = mechModel(m);
@@ -701,49 +746,10 @@ static void drawHud(void) {
     DrawText(TextFormat("Position %3d,%2d", px, py),
         screenW - 240, 70, 11, (Color) { 150, 200, 255, 200 });
 
-    // Minimap
-    int mmX = screenW - 250, mmY = 116;
-    int mmW = 240, mmH = 120;
-    DrawRectangle(mmX, mmY, mmW, mmH, (Color) { 10, 15, 30, 220 });
-    DrawRectangleLines(mmX, mmY, mmW, mmH, (Color) { 80, 160, 220, 200 });
-    float sx = (float)mmW / MAP_W, sy = (float)mmH / MAP_H;
-    for (int y = 0; y < MAP_H; y++) {
-        for (int x = 0; x < MAP_W; x++) {
-            int t = getTile(x, y);
-            Color c;
-            if (t == T_BLOCK) c = (Color){ 40, 45, 65, 255 };
-            else if (t == T_PLASMA) c = (Color){ 100, 60, 200, 255 };
-            else if (t == T_BUNKER || t == T_TERMINAL) c = (Color){ 90, 100, 130, 255 };
-            else if (t == T_PAD) c = (Color){ 90, 140, 190, 255 };
-            else if (t == T_GRASS) c = (Color){ 60, 120, 70, 255 };
-            else if (t == T_RUINS) c = (Color){ 140, 70, 40, 255 };
-            else c = (Color){ 40, 50, 70, 255 };
-            DrawRectangle(mmX + (int)(x * sx), mmY + (int)(y * sy),
-                (int)(sx)+1, (int)(sy)+1, c);
-        }
-    }
-    // Region bounding boxes for orientation
-    for (int i = 0; i < NUM_REGIONS; i++) {
-        const Region* r = &regions[i];
-        DrawRectangleLines(
-            mmX + (int)(r->minX * sx),
-            mmY + (int)(r->minY * sy),
-            (int)((r->maxX - r->minX + 1) * sx),
-            (int)((r->maxY - r->minY + 1) * sy),
-            regions[i].tint);
-    }
-    // Trainers
-    for (int i = 0; i < NUM_TRAINERS; i++) {
-        if (trainers[i].defeated) continue;
-        int dx = mmX + (int)(trainers[i].x * sx);
-        int dy = mmY + (int)(trainers[i].y * sy);
-        DrawRectangle(dx - 1, dy - 1, 3, 3, trainers[i].color);
-    }
-    // Player
-    int bl = (int)(glowTimer * 4) % 2;
-    int plx = mmX + (int)(px * sx);
-    int ply = mmY + (int)(py * sy);
-    DrawRectangle(plx - 2, ply - 2, 5, 5, bl ? WHITE : (Color) { 120, 240, 255, 255 });
+    // Map tab button (the map itself lives on its own screen now)
+    DrawRectangle(screenW - 250, 116, 240, 26, (Color) { 15, 25, 45, 200 });
+    DrawRectangleLines(screenW - 250, 116, 240, 26, (Color) { 100, 200, 255, 180 });
+    DrawText("[M] OPEN MAP", screenW - 240, 122, 12, (Color) { 140, 220, 255, 255 });
 
     // Active jobs
     int jy = SCREEN_H - 50;
@@ -756,8 +762,8 @@ static void drawHud(void) {
         jy -= 16;
     }
 
-    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Terminal   [TAB] Team   [F1] Debug   [ESC] Menu",
-        10, SCREEN_H - 28, 14, (Color) { 150, 220, 255, 220 });
+    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Terminal   [TAB] Team   [M] Map   [F1] Debug   [ESC] Menu",
+        10, SCREEN_H - 28, 13, (Color) { 150, 220, 255, 220 });
 
     if (messageTimer > 0) {
         DrawRectangle(40, SCREEN_H - 130, screenW - 80, 90, (Color) { 15, 25, 45, 240 });
