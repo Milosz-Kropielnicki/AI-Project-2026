@@ -5,9 +5,12 @@
 #include "mech.h"
 #include "firmware.h"
 #include "ui.h"
+#include "game.h"
+#include "audio.h"
 #include <stdlib.h>
-#include <time.h>
 
+// Called once when the game switches screens. Returning from the debug
+// screen resumes the previous screen as it was.
 static void enterState(GameState to, GameState from) {
     if (from == STATE_DEBUG) return;
     switch (to) {
@@ -18,6 +21,13 @@ static void enterState(GameState to, GameState from) {
     case STATE_REVISION: uiRevisionOpen(); break;
     case STATE_STARTER:  uiStarterOpen(); break;
     case STATE_DEBUG:    uiDebugOpen(from); break;
+    case STATE_TERMINAL: uiTerminalOpen(); break;
+    case STATE_OVERWORLD:   // back from a fight: starter evolution and bonus starters
+        if (from == STATE_BATTLE || from == STATE_REVISION) {
+            worldTryStarterEvolution();
+            worldOfferAlternateStarters();
+        }
+        break;
     default: break;
     }
 }
@@ -28,14 +38,12 @@ static int debugAllowedFrom(GameState s) {
 
 int main(void) {
     InitWindow(SCREEN_W, SCREEN_H, "MECH PILOT - Neon Wasteland");
-    SetExitKey(KEY_NULL);
+    SetExitKey(KEY_NULL);   // ESC opens menus; quit via the EXIT button
     SetTargetFPS(60);
     displayInit();
+    audioInit();
 
-    worldInit();
-    srand((unsigned)time(NULL));
-    chipCollectionInit();
-    rosterInit();
+    gameNew();              // a fresh campaign; the menu can load a save over it
 
     GameState state = STATE_MENU;
 
@@ -44,6 +52,10 @@ int main(void) {
         glowTimer += dt;
         inputBeginFrame();
         updateCanvasTransform();
+
+        // Only the screen that was active at the start of the frame gets updated,
+        // so a key press that changes screens isn't handled twice.
+        if (IsKeyPressed(KEY_M)) audioToggleMute();
 
         GameState frameState = state;
         if (IsKeyPressed(KEY_F1) && debugAllowedFrom(frameState)) {
@@ -59,6 +71,7 @@ int main(void) {
             case STATE_REVISION:  uiRevisionUpdate(dt, &state); break;
             case STATE_TEAM:      uiTeamUpdate(&state); break;
             case STATE_DEBUG:     uiDebugUpdate(&state); break;
+            case STATE_TERMINAL:  uiTerminalUpdate(&state); break;
             case STATE_STARTER:   uiStarterUpdate(dt, &state); break;
             }
         }
@@ -73,11 +86,13 @@ int main(void) {
         case STATE_REVISION:  uiRevisionDraw(); break;
         case STATE_TEAM:      uiTeamDraw(); break;
         case STATE_DEBUG:     uiDebugDraw(); break;
+        case STATE_TERMINAL:  uiTerminalDraw(); break;
         case STATE_STARTER:   uiStarterDraw(); break;
         }
         presentCanvas();
     }
 
+    audioShutdown();
     displayShutdown();
     CloseWindow();
     return 0;

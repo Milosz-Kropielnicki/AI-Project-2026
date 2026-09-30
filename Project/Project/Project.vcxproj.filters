@@ -57,6 +57,18 @@
     <ClCompile Include="ui_sprites.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="game.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="data_game.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="ui_terminal.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="audio.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
     <ClCompile Include="ui_starter.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -81,6 +93,12 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="ui.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="game.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="audio.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

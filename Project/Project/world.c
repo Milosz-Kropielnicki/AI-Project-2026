@@ -1,5 +1,6 @@
 #include "world.h"
 #include "battle.h"
+#include "game.h"
 #include "ui.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -59,6 +60,9 @@ Trainer trainers[NUM_TRAINERS];
 // The one big map
 static unsigned char map[MAP_H][MAP_W];
 
+// Current zone state (region index; kept for save/load compatibility)
+static int currentZone = REGION_ALPHA;
+
 static int px, py;
 static float pxF, pyF;
 static int facing;
@@ -67,11 +71,10 @@ static int moving = 0;
 static float moveT = 0;
 static float moveFromX, moveFromY;
 static int lastDir = -1;
+static int justEnteredZone = 0;    // suppress encounter roll on spawn tile
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
-
-#define TERMINAL_MESSAGE "[TERMINAL] Repair bay: team restored. Hack mechs to grow your team!"
 
 // ============ MAP GEN HELPERS ============
 static void setTile(int x, int y, int t) {
@@ -132,12 +135,8 @@ static void genWorld(void) {
         for (int x = 0; x < MAP_W; x++)
             map[y][x] = T_BLOCK;
 
-    // Outer border stays solid (already is from the base fill)
-
     // ---- Alpha hub: an open settlement area ----
-    // Interior floor
     fillRect(3, 4, 28, 26, T_GRID);
-    // Grass patches inside the hub for wild encounters
     srand(1000);
     for (int i = 0; i < 6; i++) {
         int cx = 6 + rand() % 20;
@@ -146,17 +145,14 @@ static void genWorld(void) {
             for (int x = cx; x < cx + 4 && x < 28; x++)
                 setTile(x, y, T_GRASS);
     }
-    // A couple of decorative walls
     fillRect(6, 8, 8, 8, T_BLOCK);
     fillRect(22, 20, 24, 21, T_BLOCK);
-    // Terminal
     setTile(8, 15, T_TERMINAL);
 
     // ---- Route 1: Alpha -> Beta, narrow winding corridor ----
-    // Goes east from Alpha's east edge, jogs south then east to Beta's west
-    carveRouteH(28, 40, 8);      // east from Alpha at y=8
-    carveRouteV(8, 20, 40);      // south along x=40
-    carveRouteH(40, 46, 20);     // east into Beta at y=20
+    carveRouteH(28, 40, 8);
+    carveRouteV(8, 20, 40);
+    carveRouteH(40, 46, 20);
 
     // ---- Beta hub: industrial zone ----
     fillRect(46, 18, 76, 44, T_GRID);
@@ -168,21 +164,18 @@ static void genWorld(void) {
             for (int x = cx; x < cx + 4 && x < 76; x++)
                 setTile(x, y, T_RUINS);
     }
-    // Bunkers scattered around Beta
     for (int i = 0; i < 8; i++) {
         int cx = 50 + rand() % 24;
         int cy = 20 + rand() % 22;
         setTile(cx, cy, T_BUNKER);
     }
-    // Plasma pond
     fillRect(60, 26, 66, 30, T_PLASMA);
-    // Terminal
     setTile(52, 30, T_TERMINAL);
 
     // ---- Route 2: Beta -> Gamma, long winding corridor ----
-    carveRouteH(76, 90, 32);     // east from Beta at y=32
-    carveRouteV(20, 32, 88);     // north along x=88
-    carveRouteH(88, 92, 20);     // east into Gamma at y=20
+    carveRouteH(76, 90, 32);
+    carveRouteV(20, 32, 88);
+    carveRouteH(88, 92, 20);
 
     // ---- Gamma hub: apex wasteland ----
     fillRect(90, 4, 116, 56, T_GRID);
@@ -194,10 +187,8 @@ static void genWorld(void) {
             for (int x = cx; x < cx + 4 && x < 116; x++)
                 setTile(x, y, T_RUINS);
     }
-    // Big plasma lakes
     fillRect(100, 8, 110, 14, T_PLASMA);
     fillRect(96, 38, 112, 48, T_PLASMA);
-    // Solid jagged walls
     for (int i = 0; i < 10; i++) {
         int cx = 92 + rand() % 22;
         int cy = 6 + rand() % 48;
@@ -205,16 +196,12 @@ static void genWorld(void) {
         for (int j = 0; j < len; j++)
             if (getTile(cx + j, cy) == T_GRID) setTile(cx + j, cy, T_BLOCK);
     }
-    // Terminal
     setTile(94, 28, T_TERMINAL);
 
     // ---- Make sure the route corridors are still walkable ----
-    // (random features above may have overwritten them)
-    // Route 1
     carveRouteH(28, 40, 8);
     carveRouteV(8, 20, 40);
     carveRouteH(40, 46, 20);
-    // Route 2
     carveRouteH(76, 90, 32);
     carveRouteV(20, 32, 88);
     carveRouteH(88, 92, 20);
@@ -246,14 +233,14 @@ static int isRouteTile(int x, int y) {
 static void initTrainers(void) {
     // --- Alpha hub (x 3..28, y 4..26) ---
     trainers[0] = (Trainer){
-        "PILOT RHEA", "IRON LEGION", 14, 22, 0, { 255, 120, 200, 255 },
+        "PILOT RHEA", FAC_IRON_LEGION, 14, 22, 0, { 255, 120, 200, 255 },
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
         "Follow the east road. It leads to Route 1.",
         0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
     };
     trainers[1] = (Trainer){
-        "SCOUT DANE", "IRON LEGION", 22, 12, 0, { 255, 200, 100, 255 },
+        "SCOUT DANE", FAC_IRON_LEGION, 22, 12, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Route 1's where the real fights start.",
@@ -262,7 +249,7 @@ static void initTrainers(void) {
 
     // --- Route 1 (between Alpha and Beta) ---
     trainers[2] = (Trainer){
-        "ROUTE GUARD", "IRON LEGION", 34, 8, 0, { 255, 160, 100, 255 },
+        "ROUTE GUARD", FAC_IRON_LEGION, 34, 8, 0, { 255, 160, 100, 255 },
         "No one passes this road without a fight.",
         "Fine... you've earned the crossing.",
         "Keep heading east. Beta's not far.",
@@ -271,14 +258,14 @@ static void initTrainers(void) {
 
     // --- Beta hub (x 46..76, y 18..44) ---
     trainers[3] = (Trainer){
-        "COMMANDER VOLK", "IRON LEGION", 56, 24, 0, { 255, 180, 60, 255 },
+        "COMMANDER VOLK", FAC_IRON_LEGION, 56, 24, 0, { 255, 180, 60, 255 },
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "Route 2 leads to the wasteland beyond.",
         1, 0, { ARCH_BRAWLER, ARCH_BERSERKER }, { 3, 3 }, 2, 0
     };
     trainers[4] = (Trainer){
-        "ENGINEER KESS", "IRON LEGION", 66, 38, 0, { 120, 220, 160, 255 },
+        "ENGINEER KESS", FAC_CHROME_SYNDICATE, 66, 38, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "Gamma is the final frontier.",
@@ -287,7 +274,7 @@ static void initTrainers(void) {
 
     // --- Route 2 (between Beta and Gamma) ---
     trainers[5] = (Trainer){
-        "ROADBLOCK UNIT", "IRON LEGION", 88, 26, 0, { 255, 100, 100, 255 },
+        "ROADBLOCK UNIT", FAC_CHROME_SYNDICATE, 88, 26, 0, { 255, 100, 100, 255 },
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
         "Warden Krux is waiting up north.",
@@ -296,7 +283,7 @@ static void initTrainers(void) {
 
     // --- Gamma hub (x 90..116, y 4..56) ---
     trainers[6] = (Trainer){
-        "WARDEN KRUX", "IRON LEGION", 108, 30, 0, { 255, 60, 60, 255 },
+        "WARDEN KRUX", FAC_IRON_LEGION, 108, 30, 0, { 255, 60, 60, 255 },
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
@@ -307,11 +294,14 @@ static void initTrainers(void) {
 void worldInit(void) {
     genWorld();
     initTrainers();
+    currentZone = REGION_ALPHA;
     px = 6; py = 15; facing = 3;   // start in Alpha's hub
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
+    justEnteredZone = 1;
 }
 
+// ============ STARTERS ============
 void worldInitNewGame(int starterIdx) {
     if (starterIdx < 0 || starterIdx >= NUM_STARTERS) starterIdx = 0;
     playerStarter = starterIdx;
@@ -354,10 +344,8 @@ static int checkStarterEvolution(void) {
     Mech evolved = mechCreateStock(newModel, keptRevision);
     snprintf(evolved.name, sizeof(evolved.name), "%s-%s",
         line->name, starterStage == 1 ? "MK2" : "PRIME");
-    for (int s = 0; s < MAX_SOCKETS; s++) evolved.fw.chips[s] = m->fw.chips[s];
-    evolved.fw.optPoints = m->fw.optPoints;
-    for (int i = 0; i < NUM_OPTIMIZATIONS; i++) evolved.fw.optPicks[i] = m->fw.optPicks[i];
-    mechRefreshStats(&evolved);
+    partsAddFromMech(&evolved);   // the new chassis' weapons/modules; the old ones stay in the inventory
+    evolved.fw = m->fw;           // firmware carries over whole: chips, trait, branches, profiles, data
     mechRepair(&evolved);
     team[starterSlot] = evolved;
 
@@ -391,6 +379,7 @@ void worldOfferAlternateStarters(void) {
         else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
         mechRepair(&m);
         if (rosterAdd(&m)) {
+            partsAddFromMech(&m);
             obtainedStarters |= (1 << missing[0]);
             showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[0]].name), 4.0f);
         }
@@ -404,10 +393,35 @@ void worldOfferAlternateStarters(void) {
         else               firmwareInstall(&m.fw, 0, CHIP_COUNTER_INTRUSION);
         mechRepair(&m);
         if (rosterAdd(&m)) {
+            partsAddFromMech(&m);
             obtainedStarters |= (1 << missing[1]);
             showMessage(TextFormat(">> FIELD RECOVERY: %s added to your team!", starters[missing[1]].name), 4.0f);
         }
     }
+}
+
+int worldCurrentZone(void) { return worldRegionAt(px, py) >= 0 ? worldRegionAt(px, py) : currentZone; }
+const char* worldCurrentZoneName(void) { return regions[worldCurrentZone()].name; }
+const char* worldCurrentZoneSubtitle(void) { return regions[worldCurrentZone()].subtitle; }
+
+void worldGetPlayer(int* zone, int* x, int* y) {
+    *zone = worldCurrentZone();
+    *x = px;
+    *y = py;
+}
+
+void worldSetPlayer(int zone, int x, int y) {
+    currentZone = zone;
+    px = x; py = y;
+    pxF = (float)(px * TILE_SIZE);
+    pyF = (float)(py * TILE_SIZE);
+    moving = 0;
+    justEnteredZone = 1;
+}
+
+int worldFindTrainer(const char* name) {
+    for (int i = 0; i < NUM_TRAINERS; i++) if (strcmp(trainers[i].name, name) == 0) return i;
+    return -1;
 }
 
 void showMessage(const char* msg, float dur) {
@@ -427,11 +441,6 @@ static int triggerTrainerEncounter(int trainerIdx) {
     }
     battleStartTrainer(trainerIdx);
     return 1;
-}
-
-static void useTerminal(void) {
-    for (int i = 0; i < teamSize; i++) mechRepair(&team[i]);
-    showMessage(TERMINAL_MESSAGE, 3.5f);
 }
 
 // ============ UPDATE ============
@@ -455,7 +464,7 @@ void worldUpdate(float dt, GameState* state) {
 
     // Wild encounters: routes have their own encounter rate (a bit lower than
     // a region hub so corridors feel like travel, not a grind).
-    if (arrived && isEncounterTile(px, py)) {
+    if (arrived && !justEnteredZone && isEncounterTile(px, py)) {
         int region = worldRegionAt(px, py);
         int rate;
         if (region >= 0) rate = regions[region].baseEncounter;
@@ -466,6 +475,7 @@ void worldUpdate(float dt, GameState* state) {
             return;
         }
     }
+    justEnteredZone = 0;
 
     if (messageTimer > 0) {
         messageTimer -= dt;
@@ -489,8 +499,10 @@ void worldUpdate(float dt, GameState* state) {
                 break;
             }
         }
-        if (getTile(fx, fy) == T_TERMINAL)
-            useTerminal();
+        if (getTile(fx, fy) == T_TERMINAL) {
+            *state = STATE_TERMINAL;
+            return;
+        }
     }
 
     // Movement
@@ -506,6 +518,7 @@ void worldUpdate(float dt, GameState* state) {
     int nx = px + dx, ny = py + dy;
     facing = dir;
 
+    // Trainer bumping
     for (int i = 0; i < NUM_TRAINERS; i++) {
         if (trainers[i].x == nx && trainers[i].y == ny) {
             if (fresh && triggerTrainerEncounter(i)) *state = STATE_BATTLE;
@@ -514,7 +527,7 @@ void worldUpdate(float dt, GameState* state) {
     }
 
     if (isSolid(nx, ny)) {
-        if (fresh && getTile(nx, ny) == T_TERMINAL) useTerminal();
+        if (fresh && getTile(nx, ny) == T_TERMINAL) *state = STATE_TERMINAL;
         return;
     }
 
@@ -659,6 +672,7 @@ static void drawHud(void) {
     DrawText(TextFormat("DATA %d/%d", m->fw.data, firmwareDataToNext(m->fw.revision)),
         20, 119, 10, (Color) { 200, 170, 255, 255 });
     DrawText(TextFormat("FIRMWARE %s", firmwareLabel(m->fw.revision)), 20, 134, 12, (Color) { 200, 170, 255, 255 });
+    DrawText(TextFormat("%d CR", credits), 250, 134, 12, (Color) { 255, 220, 100, 255 });
 
     // Location label: region, route, or wilderness
     int region = worldRegionAt(px, py);
@@ -682,7 +696,7 @@ static void drawHud(void) {
         DrawText("WILDS", screenW - 240, 16, 16, (Color) { 200, 200, 200, 255 });
         DrawText("- NO MAN'S LAND -", screenW - 240, 34, 10, (Color) { 180, 180, 180, 200 });
     }
-    DrawText(TextFormat("Legion: %d / %d", worldDefeated, NUM_TRAINERS),
+    DrawText(TextFormat("Encounters: %d / %d", worldDefeated, NUM_TRAINERS),
         screenW - 240, 52, 12, WHITE);
     DrawText(TextFormat("Position %3d,%2d", px, py),
         screenW - 240, 70, 11, (Color) { 150, 200, 255, 200 });
@@ -731,7 +745,18 @@ static void drawHud(void) {
     int ply = mmY + (int)(py * sy);
     DrawRectangle(plx - 2, ply - 2, 5, 5, bl ? WHITE : (Color) { 120, 240, 255, 255 });
 
-    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk   [TAB] Team   [F1] Debug   [ESC] Menu",
+    // Active jobs
+    int jy = SCREEN_H - 50;
+    for (int j = NUM_JOBS - 1; j >= 0; j--) {
+        if (jobState[j] != JS_ACTIVE && jobState[j] != JS_READY) continue;
+        int ready = jobState[j] == JS_READY;
+        DrawText(TextFormat("%s %s: %s", ready ? "[READY]" : "[JOB]", jobDefs[j].title,
+            ready ? "claim at any terminal" : jobObjective(j)), 12, jy, 12,
+            ready ? (Color) { 120, 255, 160, 255 } : (Color) { 255, 220, 140, 255 });
+        jy -= 16;
+    }
+
+    DrawText("[WASD/ARROWS] Move   [Z/ENTER] Talk/Terminal   [TAB] Team   [F1] Debug   [ESC] Menu",
         10, SCREEN_H - 28, 14, (Color) { 150, 220, 255, 220 });
 
     if (messageTimer > 0) {

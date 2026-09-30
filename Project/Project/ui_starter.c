@@ -1,6 +1,7 @@
 #include "ui.h"
 #include "mech.h"
 #include "world.h"
+#include "game.h"
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -81,7 +82,7 @@ void uiStarterUpdate(float dt, GameState* state) {
     if (pickedTimer >= 0) {
         pickedTimer -= dt;
         if (pickedTimer <= 0) {
-            worldInitNewGame(pickedIdx);
+            gameChooseStarter(pickedIdx);
             *state = STATE_OVERWORLD;
         }
         return;

@@ -56,6 +56,29 @@ typedef struct {
     float resist;           // target's chance to resist the scramble
 } AttackPreview;
 
+// ============ ATTACK EXPLANATION ============
+// The reasons behind one attack's numbers in plain language. The same lines
+// feed the weapon tooltip (before firing) and the battle log (after).
+#define EXPLAIN_LINES 12
+#define EXPLAIN_LEN 120
+typedef struct {
+    int n;
+    char line[EXPLAIN_LINES][EXPLAIN_LEN];
+    int warn[EXPLAIN_LINES];            // 1 = draw as a warning
+} Explanation;
+
+// ============ BATTLE LOG ============
+#define LOG_HISTORY 48
+typedef struct {
+    char text[256];
+    int side;                           // 1 = player, 0 = enemy, -1 = system
+    int munition;                       // -1 = not an attack
+    int round;
+    Explanation why;                    // empty for system lines
+} LogEntry;
+int battleLogCount(void);
+const LogEntry* battleLogEntry(int back);   // 0 = newest
+
 // Per-attack conditions that come from battle state rather than stats
 typedef struct {
     int attackerAccuracy;   // effective (scramble penalties / precision strike applied)
@@ -79,7 +102,14 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target);  
 float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
                     const AttackContext* ctx, const AIProfile* ai);
 #define AI_HOLD_SCORE 2.0f      // after its first action the AI stops rather than fire below this
-float hackChance(const Mech* target);
+// Hacking (capture) is a scramble attack on the target's Stability:
+// chance = Strength / (Strength + Stability), clamped 5-95%. Strength comes from
+// the hacker's best scrambling weapon; every scramble / corruption effect
+// pending on the target lowers its Stability by HACK_STABILITY_PER_EFFECT.
+#define HACK_BASE_STRENGTH 30
+#define HACK_STABILITY_PER_EFFECT 15
+int hackStrength(const Mech* hacker);
+float hackChance(int strength, int stability);
 int revisionDataForWild(const Mech* enemy);
 int revisionDataForTrainer(const Mech* enemy, int tier);
 int revisionDataForParticipation(const Mech* enemy);   // losing still teaches the firmware something
@@ -116,10 +146,33 @@ typedef struct {
     int randomTargeting, nextRandomTargeting;   // corruption: attacks may fire a random weapon
     int deadManUsed;
     int skipImmune;         // normal turns left before this side can lose a turn again
+    int archetype;          // enemy archetype it was built from, -1 = none
+    int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
 
+// ============ SIDES ============
+// Each side owns battle copies of its mechs. Slots hold the whole squad
+// (field + reserves); field[] says which slots are on the field. The player's
+// copies are written back to team[] when the battle ends.
+#define MAX_FIELD 1
+#define SIDE_ENEMY 0
+#define SIDE_PLAYER 1
+typedef struct {
+    Mech mech[MAX_TEAM];
+    Combatant slot[MAX_TEAM];
+    int rosterIndex[MAX_TEAM];  // team[] index the slot writes back to, -1 = none
+    int field[MAX_FIELD];       // slot on each field position, -1 = empty
+    int count, numField;
+} Side;
+
 // A visual cue for ui_battle.c; battle logic never touches effects directly
-typedef struct { int fx; int fromPlayer; int damage; int hit; Color color; } BattleEvent;
+typedef struct {
+    int fx, fromPlayer, damage, hit;
+    Color color;
+    int munition;                       // drives impact particles and sound
+    int armorDamage, integrityDamage;   // shown as separate numbers
+    int lethal;
+} BattleEvent;
 #define MAX_BATTLE_EVENTS 8
 
 typedef struct {
@@ -127,9 +180,7 @@ typedef struct {
     BattleDialogue dialogue;
     char dialogueText[256];
     char log[256];
-    Combatant player, enemy;
-    Mech enemyMech;
-    int enemyArchetype;     // -1 = stock chassis with random chips
+    Side side[2];           // SIDE_ENEMY, SIDE_PLAYER
     int trainer;            // -1 = wild
     int testRange;          // player vs a passive, self-rebuilding dummy
     int dummyKills;
@@ -138,12 +189,18 @@ typedef struct {
     float animTimer;        // > 0 while an attack animation plays
     int outcomePending;     // check for scrapped mechs once the animation ends
     int dataEarned, revisionsGained, oldRevision, hacked;
+    char loot[160];         // credits, salvage and job updates from this battle
     BattleResult result;
     BattleEvent events[MAX_BATTLE_EVENTS];
     int numEvents;
 } Battle;
 
 extern Battle battle;
+
+Combatant* battleField(int side, int pos);  // NULL if that field position is empty
+Combatant* battleFieldPlayer(void);         // the player's mech on the field
+Combatant* battleFieldEnemy(void);          // the enemy mech on the field
+Mech* battleRosterMech(int teamIdx);        // battle copy of team[teamIdx], NULL if not in this battle
 
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);
@@ -155,8 +212,13 @@ int battleBusy(void);                       // animating or showing dialogue
 int battleCanFire(int mount, const char** reason);
 void battleFire(int mount);
 void battleEndTurn(void);
-int battleAIChooseForPlayer(void);          // the enemy AI's pick for the player's side (tests / autoplay)
+int battleAIChooseForPlayer(void);
+int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
+// Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
+int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)
 int battleCanHack(void);
+int battleHackStability(void);              // enemy's effective Stability against a hack
+float battleHackChance(void);
 void battleHack(void);
 void battleConfirm(void);                   // advance dialogue / victory / defeat
 int battlePopEvent(BattleEvent* out);
