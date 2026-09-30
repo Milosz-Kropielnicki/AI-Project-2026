@@ -58,6 +58,7 @@ static float effectDuration(int kind) {
     case FX_BEAM: return 0.5f;
     case FX_SCAN: return 1.0f;
     case FX_SWITCH: return 0.8f;
+    case FX_PROVOKE: return 0.9f;
     default: return 0.55f;
     }
 }
@@ -296,6 +297,16 @@ static void drawEffects(void) {
             DrawCircleLines((int)e->to.x, (int)e->to.y, r * 0.4f, (Color) { e->color.r, e->color.g, e->color.b, 120 });
             const char* txt = "INTRUSION...";
             DrawText(txt, (int)(e->to.x - MeasureText(txt, 16) / 2), (int)(e->to.y - 90), 16, (Color) { 200, 255, 240, 255 });
+            break;
+        }
+        case FX_PROVOKE: {   // expanding war-horn rings and a banner
+            for (int k = 0; k < 3; k++) {
+                float q = p - k * 0.15f;
+                if (q <= 0) continue;
+                DrawCircleLines((int)e->to.x, (int)e->to.y, 20 + q * 70, (Color) { 255, 150, 60, (unsigned char)(220 * (1 - q)) });
+            }
+            const char* txt = "PROVOKE!";
+            DrawText(txt, (int)(e->to.x - MeasureText(txt, 14) / 2), (int)(e->to.y - 62), 14, (Color) { 255, 170, 80, (unsigned char)(255 * (1 - p * 0.5f)) });
             break;
         }
         case FX_SWITCH: {
@@ -539,11 +550,12 @@ static Rectangle hudRect(int side, int pos) {
     return side == SIDE_PLAYER ? (Rectangle) { 552, 8.0f + pos * 78, 240, 74 } : (Rectangle) { 8, 8.0f + pos * 72, 240, 68 };
 }
 static Rectangle weaponButtonRect(int i) { return (Rectangle) { 30, (float)(ROW_Y + i * 34), 355, 30 }; }
-static Rectangle deployButtonRect(void) { return (Rectangle) { 240, PANEL_Y + 4, 92, 18 }; }
-static Rectangle switchButtonRect(void) { return (Rectangle) { 337, PANEL_Y + 4, 92, 18 }; }
-static Rectangle hackButtonRect(void) { return (Rectangle) { 434, PANEL_Y + 4, 82, 18 }; }
-static Rectangle nextButtonRect(void) { return (Rectangle) { 521, PANEL_Y + 4, 100, 18 }; }
-static Rectangle endTurnButtonRect(void) { return (Rectangle) { 626, PANEL_Y + 4, 144, 18 }; }
+static Rectangle deployButtonRect(void) { return (Rectangle) { 240, PANEL_Y + 4, 82, 18 }; }
+static Rectangle switchButtonRect(void) { return (Rectangle) { 326, PANEL_Y + 4, 82, 18 }; }
+static Rectangle provokeButtonRect(void) { return (Rectangle) { 412, PANEL_Y + 4, 92, 18 }; }
+static Rectangle hackButtonRect(void) { return (Rectangle) { 508, PANEL_Y + 4, 72, 18 }; }
+static Rectangle nextButtonRect(void) { return (Rectangle) { 584, PANEL_Y + 4, 86, 18 }; }
+static Rectangle endTurnButtonRect(void) { return (Rectangle) { 674, PANEL_Y + 4, 96, 18 }; }
 static Rectangle logStripRect(void) { return (Rectangle) { 20, PANEL_Y - 22, SCREEN_W - 40, 20 }; }
 static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 302, 37, 40 }; }
 #define PICKER_X 130
@@ -652,10 +664,10 @@ void uiBattleUpdate(float dt, GameState* state) {
     BattleEvent ev;
     while (battlePopEvent(&ev)) {
         int own = ev.fromPlayer ? SIDE_PLAYER : SIDE_ENEMY, other = ev.fromPlayer ? SIDE_ENEMY : SIDE_PLAYER;
-        if (ev.fx == FX_SWITCH) {
+        if (ev.fx == FX_SWITCH || ev.fx == FX_PROVOKE) {
             Vector2 at = slotPos(own, ev.toSlot);
             addEffect(&ev, at, at);
-            sfxPlay(SFX_SWITCH);
+            sfxPlay(ev.fx == FX_SWITCH ? SFX_SWITCH : SFX_PROVOKE);
             continue;
         }
         addEffect(&ev, slotPos(own, ev.fromSlot), slotPos(other, ev.toSlot));
@@ -749,6 +761,13 @@ void uiBattleUpdate(float dt, GameState* state) {
             snprintf(battle.log, sizeof(battle.log), "SWITCH: %s", reason);
             sfxPlay(SFX_UI_DENY);
         }
+        return;
+    }
+    if (IsKeyPressed(KEY_P) || clickedOn(provokeButtonRect())) {
+        consumeInput();
+        const char* reason = NULL;
+        if (battleCanProvoke(&reason)) battleProvoke();
+        else { snprintf(battle.log, sizeof(battle.log), "PROVOKE: %s", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
     if ((IsKeyPressed(KEY_C) || clickedOn(hackButtonRect())) && battleCanHack()) {
@@ -860,6 +879,25 @@ static void computeFramePreviews(void) {
     for (int k = 0; k < n; k++) { framePreview[pos[k]] = all[k]; framePreviewOk[pos[k]] = 1; }
 }
 
+static const char* threatRules(void) {
+    return TextFormat("How much the enemy AI wants to shoot this mech: each attack's value is multiplied by 1 + threat/100. "
+        "Attacking +%d a turn (+%d with area, cone or heavy weapons), repair +%d, buff +%d, PROVOKE +%d, +%d per round on the "
+        "field (an Ironclad +%d); -%d at the start of every round. Max %d.", THREAT_ATTACK, THREAT_HEAVY_ATTACK, THREAT_REPAIR,
+        THREAT_BUFF, THREAT_PROVOKE, THREAT_PASSIVE, THREAT_PASSIVE_IRONCLAD, THREAT_DECAY, THREAT_MAX);
+}
+
+// Threat bar: yellow to red as it fills, pulsing orange frame while provoking
+static void drawThreatBar(int x, int y, int w, int h, const Combatant* c) {
+    float f = c->threat / (float)THREAT_MAX;
+    Color fill = { 255, (unsigned char)(220 - 170 * f), 60, 255 };
+    DrawRectangle(x, y, w, h, (Color) { 30, 24, 20, 255 });
+    DrawRectangle(x, y, (int)(w * f), h, fill);
+    if (c->provoking) {
+        float blink = 0.5f + 0.5f * sinf(glowTimer * 8);
+        DrawRectangleLines(x - 1, y - 1, w + 2, h + 2, (Color) { 255, 150, 60, (unsigned char)(150 + 105 * blink) });
+    }
+}
+
 static void drawEmptySlot(Rectangle r, const char* label, const char* sub) {
     DrawRectangleRec(r, (Color) { 12, 16, 28, 200 });
     for (float x = r.x; x < r.x + r.width; x += 10) {
@@ -873,7 +911,7 @@ static void drawEmptySlot(Rectangle r, const char* label, const char* sub) {
 static const char* pendingText(const Combatant* c) {
     int pending = c->nextSkipTurn + (c->nextDisabledWeapon >= 0) + (c->nextAccPenalty > 0) + c->nextEnergyLoss
         + c->nextEnergyTax + c->nextRandomTargeting;
-    return pending ? TextFormat("%d SCRAMBLE%s QUEUED", pending, pending > 1 ? "S" : "") : NULL;
+    return pending ? TextFormat("%d QUEUED", pending) : NULL;
 }
 
 // One enemy on the field; the target gets a pulsing frame and the selected
@@ -893,6 +931,7 @@ static void drawEnemySlot(int pos) {
     DrawText(m->name, x + 8, y + 4, 14, (Color) { 255, 210, 210, 255 });
     DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), x + 196, y + 6, 10, WHITE);
     if (target) DrawText("TARGET", x + 124, y + 6, 10, (Color) { 255, 220, 80, 255 });
+    else if (c->provoking) DrawText("PROVOKE", x + 124, y + 6, 10, (Color) { 255, 150, 60, 255 });
     const char* arch = c->archetype >= 0 ? TextFormat(" [%s%s]", archetypes[c->archetype].boss ? "BOSS " : "", archetypes[c->archetype].name) : "";
     DrawText(TextFormat("%s %s%s", mechModel(m)->name, roleName(mechRole(m)), arch), x + 8, y + 19, 10, (Color) { 200, 200, 240, 255 });
     drawIntegrityBar(x + 8, y + 32, 150, 6, s->integrity, s->maxIntegrity);
@@ -906,6 +945,10 @@ static void drawEnemySlot(int pos) {
     DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), x + 164, y + 30, 10, WHITE);
     DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), x + 164, y + 40, 10, (Color) { 150, 190, 240, 255 });
     drawReadouts(s, combatMobility(c), combatAccuracy(c), x + 8, y + 53);
+    drawThreatBar(x + 8, y + 64, 224, 2, c);
+    tipText((Rectangle) { (float)x + 8, (float)y + 62, 224, 6 }, TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : ""),
+        c->provoking ? "It is PROVOKING: your single-target weapons must aim at it until its next turn. Area and cone weapons still reach the others."
+                     : threatRules());
     tipText((Rectangle) { (float)x + 8, (float)y + 30, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "The machine's health. At 0 it is scrapped. Penetrating damage and anything Armor can't absorb lands here.");
     tipText((Rectangle) { (float)x + 8, (float)y + 41, 230, 9 }, TextFormat("ARMOR %d/%d", s->armor, s->maxArmor),
@@ -948,8 +991,16 @@ static void drawPlayerSlot(int pos) {
     // Energy pips and status
     for (int e = 0; e < (s->maxEnergy > s->energy ? s->maxEnergy : s->energy); e++)
         DrawCircle(x + 12 + e * 11, y + 66, 4, e < s->energy ? (Color) { 60, 200, 255, 255 } : (Color) { 40, 45, 60, 255 });
+    int loudest = 1;
+    for (int q = 0; q < MAX_FIELD; q++) { const Combatant* o = battleField(SIDE_PLAYER, q); if (o && o != c && o->threat >= c->threat) loudest = 0; }
+    DrawText(c->provoking ? "PROV" : loudest && c->threat > 0 ? "AGGRO" : "THR", x + 66, y + 61, 10,
+        c->provoking ? (Color) { 255, 150, 60, 255 } : loudest && c->threat > 0 ? (Color) { 255, 110, 80, 255 } : (Color) { 170, 150, 130, 255 });
+    drawThreatBar(x + 100, y + 64, 60, 4, c);
+    tipText((Rectangle) { (float)x + 64, (float)y + 60, 100, 12 },
+        TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
+        c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
     const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED" : pendingText(c);
-    if (status) DrawText(status, x + 110, y + 61, 10, (Color) { 200, 150, 255, 255 });
+    if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "
         "deploys there. The battle is lost when no mech is left standing.");
@@ -1094,8 +1145,14 @@ static void drawField(float sx, float sy) {
                 DrawEllipseLines((int)v.x, (int)v.y + 36, 36, 10, a);
             }
             drawMechBattle(c->mech->model, (int)(v.x + sx), (int)(v.y + sy), SPRITE_SCALE, side == SIDE_ENEMY);
-            if (side == SIDE_PLAYER && c->done && !acting && battle.phase == BP_PLAYER_TURN)
-                DrawText("DONE", (int)v.x - MeasureText("DONE", 10) / 2, (int)v.y + 40, 10, (Color) { 130, 140, 160, 255 });
+            drawThreatBar((int)v.x - 25, (int)v.y + 48, 50, 4, c);
+            if (c->provoking) {
+                float pb = 0.5f + 0.5f * sinf(glowTimer * 8);
+                DrawCircleLines((int)v.x, (int)v.y, 40 + 3 * pb, (Color) { 255, 150, 60, (unsigned char)(120 + 100 * pb) });
+                DrawText("PROVOKING", (int)v.x - MeasureText("PROVOKING", 10) / 2, (int)v.y + 54, 10, (Color) { 255, 150, 60, 255 });
+            }
+            else if (side == SIDE_PLAYER && c->done && !acting && battle.phase == BP_PLAYER_TURN)
+                DrawText("DONE", (int)v.x - MeasureText("DONE", 10) / 2, (int)v.y + 54, 10, (Color) { 130, 140, 160, 255 });
             if (side == SIDE_ENEMY && framePreviewOk[p]) {   // reticle on the target, a lighter one on splash targets
                 Rectangle r = spriteRect(side, p);
                 int primary = p == battle.playerTarget;
@@ -1155,7 +1212,7 @@ static void drawWeaponButton(int i) {
         : TextFormat("HIT %d%%  SCRAMBLE %d  HEAT+%d", (int)roundf(p.hitChance * 100), p.scramble, p.heat);
     if (!usable && reason) info = reason;
     DrawText(info, bx + 24, by + 18, 10, usable ? (Color) { 150, 200, 220, 255 } : (Color) { 255, 120, 120, 255 });
-    if (w->ammo > 0)
+    if (w->ammo > 0 && usable)   // a blocked weapon shows its reason there instead
         DrawText(TextFormat("AMMO %d/%d", battleFieldPlayer()->mech->weapons[i].ammo, w->ammo), bx + 225, by + 18, 10,
             (Color) { 150, 200, 220, 255 });
     for (int e = 0; e < w->energyCost; e++) {
@@ -1390,6 +1447,13 @@ void uiBattleDraw(void) {
         int canSwitch = battleCanSwitch(&noSwitch) || (noSwitch && strcmp(noSwitch, "STANDBY") == 0);
         drawButton(deployButtonRect(), "DEPLOY [D]", 12, 0, battleCanDeploy());
         drawButton(switchButtonRect(), "SWITCH [S]", 12, 0, canSwitch);
+        const char* noProvoke = NULL;
+        int canProvoke = battleCanProvoke(&noProvoke);
+        drawButton(provokeButtonRect(), "PROVOKE [P]", 12, 0, canProvoke);
+        tipText(provokeButtonRect(), "PROVOKE", canProvoke
+            ? TextFormat("%d EN: Threat +%d, and every enemy single-target attack must aim at this mech until its next turn. "
+                "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", PROVOKE_ENERGY_COST, THREAT_PROVOKE)
+            : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads).", noProvoke ? noProvoke : "-"));
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
         drawButton(nextButtonRect(), "NEXT [TAB]", 12, 0, actor != NULL);
         drawButton(endTurnButtonRect(), "END TURN [X]", 12, 0, battleFieldCount(SIDE_PLAYER) > 0);
@@ -1415,7 +1479,7 @@ void uiBattleDraw(void) {
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
         DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
-                                  : "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT MECH [S] SWITCH [D] DEPLOY [X] END [C] HACK [L] LOG",
+                                  : "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [P] PROVOKE [C] HACK [X] END",
             30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {

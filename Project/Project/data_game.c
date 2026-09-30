@@ -24,6 +24,7 @@ const CatalogEntry catalog[NUM_CATALOG] = {
     { CO_ATLAS,   MODEL_NOVA,     1,   350 },
     { CO_ATLAS,   MODEL_BULWARK,  1,   450 },
     { CO_ATLAS,   MODEL_RAZOR,    1,   420 },
+    { CO_ATLAS,   MODEL_RAMPART,  2,   600 },
     { CO_KESTREL, MODEL_WISP,     3,   650 },
     { CO_KESTREL, MODEL_HOUND,    3,   600 },
     { CO_KESTREL, MODEL_STATIC,   3,   700 },

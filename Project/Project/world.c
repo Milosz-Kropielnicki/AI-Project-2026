@@ -278,7 +278,7 @@ static void initTrainers(void) {
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
         "Warden Krux is waiting up north.",
-        2, 0, { ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4 }, 2, 0
+        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 4, 4 }, 2, 0
     };
 
     // --- Gamma hub (x 90..116, y 4..56) ---
@@ -287,7 +287,7 @@ static void initTrainers(void) {
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        2, 0, { ARCH_BOMBARD, ARCH_BRAWLER, ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5, 7, 5 }, 4, 0
+        2, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5, 7, 5 }, 4, 0
     };
     trainers[7] = (Trainer){
         "GHOST ECHO", FAC_CHROME_SYNDICATE, 112, 20, 0, { 200, 100, 255, 255 },

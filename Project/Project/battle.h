@@ -79,6 +79,7 @@ typedef struct {
     Explanation why;                    // empty for system lines
 } LogEntry;
 int battleLogCount(void);
+int battleLogTotal(void);                   // entries ever pushed this battle (keeps counting past LOG_HISTORY)
 const LogEntry* battleLogEntry(int back);   // 0 = newest
 
 // Per-attack conditions that come from battle state rather than stats
@@ -155,6 +156,9 @@ typedef struct {
     int switchLocked;       // this turn: just switched in, can't switch out
     int done;               // finished acting this phase (or arrived this round)
     int fielded;            // has been on the field this battle (shares Revision Data)
+    int threat;             // 0-100: how much the other side's AI wants to shoot this mech
+    int attackThreat;       // threat already gained from attacking this turn (attacks count once a turn)
+    int provoking;          // Provocation: the other side's single-target attacks must aim here
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
@@ -238,6 +242,31 @@ void battleSetTarget(int pos);
 void battleCycleTarget(int dir);            // Q / E
 int battleCanDeploy(void);                  // an empty field position and a standing reserve
 int battlePreviewTargets(int mount, int* pos, AttackPreview* out, int max);   // every target the shot reaches
+
+// ============ THREAT ============
+// Threat (0-100) is how loud a mech is. Enemy AI multiplies every attack's
+// value against a target by 1 + threat / 100, so loud mechs draw fire.
+// Gains: attacking +10 per turn (+20 if any shot was area / cone or a 2+ Energy
+// weapon; more shots don't add more), buff +5,
+// repair / shield +15, provoke +50, and every round on the field +5 (an
+// Ironclad +15). All field mechs lose 10 at the start of each round.
+// Provocation: until the provoker's next turn, the other side's single-target
+// attacks must aim at it; area and cone weapons still hit everyone.
+#define THREAT_MAX 100
+#define THREAT_ATTACK 10
+#define THREAT_HEAVY_ATTACK 20
+#define THREAT_BUFF 5
+#define THREAT_REPAIR 15
+#define THREAT_PROVOKE 50
+#define THREAT_PASSIVE 5
+#define THREAT_PASSIVE_IRONCLAD 15
+#define THREAT_DECAY 10
+#define PROVOKE_ENERGY_COST 1
+void battleAddThreat(Combatant* c, int amount);
+float battleThreatFactor(const Combatant* c);   // 1 + threat / 100
+int battleProvoker(int side);               // field position of that side's provoking mech, -1 if none
+int battleCanProvoke(const char** reason);  // the commanded mech can PROVOKE now
+void battleProvoke(void);
 Mech* battleRosterMech(int teamIdx);        // battle copy of team[teamIdx], NULL if not in this battle
 
 void battleStartWild(void);

@@ -106,6 +106,13 @@ const MechModel mechModels[NUM_MODELS] = {
       {90,95,110,255}, {230,200,90,255}, {255,230,120,255},
       { { 25, 0, -25, 5, 0, 0, 0, 0, -30 } },
       { -1, -1, -1, -1 }, STOCK_REFIT, 0 },
+    // Heavy Assault / Ironclad: the anchor. Tower shield and plating; it draws
+    // fire (Ironclads gain extra Threat every round on the field) and soaks it.
+    { "HA-I-40", "RAMPART", ROLE_IRONCLAD, "Tower-shield anchor that draws enemy fire.", 6,
+      {70,90,120,255}, {200,210,230,255}, {150,220,255,255},
+      { { 10, 0, 15, 0, 0, 0, 0, 0, 0 } },
+      { W_MACHINE_GUN, W_SHOTGUN, W_GRENADE_LAUNCHER, -1 },
+      { REFIT_STANDARD_OPTICS, REFIT_HEAVY_PLATING, REFIT_SHIELD_ARM, REFIT_TREADS }, 2 },
 };
 
 // ============ REFIT MODULES ============
@@ -214,6 +221,15 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       { CHIP_PRECISION_STRIKE, CHIP_ARMOR_ANALYSIS, CHIP_EMERGENCY_REPAIR }, 3,
       TRAIT_DEFENSIVE, { BRANCH_SIEGE }, 1,
       { 1.0f, 0.7f, 0.0f, 0.6f, 1.2f, 1.0f }, 0 },
+    // Ironclad anchor: provokes your single-target fire onto its tower shield
+    // so the rest of the squad can work, and repairs itself when low.
+    { "GUARDIAN", "Ironclad bulwark. Provokes your fire so its squad can work.",
+      CLASS_HEAVY_ASSAULT, ROLE_IRONCLAD, MODEL_RAMPART,
+      { { W_MACHINE_GUN, W_SHOTGUN, W_GRENADE_LAUNCHER, -1 },
+        { REFIT_STANDARD_OPTICS, REFIT_HEAVY_PLATING, REFIT_SHIELD_ARM, REFIT_TREADS } },
+      { CHIP_PROVOCATION, CHIP_EMERGENCY_REPAIR, CHIP_HARDENED_KERNEL }, 3,
+      TRAIT_DEFENSIVE, { BRANCH_BASTION }, 1,
+      { 0.9f, 0.8f, 0.0f, 0.3f, 1.0f, 1.0f }, 0 },
     // Trainer-only armor cracker on the OBLIVION chassis.
     { "ORDNANCE", "Heavy gun platform. Strips armor, then jams what is left.",
       CLASS_ARTILLERY, ROLE_ORDNANCE, MODEL_OBLIVION,

@@ -201,7 +201,9 @@ static LogEntry logHistory[LOG_HISTORY];
 static int logHead = 0, logSize = 0;
 static char lastLogged[256] = "";
 
+static int logTotal = 0;
 int battleLogCount(void) { return logSize; }
+int battleLogTotal(void) { return logTotal; }
 const LogEntry* battleLogEntry(int back) {
     if (back < 0 || back >= logSize) return NULL;
     return &logHistory[(logHead - 1 - back + LOG_HISTORY) % LOG_HISTORY];
@@ -216,6 +218,7 @@ static LogEntry* logPush(const char* text, int side, int munition) {
     e->round = battle.round;
     logHead = (logHead + 1) % LOG_HISTORY;
     if (logSize < LOG_HISTORY) logSize++;
+    logTotal++;
     snprintf(lastLogged, sizeof(lastLogged), "%s", text);
     return e;
 }
@@ -226,7 +229,7 @@ static void syncLog(void) {
     if (battle.log[0] && strcmp(battle.log, lastLogged) != 0) logPush(battle.log, -1, -1);
 }
 
-static void logClear(void) { logHead = logSize = 0; lastLogged[0] = 0; }
+static void logClear(void) { logHead = logSize = logTotal = 0; lastLogged[0] = 0; }
 
 static int integrityBelow(const Combatant* c, float fraction) {
     return c->mech->stats.integrity < c->mech->stats.maxIntegrity * fraction;
@@ -593,31 +596,77 @@ int battleHeatBlocksNextTurn(int mount, int* blocked, int max) {
     return n;
 }
 
-// Best (weapon, target) for this attacker against the other side's field;
-// area and cone weapons add the value of their splash targets. ignoreResources
-// skips the Energy / Heat / scramble checks (Dead-Man Protocol's free shot).
-static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore) {
-    int best = -1, bestPos = -1;
-    float bestValue = -1;
+// ============ THREAT ============
+void battleAddThreat(Combatant* c, int amount) {
+    if (c) c->threat = clampi(c->threat + amount, 0, THREAT_MAX);
+}
+
+#ifdef NO_THREAT_TEST   // test builds only: targeting without threat, for comparison
+float battleThreatFactor(const Combatant* c) { (void)c; return 1.0f; }
+#else
+float battleThreatFactor(const Combatant* c) { return 1.0f + c->threat / 100.0f; }
+#endif
+
+int battleProvoker(int side) {
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* c = battleField(side, p);
+        if (c && c->provoking) return p;
+    }
+    return -1;
+}
+
+// Area and cone weapons reach past a provoker; everything else is single-target
+static int singleTarget(const Weapon* w) { return w->targeting != TARGET_AREA && w->targeting != TARGET_CONE; }
+
+// Best (weapon, target) for this attacker against the other side's field. Each
+// target's value is multiplied by its threat factor (1 + threat / 100); area and
+// cone weapons add their splash targets the same way. While the other side has
+// a provoker, single-target weapons may only aim at it. ignoreResources skips
+// the Energy / Heat / scramble checks (Dead-Man Protocol's free shot). If why is
+// given, it gets a plain explanation of the pick.
+static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
+                          char* why, int whySize) {
+    int best = -1, bestPos = -1, provoker = battleProvoker(targetSide);
+    float bestValue = -1, perTarget[MAX_FIELD], rawOf[MAX_FIELD];
+    for (int t = 0; t < MAX_FIELD; t++) perTarget[t] = rawOf[t] = -1;
     for (int t = 0; t < MAX_FIELD; t++) {
         if (!battleField(targetSide, t)) continue;
         for (int i = 0; i < MAX_WEAPONS; i++) {
             const Weapon* w = mechWeapon(a->mech, i);
             if (!w) continue;
             if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
+            if (provoker >= 0 && t != provoker && singleTarget(w)) continue;
             int pos[MAX_FIELD];
-            float mod[MAX_FIELD], v = 0;
+            float mod[MAX_FIELD], v = 0, raw = 0;
             int n = weaponTargets(w, targetSide, t, pos, mod, MAX_FIELD);
             for (int k = 0; k < n; k++) {
                 const Combatant* d = battleField(targetSide, pos[k]);
                 AttackContext ctx = splashContext(a, d, mod[k], k > 0);
-                v += aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai);
+                float s = aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai);
+                raw += s;
+                v += s * battleThreatFactor(d);
             }
+            if (v > perTarget[t]) { perTarget[t] = v; rawOf[t] = raw; }
             if (v > bestValue) { bestValue = v; best = i; bestPos = t; }
         }
     }
     if (targetPos) *targetPos = bestPos;
     if (bestScore) *bestScore = bestValue;
+    if (why && whySize > 0) {
+        why[0] = 0;
+        if (best >= 0) {
+            const Combatant* d = battleField(targetSide, bestPos);
+            int runner = -1;
+            for (int t = 0; t < MAX_FIELD; t++) if (t != bestPos && perTarget[t] >= 0 && (runner < 0 || perTarget[t] > perTarget[runner])) runner = t;
+            if (provoker >= 0 && bestPos == provoker && singleTarget(mechWeapon(a->mech, best)))
+                snprintf(why, whySize, "TARGET: %s is PROVOKING - single-target shots must aim at it", d->mech->name);
+            else if (runner >= 0)
+                snprintf(why, whySize, "TARGET: %s, priority %.0f (value %.0f x threat %d = x%.2f) over %s %.0f (threat %d)",
+                    d->mech->name, perTarget[bestPos], rawOf[bestPos], d->threat, battleThreatFactor(d),
+                    battleField(targetSide, runner)->mech->name, perTarget[runner], battleField(targetSide, runner)->threat);
+            else snprintf(why, whySize, "TARGET: %s, the only one in reach (threat %d)", d->mech->name, d->threat);
+        }
+    }
     return best;
 }
 
@@ -644,12 +693,14 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     c->evasiveBonus = 0;
     c->actionsThisTurn = 0;
     c->attackedThisRound = 0;
+    c->attackThreat = 0;
     if (!onField) {
         c->accPenalty = c->skipTurn = c->energyTax = c->randomTargeting = c->switchLocked = 0;
         c->disabledWeapon = -1;
         return;
     }
     c->done = 0;
+    c->provoking = 0;   // Provocation lasts until the provoker's next turn
     c->switchLocked = c->switchLock > 0;
     if (c->switchLock > 0) c->switchLock--;
     c->accPenalty = c->nextAccPenalty;
@@ -667,12 +718,14 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
         s->energy -= 2;
         s->integrity = clampi(s->integrity + repair, 0, s->maxIntegrity);
         snprintf(note, size, " REPAIR PROTOCOL +%d INT.", repair);
+        battleAddThreat(c, THREAT_REPAIR);
     }
     int vent = (int)fwEffect(c->mech, CFX_COOLANT_DUMP);
     if (vent > 0 && s->heat > s->maxHeat * 0.75f && s->energy >= 1) {
         s->energy -= 1;
         s->heat = s->heat > vent ? s->heat - vent : 0;
         snprintf(note + strlen(note), size - strlen(note), " COOLANT DUMP -%d HEAT.", vent);
+        battleAddThreat(c, THREAT_BUFF);
     }
 }
 
@@ -728,6 +781,8 @@ static void logLine(const char* fmt, ...) {
 }
 
 // ============ ACTIONS ============
+static char targetWhy[160];   // why the AI picked its target; goes into that attack's log entry
+
 // Firmware Corruption (design doc 7.19), one of four at random. The chip ones
 // need an active chip and fall through to the others when there is none.
 static const char* applyCorruption(Combatant* d) {
@@ -819,6 +874,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
                 if (scrambleRoll < p[k].resist) {
                     int heal = (int)fwEffect(d->mech, CFX_SYSTEM_RECOVERY);
                     ds->integrity = clampi(ds->integrity + heal, 0, ds->maxIntegrity);
+                    if (heal > 0) battleAddThreat(d, THREAT_REPAIR);
                     snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
                 }
                 else snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p[k].scramble, w->virus));
@@ -843,6 +899,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
         if (scrambleRoll >= 0)
             say(&le->why, 0, "SCRAMBLE ROLL %d vs %d%% resist -> %s", (int)(scrambleRoll * 100), (int)roundf(p[k].resist * 100),
                 scrambleRoll < p[k].resist ? "resisted" : "landed");
+        if (k == 0 && targetWhy[0]) say(&le->why, 0, "%s", targetWhy);
         for (int i = 0; i < why[k].n; i++) say(&le->why, why[k].warn[i], "%s", why[k].line[i]);
 
         BattleEvent* ev = pushEvent(w->fx, isPlayer, aPos, pos[k], total, hit, munitionColor(w->munition));
@@ -855,6 +912,9 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     }
     a->actionsThisTurn++;
     a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
+    int gain = n > 1 || !singleTarget(w) || w->energyCost >= 2 ? THREAT_HEAVY_ATTACK : THREAT_ATTACK;
+    if (gain > a->attackThreat) { battleAddThreat(a, gain - a->attackThreat); a->attackThreat = gain; }   // once per turn
+    targetWhy[0] = 0;
     if (n > 1) snprintf(battle.log, sizeof(battle.log), "%s (+%d splash)", first, n - 1);
     else snprintf(battle.log, sizeof(battle.log), "%s", first);
     snprintf(lastLogged, sizeof(lastLogged), "%s", battle.log);   // already in the history
@@ -908,6 +968,8 @@ static void fixActor(void) {
 }
 
 static void fixTarget(void) {
+    int provoker = battleProvoker(SIDE_ENEMY);
+    if (provoker >= 0) { battle.playerTarget = provoker; return; }
     if (battleTarget()) return;
     for (int p = 0; p < MAX_FIELD; p++) if (battleField(SIDE_ENEMY, p)) { battle.playerTarget = p; return; }
 }
@@ -954,8 +1016,21 @@ static int anyPlayerActor(void) { return nextActor(0) >= 0; }
 
 // The player phase: every field mech gets its turn. Scrambled mechs lose it;
 // with nobody on the field the player must deploy (or yield).
+// Round start: every field mech loses THREAT_DECAY, then gains its passive
+// threat for standing on the field (an Ironclad more)
+static void threatRoundTick(void) {
+    for (int side = 0; side < 2; side++)
+        for (int p = 0; p < MAX_FIELD; p++) {
+            Combatant* c = battleField(side, p);
+            if (!c) continue;
+            battleAddThreat(c, -THREAT_DECAY);
+            battleAddThreat(c, mechRole(c->mech) == ROLE_IRONCLAD ? THREAT_PASSIVE_IRONCLAD : THREAT_PASSIVE);
+        }
+}
+
 static void beginPlayerTurn(void) {
     battle.round++;
+    threatRoundTick();
     const char* note = sideTurnStart(SIDE_PLAYER);
     battle.phase = BP_PLAYER_TURN;
     battle.phaseActed = 0;
@@ -1001,6 +1076,7 @@ static void putOnField(int side, int pos, int slot, int paid) {
         out->accPenalty = out->skipTurn = out->energyTax = out->randomTargeting = out->switchLocked = 0;
         out->disabledWeapon = -1;
         out->done = 0;
+        out->threat = out->provoking = 0;   // out of sight
     }
     sd->field[pos] = slot;
     in->switchLock = paid ? 1 : 0;
@@ -1038,6 +1114,62 @@ void battleSwitchTo(int slot) {
     putOnField(SIDE_PLAYER, battle.actingSlot, slot, 1);
     battle.phaseActed = 1;
     fixActor();
+}
+
+// ============ PROVOCATION ============
+static const char* provokeBlock(const Combatant* c) {
+    if (fwEffect(c->mech, CFX_PROVOCATION) <= 0) return "NEEDS PROVOCATION PROTOCOL";
+    if (c->provoking) return "ALREADY PROVOKING";
+    if (c->mech->stats.energy < PROVOKE_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    return NULL;
+}
+
+// A mech taunts the other side: +50 Threat, and their single-target attacks
+// must aim at it until its next turn
+static void doProvoke(Combatant* c, int side, int pos) {
+    c->mech->stats.energy -= PROVOKE_ENERGY_COST;
+    c->provoking = 1;
+    c->actionsThisTurn++;
+    battleAddThreat(c, THREAT_PROVOKE);
+    pushEvent(FX_PROVOKE, side == SIDE_PLAYER, pos, pos, 0, 1, mechModel(c->mech)->accent);
+    battle.animTimer = 0.9f;
+    LogEntry* e = logPush(TextFormat("%s%s PROVOKES! %s single-target attacks must target it until its next turn.",
+        side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name, side == SIDE_PLAYER ? "Enemy" : "Your"), side == SIDE_PLAYER, -1);
+    say(&e->why, 0, "PROVOCATION PROTOCOL: %d EN, Threat +%d (now %d).", PROVOKE_ENERGY_COST, THREAT_PROVOKE, c->threat);
+    say(&e->why, 0, "Area and cone weapons are not single-target: they still hit everyone.");
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+}
+
+int battleCanProvoke(const char** reason) {
+    const char* r = NULL;
+    Combatant* a = battleActing();
+    if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
+    else if (!a) r = "NO MECH TO COMMAND";
+    else r = provokeBlock(a);
+    if (reason) *reason = r;
+    return r == NULL;
+}
+
+void battleProvoke(void) {
+    if (!battleCanProvoke(NULL)) return;
+    doProvoke(battleActing(), SIDE_PLAYER, battle.actingSlot);
+    battle.phaseActed = 1;
+}
+
+// Enemy Ironclads provoke at the start of their turn to shield a hurt or
+// louder squadmate, as long as they are healthy enough to take the fire
+static int enemyConsiderProvoke(int pos) {
+    Combatant* c = battleField(SIDE_ENEMY, pos);
+    if (!c || c->actionsThisTurn > 0 || provokeBlock(c) || integrityBelow(c, 0.40f)) return 0;
+    int reason = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* o = battleField(SIDE_ENEMY, p);
+        if (o && o != c && (integrityBelow(o, 0.5f) || o->threat > c->threat)) reason = 1;
+    }
+    if (!reason) return 0;
+    doProvoke(c, SIDE_ENEMY, pos);
+    return 1;
 }
 
 int battleCanDeploy(void) {
@@ -1365,7 +1497,7 @@ static int tryDeadMan(Combatant* c, int side, int pos) {
     if (fwEffect(c->mech, CFX_DEAD_MAN) <= 0) return 0;
     c->deadManUsed = 1;
     int target;
-    int mount = aiChooseAction(c, other, 1, &target, NULL);
+    int mount = aiChooseAction(c, other, 1, &target, NULL, targetWhy, sizeof(targetWhy));
     if (mount < 0) return 0;
     int energy = s->energy, heat = s->heat;
     doAttack(c, side, pos, other, target, mount, "DEAD-MAN PROTOCOL! ");
@@ -1453,9 +1585,10 @@ static void enemyStep(void) {
         Combatant* c = battleField(SIDE_ENEMY, battle.enemyActing);
         if (!c || c->done) continue;
         if (enemyConsiderSwitch(battle.enemyActing)) return;
+        if (enemyConsiderProvoke(battle.enemyActing)) return;
         float score;
         int target;
-        int mount = aiChooseAction(c, SIDE_PLAYER, 0, &target, &score);
+        int mount = aiChooseAction(c, SIDE_PLAYER, 0, &target, &score, targetWhy, sizeof(targetWhy));
         if (mount >= 0 && c->actionsThisTurn > 0 && score < AI_HOLD_SCORE) mount = -1;   // hold fire
         if (mount < 0) { c->done = 1; continue; }
         int fired = corruptedMount(c, mount);
@@ -1500,6 +1633,12 @@ int battleCanFire(int mount, const char** reason) {
         if (reason) *reason = r;
         return 0;
     }
+    const Weapon* w = mechWeapon(battleActing()->mech, mount);
+    int provoker = battleProvoker(SIDE_ENEMY);
+    if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(w)) {
+        if (reason) *reason = TextFormat("PROVOKED - MUST TARGET %s", battleField(SIDE_ENEMY, provoker)->mech->name);
+        return 0;
+    }
     return canFire(battleActing(), mount, reason);
 }
 
@@ -1516,7 +1655,7 @@ void battleFire(int mount) {
 int battleAIChooseForPlayer(void) {
     if (battle.phase != BP_PLAYER_TURN || battleBusy() || !battleActing()) return -1;
     int target;
-    int mount = aiChooseAction(battleActing(), SIDE_ENEMY, 0, &target, NULL);
+    int mount = aiChooseAction(battleActing(), SIDE_ENEMY, 0, &target, NULL, NULL, 0);
     if (mount >= 0) battle.playerTarget = target;
     return mount;
 }
