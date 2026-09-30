@@ -122,6 +122,7 @@ static Sound makeSfx(Sfx s) {
     case SFX_HEAT_WARN:      begin(0.30f); tone(880, 880, 0.3f, 1, 1); for (int i = len / 3; i < len * 2 / 3; i++) buf[i] = 0; break;  // beep-beep
     case SFX_SCRAMBLE:       begin(0.40f); tone(300, 1200, 0.3f, 3, 1); wobble(30, 0.9f); break;
     case SFX_HACK:           begin(0.50f); tone(400, 1600, 0.25f, 2, 0); wobble(12, 0.5f); break;
+    case SFX_SWITCH:         begin(0.45f); tone(180, 720, 0.3f, 3, 1); hiss(0.25f, 4, 0.5f, 0.3f); break;   // mech drops in
     case SFX_VICTORY:        begin(0.60f); for (int k = 0; k < 3; k++) { float f = 523.0f * powf(1.26f, (float)k);
                                  float phase = 0; for (int i = len * k / 3; i < len; i++) { phase += 2 * PI * f / RATE;
                                  buf[i] += sinf(phase) * 0.2f * expf(-4.0f * (i - len * k / 3) / (float)len); } } break;

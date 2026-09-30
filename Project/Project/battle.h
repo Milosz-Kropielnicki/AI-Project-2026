@@ -42,6 +42,8 @@ typedef struct {
     float power;            // attacker Power + Aggressive Kernel bonus
     float dmgMod;           // product of the firmware damage modifiers below
     float executeMod, overchargeMod, reductionMod, firstHitMod, adaptiveMod;
+    float formatMod;        // team-battle damage pass (TEAM_DAMAGE_SCALE)
+    float splashMod;        // area / cone falloff for a secondary target
     float raw;              // base x power x dmgMod
     int pen;                // weapon pen + Armor Analysis bonus, percent
     DamageSplit split;
@@ -90,6 +92,8 @@ typedef struct {
     int targetLastMunition; // munition that last damaged the target, -1 = none (Adaptive Kernel)
     int energyTax;          // extra Energy per attack from Firmware Corruption
     int targetScrambled;    // scramble / corruption effects already pending on the target (AI only)
+    float formatMod;        // team-battle damage pass, 1 outside battle
+    float splashMod;        // 1 for the primary target, x0.75 per extra area / cone target
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -119,7 +123,8 @@ typedef enum {
     BP_PLAYER_TURN,
     BP_ENEMY_TURN,
     BP_VICTORY,     // enemy scrapped or hacked, waiting for confirm
-    BP_DEFEAT,      // player's mech disabled, waiting for confirm
+    BP_DEFEAT,      // player's last mech disabled (or yielded), waiting for confirm
+    BP_DEPLOY,      // no player mech on the field: deploy a reserve (free) or yield
     BP_OVER         // main loop should leave the battle (see battle.result)
 } BattlePhase;
 
@@ -146,6 +151,10 @@ typedef struct {
     int randomTargeting, nextRandomTargeting;   // corruption: attacks may fire a random weapon
     int deadManUsed;
     int skipImmune;         // normal turns left before this side can lose a turn again
+    int switchLock;         // own turns left during which it can't be switched out
+    int switchLocked;       // this turn: just switched in, can't switch out
+    int done;               // finished acting this phase (or arrived this round)
+    int fielded;            // has been on the field this battle (shares Revision Data)
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
@@ -154,7 +163,7 @@ typedef struct {
 // Each side owns battle copies of its mechs. Slots hold the whole squad
 // (field + reserves); field[] says which slots are on the field. The player's
 // copies are written back to team[] when the battle ends.
-#define MAX_FIELD 1
+#define MAX_FIELD 3
 #define SIDE_ENEMY 0
 #define SIDE_PLAYER 1
 typedef struct {
@@ -163,6 +172,7 @@ typedef struct {
     int rosterIndex[MAX_TEAM];  // team[] index the slot writes back to, -1 = none
     int field[MAX_FIELD];       // slot on each field position, -1 = empty
     int count, numField;
+    int startRevision[MAX_TEAM];    // firmware revision when the battle began
 } Side;
 
 // A visual cue for ui_battle.c; battle logic never touches effects directly
@@ -172,6 +182,7 @@ typedef struct {
     int munition;                       // drives impact particles and sound
     int armorDamage, integrityDamage;   // shown as separate numbers
     int lethal;
+    int fromSlot, toSlot;               // field positions of the attacker and the target
 } BattleEvent;
 #define MAX_BATTLE_EVENTS 8
 
@@ -181,14 +192,19 @@ typedef struct {
     char dialogueText[256];
     char log[256];
     Side side[2];           // SIDE_ENEMY, SIDE_PLAYER
+    int actingSlot;         // player's field position being commanded
+    int playerTarget;       // enemy field position the player is aiming at
+    int enemyActing;        // enemy field position acting in the enemy phase
+    int phaseActed;         // the player did something this phase (auto-ends once all are spent)
     int trainer;            // -1 = wild
     int testRange;          // player vs a passive, self-rebuilding dummy
     int dummyKills;
-    int savedIntegrity, savedArmor;   // player's pools before the test range
     int round;
     float animTimer;        // > 0 while an attack animation plays
     int outcomePending;     // check for scrapped mechs once the animation ends
-    int dataEarned, revisionsGained, oldRevision, hacked;
+    int dataEarned, revisionsGained, hacked;
+    // team mechs that gained revisions this battle, for the revision screen
+    int revTeam[MAX_TEAM], revFrom[MAX_TEAM], numRevisions;
     char loot[160];         // credits, salvage and job updates from this battle
     BattleResult result;
     BattleEvent events[MAX_BATTLE_EVENTS];
@@ -198,8 +214,30 @@ typedef struct {
 extern Battle battle;
 
 Combatant* battleField(int side, int pos);  // NULL if that field position is empty
-Combatant* battleFieldPlayer(void);         // the player's mech on the field
-Combatant* battleFieldEnemy(void);          // the enemy mech on the field
+Combatant* battleActing(void);              // player mech being commanded, NULL if none can be
+Combatant* battleTarget(void);              // enemy the player is aiming at, NULL if none
+// Never NULL (UI / tests): the acting mech or target, else any field mech, else slot 0
+Combatant* battleFieldPlayer(void);
+Combatant* battleFieldEnemy(void);
+int battleFieldCount(int side);             // mechs standing on the field
+
+// ============ TEAM PHASES (3v3) ============
+// Shared round: the player phase, then the enemy phase. In a phase each field
+// mech acts once, in any order, with its own Energy. Weapons hit the selected
+// target; AREA weapons also hit every other enemy on the field and CONE weapons
+// the neighbouring positions, each extra target taking SPLASH_FALLOFF less
+// (compounding). Every target is rolled and resolved separately.
+#define SPLASH_FALLOFF 0.75f
+#ifndef TEAM_DAMAGE_SCALE
+#define TEAM_DAMAGE_SCALE 0.80f     // damage pass: focus fire from three mechs, so every hit does 20% less
+#endif
+#define TEAM_DATA_BONUS 1.5f        // a kill's Revision Data, shared by every mech that took the field
+void battleSelectActor(int pos);            // command this field mech
+void battleNextActor(void);                 // TAB
+void battleSetTarget(int pos);
+void battleCycleTarget(int dir);            // Q / E
+int battleCanDeploy(void);                  // an empty field position and a standing reserve
+int battlePreviewTargets(int mount, int* pos, AttackPreview* out, int max);   // every target the shot reaches
 Mech* battleRosterMech(int teamIdx);        // battle copy of team[teamIdx], NULL if not in this battle
 
 void battleStartWild(void);
@@ -216,6 +254,25 @@ int battleAIChooseForPlayer(void);
 int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
 // Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
 int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)
+// ============ SWITCHING ============
+// A switch is a field mech's action: it needs 1 Energy, the outgoing mech's
+// remaining Energy is lost and the incoming mech takes its position but doesn't
+// act this round; it also can't be switched out on its next turn. Integrity,
+// Armor, Heat and queued scrambles stay with each mech. A disabled mech leaves
+// its position empty; a reserve can deploy there for free on the next phase.
+// The battle is lost when no mech is left standing.
+#define SWITCH_ENERGY_COST 1
+#define AI_SWITCH_BELOW 0.25f       // enemy pulls a machine out below 25% Integrity...
+#define HEALTHY_RESERVE 0.50f       // ...if a reserve with 50%+ Integrity can come in
+int battleCanSwitch(const char** reason);   // player can switch right now
+int battleSwitchList(int* out, int max);    // player slots that can come in (standing reserves)
+void battleSwitchTo(int slot);
+void battleDeploy(int slot);                // free: reserve into an empty field position (it acts next round)
+void battleYield(void);                     // give up the battle
+int battleSlotStanding(int side, int slot); // in the fight: not scrapped, disabled or captured
+int battleSlotOnField(int side, int slot);
+int battleSideStanding(int side);           // standing mechs left on a side
+
 int battleCanHack(void);
 int battleHackStability(void);              // enemy's effective Stability against a hack
 float battleHackChance(void);
