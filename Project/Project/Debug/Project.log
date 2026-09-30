@@ -1,4 +1,10 @@
-﻿  LINK : C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\Project.exe not found or not built by the last incremental link; performing full link
+﻿  battle.c
+  main.c
+  ui_battle.c
+  ui_debug.c
+  ui_menu.c
+  world.c
+  Generating Code...
 LINK : warning LNK4098: defaultlib 'MSVCRT' conflicts with use of other libs; use /NODEFAULTLIB:library
 raylib.lib(raudio.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(raudio.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
 raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info

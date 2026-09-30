@@ -93,6 +93,11 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->pen = w->armorPen + (int)fwEffect(attacker, CFX_PEN_BONUS);                     // Siege Kernel
     if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(fwEffect(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
     out->pen = clampi(out->pen, 0, 100);
+    if (ctx->armorIgnore > 0) {   // flanking: that share of what Armor would stop goes through
+        int before = out->pen;
+        out->pen = clampi(out->pen + (int)roundf((100 - out->pen) * ctx->armorIgnore), 0, 100);
+        out->flankPen = out->pen - before;
+    }
     out->armorBefore = def->armor;
     out->split = formulaDamageSplit(out->raw, out->pen, def->armor);
     if (ctx->breachReady && def->armor > 0) {   // Armor Breach Routine
@@ -128,6 +133,7 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     c.targetScrambled = 0;
     c.formatMod = 1.0f;
     c.splashMod = 1.0f;
+    c.armorIgnore = 0;
     return c;
 }
 
@@ -245,6 +251,7 @@ int combatAccuracy(const Combatant* c) {
 int combatMobility(const Combatant* c) {
     int mob = c->mech->stats.mobility + c->evasiveBonus;
     if (integrityBelow(c, 0.25f)) mob += (int)fwEffect(c->mech, CFX_EMERGENCY_EVASION);
+    if (c->flanking) mob -= FLANK_MOBILITY_PENALTY;   // exposed out on the flank
     return clampi(mob, 0, 100);
 }
 
@@ -271,6 +278,7 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     for (int i = 0; i < MAX_SOCKETS; i++) if (d->mech->fw.corrupt[i] > 0) ctx.targetScrambled++;
     ctx.formatMod = TEAM_DAMAGE_SCALE;
     ctx.splashMod = 1.0f;
+    ctx.armorIgnore = a->flanking ? FLANK_ARMOR_IGNORE : 0;
     return ctx;
 }
 
@@ -309,6 +317,7 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     if (d->evasiveBonus) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", evading +%d", d->evasiveBonus);
     if (integrityBelow(d, 0.25f) && fwEffect(d->mech, CFX_EMERGENCY_EVASION) > 0)
         snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", Emergency Evasion +%d", (int)fwEffect(d->mech, CFX_EMERGENCY_EVASION));
+    if (d->flanking) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", flanking -%d", FLANK_MOBILITY_PENALTY);
     say(x, 0, "HIT %d%%: weapon %d%% x Accuracy %d%%%s", (int)roundf(p->hitChance * 100), p->weaponAcc, p->accuracy,
         accWhy[0] ? TextFormat(" (%s)", accWhy + 2) : "");
     say(x, 0, "   x target evasion: Mobility %d%%%s dodges %d%% of shots", p->mobility,
@@ -336,8 +345,9 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         // ---- armor vs penetration ----
         int analysis = ds->armor > ARMORED_THRESHOLD ? (int)roundf(fwEffect(a->mech, CFX_PEN_VS_ARMORED) * 100) : 0;
         int siege = (int)fwEffect(a->mech, CFX_PEN_BONUS);
-        const char* penWhy = analysis || siege ? TextFormat(" (weapon %d%%%s%s)", w->armorPen,
-            analysis ? TextFormat(" + Armor Analysis %d", analysis) : "", siege ? TextFormat(" + Siege %d", siege) : "") : "";
+        const char* penWhy = analysis || siege || p->flankPen ? TextFormat(" (weapon %d%%%s%s%s)", w->armorPen,
+            analysis ? TextFormat(" + Armor Analysis %d", analysis) : "", siege ? TextFormat(" + Siege %d", siege) : "",
+            p->flankPen ? TextFormat(" + flank %d", p->flankPen) : "") : "";
         if (p->armorBefore <= 0)
             say(x, 0, "ARMOR: none left - all %.0f goes into Integrity", p->raw);
         else {
@@ -346,6 +356,8 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
             else if (p->pen < 25 && p->split.toArmor > p->split.toIntegrity * 2)
                 say(x, 1, "   Mostly stopped by Armor - a higher-penetration weapon would hurt more");
             if (p->breachBonus > 0) say(x, 0, "   Armor Breach Routine: +%d extra Armor damage", p->breachBonus);
+            if (p->flankPen > 0) say(x, 0, "   FLANKING: ignores %d%% of their Armor (+%d%% penetration)",
+                (int)roundf(FLANK_ARMOR_IGNORE * 100), p->flankPen);
         }
         say(x, 0, "ON HIT: Armor -%d, Integrity -%d%s", p->armorDamage, p->integrityDamage,
             p->integrityDamage >= ds->integrity ? "  -> SCRAPS TARGET" : "");
@@ -512,14 +524,67 @@ static void equipEnemyChips(Mech* m) {
     mechRefreshStats(m);
 }
 
+// ============ FORMATION ============
+int battleCanFlank(const Combatant* c) {
+    MechClass k = mechClass(c->mech);
+    return k == CLASS_RECON || k == CLASS_EW;
+}
+int battleMoveCost(const Combatant* c) { return battleCanFlank(c) ? 0 : MOVE_ENERGY_COST; }
+
+static int guards(const Combatant* c) { return c->lane == LANE_FRONT && !c->flanking; }
+static int coverable(const Combatant* c) { return c->lane == LANE_REAR && !c->flanking && !c->provoking; }
+
+int battleInterceptor(int side, int pos) {
+    Combatant* d = battleField(side, pos);
+#ifdef NO_FORMATION_TEST   // test builds only: nobody is ever covered, for comparison
+    if (d) return -1;
+#endif
+    if (!d || !coverable(d)) return -1;
+    int best = -1;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* g = battleField(side, p);
+        if (!g || !guards(g)) continue;
+        int dp = abs(p - pos), db = abs(best - pos);
+        if (best < 0 || dp < db || (dp == db && g->mech->stats.integrity > battleField(side, best)->mech->stats.integrity)) best = p;
+    }
+    return best;
+}
+
+// Single-target and line shots are stopped by cover; area and cone reach past it
+static int coverStops(const Weapon* w) { return w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE; }
+
+// The field position a weapon aimed at `aim` actually hits first
+static int aimedAt(const Weapon* w, int side, int aim) {
+    if (!w || !coverStops(w)) return aim;
+    int g = battleInterceptor(side, aim);
+    return g >= 0 ? g : aim;
+}
+
+// Heavy Assault takes the front, Artillery and EW the rear; Recon holds the
+// front only when no one else on its side does
+static int defaultLane(int side, const Combatant* c) {
+    switch (mechClass(c->mech)) {
+    case CLASS_HEAVY_ASSAULT: return LANE_FRONT;
+    case CLASS_RECON:
+        for (int p = 0; p < MAX_FIELD; p++) {
+            const Combatant* o = battleField(side, p);
+            if (o && o != c && guards(o)) return LANE_REAR;
+        }
+        return LANE_FRONT;
+    default: return LANE_REAR;
+    }
+}
+
 // ============ TARGETS ============
 // Enemy field positions a weapon reaches when aimed at `primary`, with each
 // one's damage share: AREA covers the whole field, CONE the target and the
-// positions next to it, anything else only the target. Extra targets are
+// positions next to it, anything else only the target. A single-target or line
+// weapon aimed at a covered Rear mech hits its Front guard instead. Extra targets are
 // ordered nearest first and each takes SPLASH_FALLOFF less (compounding).
 static int weaponTargets(const Weapon* w, int side, int primary, int* pos, float* mod, int max) {
     int n = 0;
     if (!w || !battleField(side, primary) || max < 1) return 0;
+    primary = aimedAt(w, side, primary);
     pos[n] = primary;
     mod[n++] = 1.0f;
     if (w->targeting != TARGET_AREA && w->targeting != TARGET_CONE) return n;
@@ -569,13 +634,18 @@ int battlePreviewPlayer(int mount, AttackPreview* out) {
 
 int battleExplainPlayer(int mount, Explanation* out) {
     Combatant* a = battleActing();
-    Combatant* d = battleTarget();
-    AttackPreview p;
-    if (!a || !d || !battlePreviewPlayer(mount, &p)) return 0;
-    explainAttack(a, d, mechWeapon(a->mech, mount), &p, out);
+    Combatant* aim = battleTarget();
     int pos[MAX_FIELD];
     AttackPreview all[MAX_FIELD];
-    int n = battlePreviewTargets(mount, pos, all, MAX_FIELD);
+    int n = a && aim ? battlePreviewTargets(mount, pos, all, MAX_FIELD) : 0;
+    if (n < 1) return 0;
+    const Weapon* w = mechWeapon(a->mech, mount);
+    explainAttack(a, battleField(SIDE_ENEMY, pos[0]), w, &all[0], out);
+    if (pos[0] != battle.playerTarget)
+        say(out, 1, "COVERED: %s is in the Rear - %s in the Front takes single-target and line shots. Area and cone weapons reach it.",
+            aim->mech->name, battleField(SIDE_ENEMY, pos[0])->mech->name);
+    else if (battleInterceptor(SIDE_ENEMY, battle.playerTarget) >= 0)
+        say(out, 0, "REACHES THE REAR: %s weapons ignore the Front guard.", targetingNames[w->targeting]);
     for (int k = 1; k < n; k++)
         say(out, 0, "SPLASH -> %s: %d%% damage, %d%% to hit, ARM -%d INT -%d", battleField(SIDE_ENEMY, pos[k])->mech->name,
             (int)roundf(all[k].splashMod * 100), (int)roundf(all[k].hitChance * 100), all[k].armorDamage, all[k].integrityDamage);
@@ -621,7 +691,8 @@ static int singleTarget(const Weapon* w) { return w->targeting != TARGET_AREA &&
 // Best (weapon, target) for this attacker against the other side's field. Each
 // target's value is multiplied by its threat factor (1 + threat / 100); area and
 // cone weapons add their splash targets the same way. While the other side has
-// a provoker, single-target weapons may only aim at it. ignoreResources skips
+// a provoker, single-target weapons may only aim at it; covered Rear mechs are
+// only reachable with area and cone weapons. ignoreResources skips
 // the Energy / Heat / scramble checks (Dead-Man Protocol's free shot). If why is
 // given, it gets a plain explanation of the pick.
 static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
@@ -636,6 +707,7 @@ static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResource
             if (!w) continue;
             if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
             if (provoker >= 0 && t != provoker && singleTarget(w)) continue;
+            if (aimedAt(w, targetSide, t) != t) continue;   // covered: same as aiming at its guard
             int pos[MAX_FIELD];
             float mod[MAX_FIELD], v = 0, raw = 0;
             int n = weaponTargets(w, targetSide, t, pos, mod, MAX_FIELD);
@@ -701,6 +773,8 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     }
     c->done = 0;
     c->provoking = 0;   // Provocation lasts until the provoker's next turn
+    c->flanking = 0;    // so does the flank
+    c->moved = 0;
     c->switchLocked = c->switchLock > 0;
     if (c->switchLock > 0) c->switchLock--;
     c->accPenalty = c->nextAccPenalty;
@@ -831,6 +905,21 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     float mod[MAX_FIELD];
     int n = weaponTargets(w, dSide, primary, pos, mod, MAX_FIELD);
     if (n == 0) return;
+    // Formation, as it stood when the shot was fired
+    const char* coveredName = pos[0] != primary ? battleField(dSide, primary)->mech->name : NULL;
+    char formation[EXPLAIN_LEN] = "";
+    if (coveredName)
+        snprintf(formation, sizeof(formation), "COVERED: %s is in the Rear, so %s in the Front took the %s shot",
+            coveredName, battleField(dSide, pos[0])->mech->name, w->targeting == TARGET_LINE ? "line" : "single-target");
+    else if (battleInterceptor(dSide, primary) >= 0)
+        snprintf(formation, sizeof(formation), "REACHES THE REAR: %s weapons ignore the Front guard", targetingNames[w->targeting]);
+    else if (coverStops(w))
+        for (int t = 0; t < MAX_FIELD; t++)
+            if (battleInterceptor(dSide, t) >= 0) {
+                snprintf(formation, sizeof(formation), "FORMATION: %s is covered in the Rear - only area and cone weapons reach it",
+                    battleField(dSide, t)->mech->name);
+                break;
+            }
 
     // Previews and explanations first, before anything changes
     AttackPreview p[MAX_FIELD];
@@ -847,7 +936,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     as->heat += p[0].heat;
     if (w->ammo > 0) a->mech->weapons[mount].ammo--;
     char who[48], first[256] = "";
-    snprintf(who, sizeof(who), isPlayer ? "%s" : "Enemy %s", a->mech->name);
+    snprintf(who, sizeof(who), "%s%s%s", isPlayer ? "" : "Enemy ", a->mech->name, a->flanking ? " (FLANK)" : "");
 
     for (int k = 0; k < n; k++) {
         Combatant* d = battleField(dSide, pos[k]);
@@ -881,11 +970,14 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
             }
         }
         if (k == 0) {
+            char victim[80];
+            if (coveredName) snprintf(victim, sizeof(victim), "%s (covering %s)", d->mech->name, coveredName);
+            else snprintf(victim, sizeof(victim), "%s", d->mech->name);
             if (!hit) snprintf(line, sizeof(line), "%s%s fired %s at %s... MISSED! (%d%% to hit)", prefix ? prefix : "", who,
-                w->name, d->mech->name, (int)roundf(p[k].hitChance * 100));
+                w->name, victim, (int)roundf(p[k].hitChance * 100));
             else if (total > 0) snprintf(line, sizeof(line), "%s%s fired %s at %s! %d DMG (%d ARM / %d INT).%s", prefix ? prefix : "",
-                who, w->name, d->mech->name, total, p[k].armorDamage, p[k].integrityDamage, extra);
-            else snprintf(line, sizeof(line), "%s%s activated %s on %s.%s", prefix ? prefix : "", who, w->name, d->mech->name, extra);
+                who, w->name, victim, total, p[k].armorDamage, p[k].integrityDamage, extra);
+            else snprintf(line, sizeof(line), "%s%s activated %s on %s.%s", prefix ? prefix : "", who, w->name, victim, extra);
             snprintf(first, sizeof(first), "%s", line);
             if (!hit && fwEffect(a->mech, CFX_RECURSIVE_TARGETING) > 0) a->missStacks++;
         }
@@ -900,6 +992,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
             say(&le->why, 0, "SCRAMBLE ROLL %d vs %d%% resist -> %s", (int)(scrambleRoll * 100), (int)roundf(p[k].resist * 100),
                 scrambleRoll < p[k].resist ? "resisted" : "landed");
         if (k == 0 && targetWhy[0]) say(&le->why, 0, "%s", targetWhy);
+        if (k == 0 && formation[0]) say(&le->why, coveredName != NULL, "%s", formation);
         for (int i = 0; i < why[k].n; i++) say(&le->why, why[k].warn[i], "%s", why[k].line[i]);
 
         BattleEvent* ev = pushEvent(w->fx, isPlayer, aPos, pos[k], total, hit, munitionColor(w->munition));
@@ -1077,8 +1170,11 @@ static void putOnField(int side, int pos, int slot, int paid) {
         out->disabledWeapon = -1;
         out->done = 0;
         out->threat = out->provoking = 0;   // out of sight
+        out->flanking = out->moved = 0;
     }
     sd->field[pos] = slot;
+    in->flanking = in->moved = 0;
+    in->lane = defaultLane(side, in);
     in->switchLock = paid ? 1 : 0;
     in->switchLocked = 0;
     in->actionsThisTurn = 0;
@@ -1172,6 +1268,88 @@ static int enemyConsiderProvoke(int pos) {
     return 1;
 }
 
+// ============ FORMATION MOVES ============
+static const char* moveBlock(const Combatant* c, int to) {
+    if (c->moved) return c->flanking ? "FLANKING UNTIL NEXT TURN" : "ALREADY MOVED THIS TURN";
+    if (to == MOVE_FLANK && !battleCanFlank(c)) return "ONLY RECON / EW CAN FLANK";
+    if (to != MOVE_FLANK && c->lane == to) return to == LANE_FRONT ? "ALREADY IN FRONT" : "ALREADY IN THE REAR";
+    if (c->mech->stats.energy < battleMoveCost(c)) return "INSUFFICIENT ENERGY";
+    return NULL;
+}
+
+// Changes lane or goes out on the flank. Not an action: the mech can still fire.
+static void doMove(Combatant* c, int side, int to) {
+    int cost = battleMoveCost(c);
+    c->mech->stats.energy -= cost;
+    c->moved = 1;
+    const char* who = TextFormat("%s%s", side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name);
+    const char* paid = cost ? TextFormat(" (%d EN)", cost) : "";
+    LogEntry* e;
+    if (to == MOVE_FLANK) {
+        c->flanking = 1;
+        e = logPush(TextFormat("%s moves out to the FLANK%s: its attacks ignore %d%% of Armor until its next turn.", who, paid,
+            (int)roundf(FLANK_ARMOR_IGNORE * 100)), side == SIDE_PLAYER, -1);
+        say(&e->why, 0, "FLANK: every attack ignores %d%% of the target's Armor - that share of the hit bypasses it into Integrity.",
+            (int)roundf(FLANK_ARMOR_IGNORE * 100));
+        say(&e->why, 1, "EXPOSED: -%d Mobility against incoming attacks, and out of formation: it neither covers nor is covered.",
+            FLANK_MOBILITY_PENALTY);
+        say(&e->why, 0, "It returns to its lane at the start of its next turn.");
+    }
+    else {
+        c->lane = to;
+        e = logPush(TextFormat("%s moves to the %s%s.", who, to == LANE_FRONT ? "FRONT" : "REAR", paid), side == SIDE_PLAYER, -1);
+        say(&e->why, 0, to == LANE_FRONT ? "FRONT: single-target and line attacks aimed at Rear allies hit it instead."
+            : "REAR: a Front ally takes single-target and line attacks aimed at it. Area and cone weapons still reach it.");
+    }
+    say(&e->why, 0, "Moving costs %d EN (Recon and EW move free), once a turn. It doesn't use up the mech's action.", MOVE_ENERGY_COST);
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+    battle.animTimer = 0.35f;   // let the sprite slide over before anything else happens
+}
+
+int battleCanMove(int to, const char** reason) {
+    const char* r = NULL;
+    Combatant* a = battleActing();
+    if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
+    else if (!a) r = "NO MECH TO COMMAND";
+    else r = moveBlock(a, to);
+    if (reason) *reason = r;
+    return r == NULL;
+}
+
+void battleMove(int to) {
+    if (!battleCanMove(to, NULL)) return;
+    doMove(battleActing(), SIDE_PLAYER, to);
+    battle.phaseActed = 1;
+}
+
+// AI formation, before a mech acts: a badly hurt guard falls back behind a
+// healthier one, and a healthy Recon / EW flanks before a damaging attack on an
+// armored target, as long as that doesn't strip cover from a Rear ally.
+static int aiConsiderMove(int side, int pos) {
+    Combatant* c = battleField(side, pos);
+    if (!c || c->moved || c->actionsThisTurn > 0) return 0;
+    int other = side == SIDE_PLAYER ? SIDE_ENEMY : SIDE_PLAYER, otherGuard = 0, coveredAlly = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* o = battleField(side, p);
+        if (!o || o == c) continue;
+        if (guards(o) && !integrityBelow(o, 0.5f)) otherGuard = 1;
+        if (battleInterceptor(side, p) >= 0) coveredAlly = 1;
+    }
+    if (guards(c) && otherGuard && integrityBelow(c, AI_FALL_BACK_BELOW) && !moveBlock(c, LANE_REAR)) {
+        doMove(c, side, LANE_REAR);
+        return 1;
+    }
+    if (!battleCanFlank(c) || moveBlock(c, MOVE_FLANK) || integrityBelow(c, 0.5f)) return 0;
+    if (guards(c) ? coveredAlly && !otherGuard : battleInterceptor(side, pos) >= 0 && integrityBelow(c, 0.75f)) return 0;
+    int target;
+    int mount = aiChooseAction(c, other, 0, &target, NULL, NULL, 0);
+    const Weapon* w = mount >= 0 ? mechWeapon(c->mech, mount) : NULL;
+    if (!w || w->baseDamage <= 0 || battleField(other, aimedAt(w, other, target))->mech->stats.armor <= 0) return 0;
+    doMove(c, side, MOVE_FLANK);
+    return 1;
+}
+
 int battleCanDeploy(void) {
     int res[MAX_TEAM];
     return (battle.phase == BP_PLAYER_TURN || battle.phase == BP_DEPLOY) && !battleBusy()
@@ -1251,6 +1429,14 @@ static void sideOpenField(int side, const int* order, int n) {
         sd->field[p] = order[p];
         sd->slot[order[p]].fielded = 1;
     }
+    // Lanes: everyone but Recon first, so Recon knows whether the front is held
+    for (int pass = 0; pass < 2; pass++)
+        for (int p = 0; p < sd->numField; p++) {
+            Combatant* c = &sd->slot[order[p]];
+            int recon = mechClass(c->mech) == CLASS_RECON;
+            if (recon == pass) c->lane = defaultLane(side, c);
+            else if (recon) c->lane = LANE_REAR;   // until its turn to choose
+        }
 }
 
 // The player side carries the whole team: the active mech and the next ones in
@@ -1578,14 +1764,16 @@ static void finish(void) {
 // ============ UPDATE / INPUT ============
 int battleBusy(void) { return battle.dialogue != DLG_NONE || battle.animTimer > 0; }
 
-// One enemy action per call: each field machine in turn switches out, attacks
-// until it holds or runs dry, then the next one goes.
+// One enemy action per call: each field machine in turn switches out, provokes
+// or changes position, then attacks until it holds or runs dry, then the next
+// one goes.
 static void enemyStep(void) {
     for (; battle.enemyActing < MAX_FIELD; battle.enemyActing++) {
         Combatant* c = battleField(SIDE_ENEMY, battle.enemyActing);
         if (!c || c->done) continue;
         if (enemyConsiderSwitch(battle.enemyActing)) return;
         if (enemyConsiderProvoke(battle.enemyActing)) return;
+        if (aiConsiderMove(SIDE_ENEMY, battle.enemyActing)) return;
         float score;
         int target;
         int mount = aiChooseAction(c, SIDE_PLAYER, 0, &target, &score, targetWhy, sizeof(targetWhy));
@@ -1614,7 +1802,7 @@ static void battleUpdateInner(float dt) {
 
     if (battle.phase == BP_PLAYER_TURN) {
         Combatant* a = battleActing();
-        if (a && a->actionsThisTurn > 0 && !anyFireable(a)) a->done = 1;   // spent
+        if (a && (a->actionsThisTurn > 0 || a->moved) && !anyFireable(a)) a->done = 1;   // spent
         fixActor();
         if (battle.phaseActed && !anyPlayerActor() && !battleCanDeploy()) {
             logLine("All mechs have acted. Enemy phase.");
@@ -1649,6 +1837,14 @@ void battleFire(int mount) {
     battle.phaseActed = 1;
     doAttack(a, SIDE_PLAYER, battle.actingSlot, SIDE_ENEMY, battle.playerTarget, fired, fired != mount ? "TARGETING CORRUPTED! " : NULL);
     syncLog();
+}
+
+// Autoplay for tests: the enemy AI's formation move for the commanded mech
+int battleAIMoveForPlayer(void) {
+    if (battle.phase != BP_PLAYER_TURN || battleBusy() || !battleActing()) return 0;
+    if (!aiConsiderMove(SIDE_PLAYER, battle.actingSlot)) return 0;
+    battle.phaseActed = 1;
+    return 1;
 }
 
 // Autoplay for tests: the enemy AI's pick for the commanded mech (sets the target)

@@ -45,7 +45,8 @@ typedef struct {
     float formatMod;        // team-battle damage pass (TEAM_DAMAGE_SCALE)
     float splashMod;        // area / cone falloff for a secondary target
     float raw;              // base x power x dmgMod
-    int pen;                // weapon pen + Armor Analysis bonus, percent
+    int pen;                // weapon pen + Armor Analysis bonus (+ flank), percent
+    int flankPen;           // penetration added by attacking from the flank
     DamageSplit split;
     int armorBefore;
     int breachBonus;        // extra armor damage from Armor Breach Routine (never spills)
@@ -61,7 +62,7 @@ typedef struct {
 // ============ ATTACK EXPLANATION ============
 // The reasons behind one attack's numbers in plain language. The same lines
 // feed the weapon tooltip (before firing) and the battle log (after).
-#define EXPLAIN_LINES 12
+#define EXPLAIN_LINES 16
 #define EXPLAIN_LEN 120
 typedef struct {
     int n;
@@ -95,6 +96,7 @@ typedef struct {
     int targetScrambled;    // scramble / corruption effects already pending on the target (AI only)
     float formatMod;        // team-battle damage pass, 1 outside battle
     float splashMod;        // 1 for the primary target, x0.75 per extra area / cone target
+    float armorIgnore;      // share of the target's Armor the attack ignores (flanking), 0 = none
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -159,6 +161,9 @@ typedef struct {
     int threat;             // 0-100: how much the other side's AI wants to shoot this mech
     int attackThreat;       // threat already gained from attacking this turn (attacks count once a turn)
     int provoking;          // Provocation: the other side's single-target attacks must aim here
+    int lane;               // LANE_FRONT / LANE_REAR
+    int flanking;           // on the flank until its next turn
+    int moved;              // changed position this turn (one move a turn)
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
@@ -269,6 +274,32 @@ int battleCanProvoke(const char** reason);  // the commanded mech can PROVOKE no
 void battleProvoke(void);
 Mech* battleRosterMech(int teamIdx);        // battle copy of team[teamIdx], NULL if not in this battle
 
+// ============ FORMATION ============
+// Two lanes and one temporary state. Heavy Assault starts in the FRONT,
+// Artillery and EW in the REAR; Recon holds the front if nobody else does.
+// A SINGLE-target or LINE attack aimed at a Rear mech is intercepted by a Front
+// ally in formation (the nearest; the healthier on a tie). Area and cone weapons
+// ignore formation and hit what they are aimed at; with no Front ally, the Rear
+// is exposed. (Line is intercepted too, against the design doc: with it
+// ignoring cover, the AI switched to railguns and pulse lasers and the Rear took
+// as much fire as with no formation at all.) FLANK (Recon / EW only) lasts until the mech's next turn: its
+// attacks ignore 20% of the target's Armor (that share of the hit bypasses it),
+// it is at -10 Mobility, and it is out of formation - it neither covers nor is
+// covered. A provoking mech is never covered. Changing position costs 1 Energy
+// (Recon / EW free), once a turn, and doesn't use up the mech's action.
+#define LANE_FRONT 0
+#define LANE_REAR 1
+#define MOVE_FLANK 2                // battleMove target: enter the flank
+#define FLANK_ARMOR_IGNORE 0.20f
+#define FLANK_MOBILITY_PENALTY 10
+#define MOVE_ENERGY_COST 1
+#define AI_FALL_BACK_BELOW 0.35f    // an enemy Front machine this hurt falls back behind a healthier guard
+int battleMoveCost(const Combatant* c);     // 0 for Recon / EW
+int battleCanFlank(const Combatant* c);     // Recon / EW
+int battleCanMove(int to, const char** reason);   // the commanded mech can move to LANE_FRONT / LANE_REAR / MOVE_FLANK
+void battleMove(int to);
+int battleInterceptor(int side, int pos);   // Front ally that takes single-target / line shots aimed at pos, -1 if pos isn't covered
+
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);
 void battleStartTestRange(void);
@@ -280,6 +311,7 @@ int battleCanFire(int mount, const char** reason);
 void battleFire(int mount);
 void battleEndTurn(void);
 int battleAIChooseForPlayer(void);
+int battleAIMoveForPlayer(void);            // the enemy AI's formation move for the commanded mech (tests / autoplay); 1 if it moved
 int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
 // Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
 int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)
