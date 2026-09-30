@@ -54,7 +54,7 @@ typedef enum {
 typedef enum { TARGET_SINGLE, TARGET_AREA, TARGET_CONE, TARGET_LINE } Targeting;
 
 // Battle visual used when a weapon fires
-enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE };
+enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE, FX_SWITCH };
 
 typedef struct {
     char name[32];
