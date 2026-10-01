@@ -3,6 +3,7 @@
 #include "battle.h"
 #include "world.h"
 #include "audio.h"
+#include "transition.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -645,6 +646,9 @@ void uiBattleOpen(void) {
     clearEffects();
     memset(rowY, 0, sizeof(rowY));
     easeRows(0);   // snap into formation
+    // IMPORTANT: do NOT reset the transition here. It was handed off from the
+    // world side (phase 3 = opening) and needs to survive into the battle so
+    // the panels can reverse and reveal the fight.
 }
 
 // Sounds for things that happen inside the battle logic
@@ -722,6 +726,18 @@ static void updatePicker(void) {
 }
 
 void uiBattleUpdate(float dt, GameState* state) {
+    // While the wipe is opening over the battle, tick the transition and
+    // ease rows / effects so nothing snaps when the panels lift - but do
+    // NOT run the battle logic. The fight is frozen behind the closed
+    // panels so the reveal shows its opening state, not an already-started
+    // battle. Once phase 3 ends, the next frame runs normally.
+    if (transition.active && transition.phase == 3) {
+        transitionUpdate(dt);
+        easeRows(dt);
+        updateEffects(dt);
+        return;
+    }
+
     battleUpdate(dt);
     easeRows(dt);
     updateEffects(dt);
@@ -1894,6 +1910,13 @@ void uiBattleDraw(void) {
     }
     tipDraw();
     EndMode2D();
+
+    // The wipe opens over the battle, spanning the whole canvas. Drawn last
+    // so it sits on top of everything (including tooltips), and OUTSIDE
+    // BeginMode2D so it uses raw canvas coordinates.
+    if (transition.active && transition.phase == 3) {
+        transitionDraw();
+    }
 }
 
 // ============ FIRMWARE REVISION SCREEN ============
