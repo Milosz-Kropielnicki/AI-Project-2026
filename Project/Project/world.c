@@ -80,10 +80,13 @@ static int justEnteredZone = 0;
 static char message[256] = { 0 };
 static float messageTimer = 0;
 
-// Trainer sighting: which trainer spotted us, and the intro phase
+// Intro sequence: which kind of encounter spotted us, and the phase.
+//   spotKind 0 = none, 1 = trainer, 2 = wild pack
+//   spotPhase 0 = none, 1 = bubble, 2 = wipe
+static int spotKind = 0;
 static int spottedTrainer = -1;
 static float spotTimer = 0;             // counts up
-static int spotPhase = 0;               // 0 = none, 1 = bubble, 2 = wipe
+static int spotPhase = 0;
 
 // ============ MAP GEN HELPERS ============
 static void setTile(int x, int y, int t) {
@@ -494,6 +497,7 @@ void worldInit(void) {
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
     justEnteredZone = 1;
+    spotKind = 0;
     spottedTrainer = -1;
     spotTimer = 0;
     spotPhase = 0;
@@ -645,6 +649,18 @@ static int triggerTrainerEncounter(int trainerIdx) {
     return 1;
 }
 
+// Wild intro lines: a small pool of flavour text for the bubble. The line is
+// picked when the pack is spotted so it stays consistent for the whole intro.
+static const char* wildIntroLines[] = {
+    "HOSTILE PACK detected. Engaging.",
+    "Feral machines close in from the ruins!",
+    "Rogue signatures converging. No pilots aboard.",
+    "A scrapyard pack has our scent. Brace.",
+    "Signal contact: unmanned units, weapons hot.",
+    "Ambush! No time to pick the ground.",
+};
+#define NUM_WILD_LINES ((int)(sizeof(wildIntroLines) / sizeof(wildIntroLines[0])))
+
 // ============ UPDATE ============
 void worldUpdate(float dt, GameState* state) {
     if (IsKeyPressed(KEY_TAB)) { *state = STATE_TEAM; return; }
@@ -665,30 +681,46 @@ void worldUpdate(float dt, GameState* state) {
         pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
     }
 
-    // ---- Trainer intro sequence: bubble, then wipe, then battle ----
+    // ---- Intro sequence: bubble, then wipe, then battle ----
     if (spotPhase != 0) {
         spotTimer += dt;
+        float introTime = spotKind == 1 ? TRAINER_INTRO_TIME : WILD_INTRO_TIME;
         if (spotPhase == 1) {
             // The comms bubble is up; allow the player to skip ahead.
-            if (spotTimer >= TRAINER_INTRO_TIME || confirmPressed()) {
+            if (spotTimer >= introTime || confirmPressed()) {
                 spotPhase = 2;
                 spotTimer = 0;
                 messageTimer = 0;
                 consumeInput();
                 // Hand the close off to the shared transition module so the
                 // battle side can pick up where the world leaves off.
-                transitionStartClose(trainers[spottedTrainer].name, trainers[spottedTrainer].color);
+                if (spotKind == 1) {
+                    transitionStartClose(trainers[spottedTrainer].name, trainers[spottedTrainer].color);
+                }
+                else {
+                    // Wild: use the pack's threat colour (a hot red-orange).
+                    transitionStartClose("HOSTILE CONTACT", (Color) { 255, 90, 70, 255 });
+                }
             }
             return;
         }
         // spotPhase == 2: the shared transition is running the close.
         transitionUpdate(dt);
         if (transition.phase == 2 && transition.t >= TRANSITION_CLOSE_TIME + TRANSITION_HOLD_TIME) {
-            int t = spottedTrainer;
+            int did = 0;
+            if (spotKind == 1) {
+                int t = spottedTrainer;
+                if (triggerTrainerEncounter(t)) did = 1;
+            }
+            else if (spotKind == 2) {
+                battleStartWild();
+                did = 1;
+            }
+            spotKind = 0;
             spottedTrainer = -1;
             spotPhase = 0;
             spotTimer = 0;
-            if (triggerTrainerEncounter(t)) {
+            if (did) {
                 // Switch the wipe to its opening half; the battle screen
                 // draws it, so the reveal happens over the fight.
                 transition.phase = 3;
@@ -716,6 +748,7 @@ void worldUpdate(float dt, GameState* state) {
                 sx += dx;
                 sy += dy;
                 if (sx == px && sy == py) {
+                    spotKind = 1;
                     spottedTrainer = i;
                     spotPhase = 1;
                     spotTimer = 0;
@@ -726,14 +759,19 @@ void worldUpdate(float dt, GameState* state) {
         }
     }
 
+    // ---- Wild encounter: roll the region's encounter rate when we arrive on
+    // an encounter tile (skipping the tile we started the world on). A hit
+    // starts the same intro as a trainer: bubble, wipe, battle.
     if (arrived && !justEnteredZone && isEncounterTile(px, py)) {
         int region = worldRegionAt(px, py);
         int rate;
         if (region >= 0) rate = regions[region].baseEncounter;
         else             rate = 12;
         if ((rand() % 100) < rate) {
-            battleStartWild();
-            *state = STATE_BATTLE;
+            spotKind = 2;
+            spotPhase = 1;
+            spotTimer = 0;
+            showMessage(wildIntroLines[rand() % NUM_WILD_LINES], WILD_INTRO_TIME);
             return;
         }
     }
@@ -1030,7 +1068,7 @@ static void drawHud(void) {
         DrawRectangleLines(40, SCREEN_H - 130, screenW - 80, 90, (Color) { 80, 220, 255, 220 });
         DrawText(">> COMMS", 55, SCREEN_H - 122, 13, (Color) { 100, 240, 255, 255 });
         DrawText(message, 55, SCREEN_H - 100, 20, (Color) { 200, 240, 255, 255 });
-        // While a trainer is speaking, hint that the player can skip ahead
+        // While an encounter bubble is up, hint that the player can skip ahead
         if (spotPhase == 1)
             DrawText("[Z/CLICK] to engage", screenW - 260, SCREEN_H - 60, 14, (Color) { 255, 220, 100, 255 });
     }
