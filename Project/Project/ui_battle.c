@@ -241,11 +241,11 @@ static void updateEffects(float dt) {
                     0.5f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.55f) { e->damageShown = 1; spawnBurst(e->to, 36, e->color, 60, 220, 0.7f); shakeScreen(4, 0.2f); }
             break;
-        case FX_GUARD:   // the Aegis pulls its share of the hit across the shield link
+        case FX_GUARD:
             if (p < 0.6f && GetRandomValue(0, 100) < 80) spawnParticleG(cur, (Vector2) { 0, -20 }, 0.3f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.6f) { e->damageShown = 1; impact(e, 10, 40, 120, 0.4f, 2, 0.15f, 0); }
             break;
-        case FX_LINK:    // uplink: motes run from the initiator to the partner
+        case FX_LINK:
             if (p < 0.9f) spawnParticleG(cur, (Vector2) { 0, 0 }, 0.35f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.9f) { e->damageShown = 1; spawnBurst(e->to, 18, e->color, 30, 110, 0.5f); }
             break;
@@ -846,18 +846,7 @@ void uiBattleUpdate(float dt, GameState* state) {
         else { snprintf(battle.log, sizeof(battle.log), "PROVOKE: %s", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
-<<<<<<< HEAD
-=======
-    // [K] link (or re-link) the commanded initiator
-    if (IsKeyPressed(KEY_K) || clickedOn(linkButtonRect())) {
-        consumeInput();
-        const char* reason = NULL;
-        if (battleCanLink(&reason)) battleLink();
-        else { snprintf(battle.log, sizeof(battle.log), "LINK: %s", reason); sfxPlay(SFX_UI_DENY); }
-        return;
-    }
-    // [F] swap lanes, [G] go out on the flank
->>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
+
     int laneKey = IsKeyPressed(KEY_F) || clickedOn(laneButtonRect());
     int flankKey = IsKeyPressed(KEY_G) || clickedOn(flankButtonRect());
     if (laneKey || flankKey) {
@@ -867,6 +856,13 @@ void uiBattleUpdate(float dt, GameState* state) {
         const char* reason = NULL;
         if (battleCanMove(to, &reason)) { battleMove(to); sfxPlay(SFX_UI_CONFIRM); }
         else { snprintf(battle.log, sizeof(battle.log), "%s: %s", flankKey ? "FLANK" : "MOVE", reason); sfxPlay(SFX_UI_DENY); }
+        return;
+    }
+    if (IsKeyPressed(KEY_K) || clickedOn(linkButtonRect())) {
+        consumeInput();
+        const char* reason = NULL;
+        if (battleCanLink(&reason)) battleLink();
+        else { snprintf(battle.log, sizeof(battle.log), "LINK: %s", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
     if ((IsKeyPressed(KEY_C) || clickedOn(hackButtonRect())) && battleCanHack()) {
@@ -1279,7 +1275,7 @@ static int fieldPosOfSlot(int side, int slot) {
 
 static Vector2 bezier(Vector2 a, Vector2 c, Vector2 b, float t) {
     float u = 1 - t;
-    return (Vector2) { u * u * a.x + 2 * u * t * c.x + t * t * b.x, u * u * a.y + 2 * u * t * c.y + t * t * b.y };
+    return (Vector2) { u* u* a.x + 2 * u * t * c.x + t * t * b.x, u* u* a.y + 2 * u * t * c.y + t * t * b.y };
 }
 
 // A glowing arc along the ground between linked mechs, a mote running from the
@@ -1354,7 +1350,7 @@ static const char* linkSummary(int side, const ActiveLink* l) {
     switch (l->type) {
     case LINK_TARGETING:
         return mark ? TextFormat("+%d ACC, %d%% CRIT vs %s", (int)L->value, (int)roundf(L->value2 * 100), mark)
-                    : "no mark yet - it marks what it shoots";
+            : "no mark yet - it marks what it shoots";
     case LINK_SPOTTER:
         return mark ? TextFormat("+%d ACC, reaches %s past cover", (int)L->value, mark) : "no mark yet - it marks what it shoots";
     case LINK_DEFENSE:
@@ -1592,12 +1588,9 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
     int splash = 0;
     for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != framePrimary;
     if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[w->targeting], splash), x + 130, ly, 10,
-<<<<<<< HEAD
         (Color) {
         255, 170, 90, 255
     });
-=======
-        (Color) { 255, 170, 90, 255 });
     ly += 13;
     int spotted = !intercepted() && framePrimary >= 0 && battleInterceptor(SIDE_ENEMY, framePrimary) >= 0
         && (w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE);
@@ -1607,8 +1600,9 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
             : spotted ? ", spotted past its cover" : ""), x, ly, 10, (Color) { 120, 255, 170, 255 });
     else if (p->guardMod < 1)
         DrawText(TextFormat("DEFENSE LINK: their Aegis takes %d%% of this hit.", (int)roundf((1 - p->guardMod) * 100)), x, ly, 10,
-            (Color) { 130, 200, 255, 255 });
->>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
+            (Color) {
+        130, 200, 255, 255
+    });
     DrawText("[I] why   [V] formula   [L] log   hover anything", x, y + 122, 10, (Color) { 100, 200, 240, 255 });
 }
 
@@ -1837,13 +1831,7 @@ void uiBattleDraw(void) {
             else if (p) drawPlainPreview(p, mechWeapon(actor->mech, weaponSel), 402, ROW_Y);
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
-        DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
-<<<<<<< HEAD
-            : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [C] HACK [X] END",
-=======
-                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [K] LINK [P] PROVOKE [C] HACK [X] END",
->>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
-            30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
+        DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE" : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [K] LINK [C] HACK [X] END", 30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {
         DrawText(battle.phase == BP_ENEMY_TURN ? ">> ENEMY PHASE <<" : ">> SYS LOG <<", 30, PANEL_Y + 6, 14, (Color) { 100, 240, 255, 255 });
