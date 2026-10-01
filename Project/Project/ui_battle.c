@@ -19,9 +19,9 @@ typedef struct {
     Vector2 from, to;
     Color color;
     int damageShown, damage, hit;
-    int munition, armorDamage, integrityDamage, lethal;
+    int munition, armorDamage, integrityDamage, lethal, crit;
 } Effect;
-#define MAX_EFFECTS 8
+#define MAX_EFFECTS 12
 static Effect effects[MAX_EFFECTS];
 
 // Floating combat text: Integrity damage (red), Armor damage (blue), MISS, SCRAPPED
@@ -60,6 +60,8 @@ static float effectDuration(int kind) {
     case FX_SCAN: return 1.0f;
     case FX_SWITCH: return 0.8f;
     case FX_PROVOKE: return 0.9f;
+    case FX_GUARD: return 0.5f;
+    case FX_LINK: return 0.7f;
     default: return 0.55f;
     }
 }
@@ -68,7 +70,7 @@ static void addEffect(const BattleEvent* ev, Vector2 from, Vector2 to) {
     for (int i = 0; i < MAX_EFFECTS; i++)
         if (!effects[i].active) {
             effects[i] = (Effect){ 1, ev->fx, 0, effectDuration(ev->fx), from, to, ev->color, 0, ev->damage, ev->hit,
-                ev->munition, ev->armorDamage, ev->integrityDamage, ev->lethal };
+                ev->munition, ev->armorDamage, ev->integrityDamage, ev->lethal, ev->crit };
             return;
         }
 }
@@ -147,6 +149,10 @@ static void impact(Effect* e, int burst, float smin, float smax, float life, flo
         if (e->armorDamage > 0) {
             addFloatText((Vector2) { e->to.x + 50, e->to.y - 18 }, TextFormat("-%d ARM", e->armorDamage), 18, (Color) { 120, 190, 255, 255 });
             if (e->integrityDamage == 0) sfxPlay(SFX_ARMOR_HIT);
+        }
+        if (e->crit) {
+            addFloatText((Vector2) { e->to.x - 60, e->to.y - 66 }, "CRITICAL", 22, (Color) { 255, 240, 120, 255 });
+            sfxPlay(SFX_CRIT);
         }
         if (e->lethal) {
             addFloatText((Vector2) { e->to.x, e->to.y - 84 }, "SCRAPPED", 30, (Color) { 255, 220, 100, 255 });
@@ -235,6 +241,14 @@ static void updateEffects(float dt) {
                     0.5f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.55f) { e->damageShown = 1; spawnBurst(e->to, 36, e->color, 60, 220, 0.7f); shakeScreen(4, 0.2f); }
             break;
+        case FX_GUARD:   // the Aegis pulls its share of the hit across the shield link
+            if (p < 0.6f && GetRandomValue(0, 100) < 80) spawnParticleG(cur, (Vector2) { 0, -20 }, 0.3f, 3, e->color, 0);
+            if (!e->damageShown && p >= 0.6f) { e->damageShown = 1; impact(e, 10, 40, 120, 0.4f, 2, 0.15f, 0); }
+            break;
+        case FX_LINK:    // uplink: motes run from the initiator to the partner
+            if (p < 0.9f) spawnParticleG(cur, (Vector2) { 0, 0 }, 0.35f, 3, e->color, 0);
+            if (!e->damageShown && p >= 0.9f) { e->damageShown = 1; spawnBurst(e->to, 18, e->color, 30, 110, 0.5f); }
+            break;
         case FX_MISSILE: {
             float arc = sinf(p * PI) * 120;
             Vector2 mpos = { cur.x, cur.y - arc };
@@ -312,6 +326,24 @@ static void drawEffects(void) {
             }
             const char* txt = "PROVOKE!";
             DrawText(txt, (int)(e->to.x - MeasureText(txt, 14) / 2), (int)(e->to.y - 62), 14, (Color) { 255, 170, 80, (unsigned char)(255 * (1 - p * 0.5f)) });
+            break;
+        }
+        case FX_GUARD: {
+            float a = p < 0.7f ? 1 : (1 - p) / 0.3f;
+            DrawLineEx(e->from, e->to, 6, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(70 * a) });
+            DrawLineEx(e->from, e->to, 2, (Color) { 255, 255, 255, (unsigned char)(180 * a) });
+            DrawCircleLines((int)e->from.x, (int)e->from.y, 34 + 6 * p, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(200 * a) });
+            const char* txt = "SHIELDED";
+            DrawText(txt, (int)(e->from.x - MeasureText(txt, 10) / 2), (int)(e->from.y - 58), 10, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(255 * a) });
+            break;
+        }
+        case FX_LINK: {
+            Vector2 tip = { e->from.x + (e->to.x - e->from.x) * (p < 0.6f ? p / 0.6f : 1), e->from.y + (e->to.y - e->from.y) * (p < 0.6f ? p / 0.6f : 1) };
+            unsigned char a = (unsigned char)(255 * (p < 0.7f ? 1 : (1 - p) / 0.3f));
+            DrawLineEx(e->from, tip, 4, (Color) { e->color.r, e->color.g, e->color.b, a });
+            DrawCircleV(tip, 5, (Color) { 255, 255, 255, a });
+            const char* txt = "LINKED";
+            DrawText(txt, (int)(e->to.x - MeasureText(txt, 12) / 2), (int)(e->to.y - 62), 12, (Color) { e->color.r, e->color.g, e->color.b, a });
             break;
         }
         case FX_SWITCH: {
@@ -583,6 +615,8 @@ static Rectangle hackButtonRect(void) { return (Rectangle) { 508, PANEL_Y + 4, 7
 static Rectangle nextButtonRect(void) { return (Rectangle) { 584, PANEL_Y + 4, 86, 18 }; }
 static Rectangle endTurnButtonRect(void) { return (Rectangle) { 674, PANEL_Y + 4, 96, 18 }; }
 static Rectangle laneButtonRect(void) { return (Rectangle) { 552, 381, 118, 15 }; }
+static Rectangle linkButtonRect(void) { return (Rectangle) { 176, 293, 72, 14 }; }
+#define LINK_PANEL_Y 294
 static Rectangle flankButtonRect(void) { return (Rectangle) { 674, 381, 118, 15 }; }
 static Rectangle logStripRect(void) { return (Rectangle) { 20, PANEL_Y - 22, SCREEN_W - 40, 20 }; }
 static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 302, 37, 40 }; }
@@ -712,6 +746,11 @@ void uiBattleUpdate(float dt, GameState* state) {
             sfxPlay(ev.fx == FX_SWITCH ? SFX_SWITCH : SFX_PROVOKE);
             continue;
         }
+        if (ev.fx == FX_GUARD || ev.fx == FX_LINK) {   // between two mechs on the same side
+            addEffect(&ev, slotPos(own, ev.fromSlot), slotPos(own, ev.toSlot));
+            if (ev.fx == FX_LINK) sfxPlay(SFX_LINK);
+            continue;
+        }
         addEffect(&ev, slotPos(own, ev.fromSlot), slotPos(other, ev.toSlot));
         if (ev.munition >= 0) sfxFire(ev.munition);
         else if (ev.fx == FX_SCAN) sfxPlay(SFX_HACK);
@@ -807,6 +846,18 @@ void uiBattleUpdate(float dt, GameState* state) {
         else { snprintf(battle.log, sizeof(battle.log), "PROVOKE: %s", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
+<<<<<<< HEAD
+=======
+    // [K] link (or re-link) the commanded initiator
+    if (IsKeyPressed(KEY_K) || clickedOn(linkButtonRect())) {
+        consumeInput();
+        const char* reason = NULL;
+        if (battleCanLink(&reason)) battleLink();
+        else { snprintf(battle.log, sizeof(battle.log), "LINK: %s", reason); sfxPlay(SFX_UI_DENY); }
+        return;
+    }
+    // [F] swap lanes, [G] go out on the flank
+>>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
     int laneKey = IsKeyPressed(KEY_F) || clickedOn(laneButtonRect());
     int flankKey = IsKeyPressed(KEY_G) || clickedOn(flankButtonRect());
     if (laneKey || flankKey) {
@@ -1014,7 +1065,8 @@ static void drawEnemySlot(int pos) {
     DrawText(m->name, x + 8, y + 4, 14, (Color) { 255, 210, 210, 255 });
     drawLaneBadge(x + 234, y + 4, SIDE_ENEMY, pos, c);
     int guarding = framePrimary == pos && intercepted();
-    if (target) DrawText(intercepted() ? "COVERED" : "TARGET", x + 124, y + 6, 10,
+    if (battle.phase == BP_PLAYER_TURN && battleHidden(pos)) DrawText("NO SIGNAL", x + 124, y + 6, 10, (Color) { 210, 160, 255, 255 });
+    else if (target) DrawText(intercepted() ? "COVERED" : "TARGET", x + 124, y + 6, 10,
         intercepted() ? (Color) { 120, 220, 255, 255 } : (Color) { 255, 220, 80, 255 });
     else if (guarding) DrawText("GUARDS", x + 124, y + 6, 10, (Color) { 120, 220, 255, 255 });
     else if (c->provoking) DrawText("PROVOKE", x + 124, y + 6, 10, (Color) { 255, 150, 60, 255 });
@@ -1091,7 +1143,8 @@ static void drawPlayerSlot(int pos) {
     tipText((Rectangle) { (float)x + 64, (float)y + 60, 100, 12 },
         TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
         c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
-    const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED" : pendingText(c);
+    const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED"
+        : c->jammed > 0 ? "JAMMED" : pendingText(c);
     if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "
@@ -1218,6 +1271,148 @@ static void drawReserveRow(void) {
     }
 }
 
+// ============ COMBAT LINKS (HUD) ============
+static int fieldPosOfSlot(int side, int slot) {
+    for (int p = 0; p < MAX_FIELD; p++) if (battle.side[side].field[p] == slot) return p;
+    return -1;
+}
+
+static Vector2 bezier(Vector2 a, Vector2 c, Vector2 b, float t) {
+    float u = 1 - t;
+    return (Vector2) { u * u * a.x + 2 * u * t * c.x + t * t * b.x, u * u * a.y + 2 * u * t * c.y + t * t * b.y };
+}
+
+// A glowing arc along the ground between linked mechs, a mote running from the
+// initiator to its partner, and the link's tag at the low point
+static void drawLinkLines(void) {
+    for (int side = 0; side < 2; side++) {
+        ActiveLink L[MAX_TEAM];
+        int n = battleLinks(side, L, MAX_TEAM);
+        for (int k = 0; k < n; k++) {
+            int fp = fieldPosOfSlot(side, L[k].from), tp = fieldPosOfSlot(side, L[k].to);
+            if (fp < 0 || tp < 0) continue;
+            Color c = linkDefs[L[k].type].color;
+            Vector2 a = slotPos(side, fp), b = slotPos(side, tp);
+            a.y += 40; b.y += 40;
+            Vector2 mid = { (a.x + b.x) / 2, (a.y > b.y ? a.y : b.y) + 18 };
+            Vector2 prev = a;
+            for (int s = 1; s <= 16; s++) {
+                Vector2 q = bezier(a, mid, b, s / 16.0f);
+                DrawLineEx(prev, q, 5, (Color) { c.r, c.g, c.b, 50 });
+                DrawLineEx(prev, q, 2, (Color) { c.r, c.g, c.b, 210 });
+                prev = q;
+            }
+            float t = fmodf(glowTimer * 0.7f + k * 0.37f, 1.0f);
+            DrawCircleV(bezier(a, mid, b, t), 3, WHITE);
+            Vector2 lo = bezier(a, mid, b, 0.5f);
+            const char* tag = linkDefs[L[k].type].tag;
+            int tw = MeasureText(tag, 10);
+            DrawRectangle((int)lo.x - tw / 2 - 3, (int)lo.y - 6, tw + 6, 12, (Color) { 10, 14, 26, 230 });
+            DrawRectangleLines((int)lo.x - tw / 2 - 3, (int)lo.y - 6, tw + 6, 12, c);
+            DrawText(tag, (int)lo.x - tw / 2, (int)lo.y - 5, 10, c);
+        }
+    }
+}
+
+// A diamond over every mech a Catcher or Scout has marked for its partner
+static void drawLinkMarks(void) {
+    int stacked[2][MAX_FIELD] = { 0 };
+    for (int side = 0; side < 2; side++) {
+        ActiveLink L[MAX_TEAM];
+        int n = battleLinks(side, L, MAX_TEAM);
+        for (int k = 0; k < n; k++) {
+            if (L[k].type != LINK_TARGETING && L[k].type != LINK_SPOTTER) continue;
+            int mp = battleMarkPos(side, L[k].from);
+            if (mp < 0) continue;
+            Color c = linkDefs[L[k].type].color;
+            Vector2 v = slotPos(1 - side, mp);
+            float pulse = 0.5f + 0.5f * sinf(glowTimer * 5);
+            Vector2 at = { v.x + 30, v.y - 46 + 14.0f * stacked[1 - side][mp]++ };
+            DrawPoly(at, 4, 6 + pulse, 0, (Color) { c.r, c.g, c.b, 200 });
+            DrawPolyLines(at, 4, 8 + pulse, 0, WHITE);
+            DrawText("MARK", (int)at.x + 10, (int)at.y - 5, 10, c);
+        }
+    }
+}
+
+// Static over an enemy the commanded mech can't see (Signal Blackout)
+static void drawNoSignal(Rectangle r) {
+    for (int k = 0; k < 8; k++) {
+        int y = (int)r.y + GetRandomValue(0, (int)r.height);
+        DrawLine((int)r.x, y, (int)(r.x + r.width), y, (Color) { 200, 150, 255, 120 });
+    }
+    const char* t = "NO SIGNAL";
+    DrawText(t, (int)(r.x + r.width / 2 - MeasureText(t, 10) / 2), (int)(r.y + r.height / 2), 10, (Color) { 220, 180, 255, 255 });
+}
+
+// What a link does right now, in one line
+static const char* linkSummary(int side, const ActiveLink* l) {
+    const Side* sd = &battle.side[side];
+    const LinkDef* L = &linkDefs[l->type];
+    int mp = battleMarkPos(side, l->from);
+    const char* mark = mp >= 0 ? battleField(1 - side, mp)->mech->name : NULL;
+    switch (l->type) {
+    case LINK_TARGETING:
+        return mark ? TextFormat("+%d ACC, %d%% CRIT vs %s", (int)L->value, (int)roundf(L->value2 * 100), mark)
+                    : "no mark yet - it marks what it shoots";
+    case LINK_SPOTTER:
+        return mark ? TextFormat("+%d ACC, reaches %s past cover", (int)L->value, mark) : "no mark yet - it marks what it shoots";
+    case LINK_DEFENSE:
+        return TextFormat("takes %d%% of every hit on %s", (int)roundf(L->value * 100), sd->mech[l->to].name);
+    default: {
+        int jammed = 0;
+        for (int p = 0; p < MAX_FIELD; p++) {
+            const Combatant* e = battleField(1 - side, p);
+            if (e && e->jammed > 0 && e->jammedBy == l->from) jammed++;
+        }
+        return jammed ? TextFormat("%d jammed: can't target %s", jammed, sd->mech[l->to].name) : "jam an enemy to blind it to the Recon";
+    }
+    }
+}
+
+// Left column under the enemy squad: every active link, yours first
+static void drawLinkPanel(void) {
+    int x = 8, y = LINK_PANEL_Y;
+    DrawText("COMBAT LINKS", x, y + 2, 10, (Color) { 150, 220, 255, 255 });
+    tipText((Rectangle) { (float)x, (float)y, 120, 12 }, "COMBAT LINKS",
+        "Pairs of allies on the field. Catcher > Artillery: TARGETING. Aegis > Heavy Assault: DEFENSE. Scout > Artillery: SPOTTER. "
+        "Disruptor > Recon: SIGNAL BLACKOUT. Links form at the start and when a mech takes the field, and break below 25% Integrity, "
+        "on a switch or when a mech goes down. LINK [K] (1 EN) re-links an initiator.");
+    if (battle.phase == BP_PLAYER_TURN && battleActing()) {
+        const char* noLink = NULL;
+        int canLink = battleCanLink(&noLink), cand = battleLinkCandidate();
+        drawButton(linkButtonRect(), "LINK [K]", 10, 0, canLink);
+        tipText(linkButtonRect(), "LINK", canLink
+            ? TextFormat("%d EN, uses this mech's action: link to %s (%s). Replaces its current link.", LINK_ENERGY_COST,
+                battle.side[SIDE_PLAYER].mech[cand].name, linkDefs[battleLinkInitiator(battleActing())].name)
+            : TextFormat("Can't link: %s.", noLink ? noLink : "-"));
+    }
+    int ly = y + 16, shown = 0, total = 0;
+    for (int pass = 0; pass < 2; pass++) {
+        int side = pass == 0 ? SIDE_PLAYER : SIDE_ENEMY;
+        ActiveLink L[MAX_TEAM];
+        int n = battleLinks(side, L, MAX_TEAM);
+        for (int k = 0; k < n; k++, total++) {
+            if (shown >= 3) continue;
+            const LinkDef* d = &linkDefs[L[k].type];
+            const Side* sd = &battle.side[side];
+            Color c = side == SIDE_PLAYER ? d->color : (Color) { 255, 140, 130, 255 };
+            DrawRectangle(x, ly, 3, 21, d->color);
+            DrawText(TextFormat("%s%s > %s", side == SIDE_ENEMY ? "ENEMY " : "", sd->mech[L[k].from].name, sd->mech[L[k].to].name),
+                x + 7, ly, 10, c);
+            DrawText(d->tag, x + 238 - MeasureText(d->tag, 10), ly, 10, d->color);
+            DrawText(linkSummary(side, &L[k]), x + 7, ly + 11, 10, (Color) { 175, 190, 215, 255 });
+            tipText((Rectangle) { (float)x, (float)ly, 240, 22 }, TextFormat("%s%s", side == SIDE_ENEMY ? "ENEMY " : "", d->name), d->rule);
+            ly += 25;
+            shown++;
+        }
+    }
+    if (total > shown) DrawText(TextFormat("+%d more", total - shown), x + 7, ly - 2, 10, (Color) { 130, 150, 175, 255 });
+    if (total == 0)
+        wrapText("None active. Catcher or Scout + Artillery, Aegis + Heavy Assault and Disruptor + Recon link up.",
+            x, ly, 236, 10, (Color) { 120, 140, 170, 255 }, 1);
+}
+
 static void drawReticle(Rectangle r, Color rc) {
     int L = 12;
     DrawLineEx((Vector2) { r.x, r.y }, (Vector2) { r.x + L, r.y }, 2, rc);
@@ -1242,6 +1437,7 @@ static void drawLaneRows(void) {
 static void drawField(float sx, float sy) {
     float blink = 0.5f + 0.5f * sinf(glowTimer * 6);
     drawLaneRows();
+    drawLinkLines();
     for (int side = 0; side < 2; side++)
         for (int p = 0; p < MAX_FIELD; p++) {
             if (p >= battle.side[side].numField) continue;
@@ -1265,6 +1461,7 @@ static void drawField(float sx, float sy) {
                     }
             }
             drawMechBattle(c->mech->model, (int)(v.x + sx), (int)(v.y + sy), SPRITE_SCALE, side == SIDE_ENEMY);
+            if (side == SIDE_ENEMY && battle.phase == BP_PLAYER_TURN && battleHidden(p)) drawNoSignal(spriteRect(side, p));
             drawThreatBar((int)v.x - 25, (int)v.y + 48, 50, 4, c);
             if (c->provoking) {
                 float pb = 0.5f + 0.5f * sinf(glowTimer * 8);
@@ -1395,9 +1592,23 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
     int splash = 0;
     for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != framePrimary;
     if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[w->targeting], splash), x + 130, ly, 10,
+<<<<<<< HEAD
         (Color) {
         255, 170, 90, 255
     });
+=======
+        (Color) { 255, 170, 90, 255 });
+    ly += 13;
+    int spotted = !intercepted() && framePrimary >= 0 && battleInterceptor(SIDE_ENEMY, framePrimary) >= 0
+        && (w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE);
+    if (p->linkAccuracy > 0 || p->critChance > 0)
+        DrawText(TextFormat("LINKED: +%d Accuracy vs the mark%s.", p->linkAccuracy,
+            p->critChance > 0 ? TextFormat(", %d%% crit for x%.1f", (int)roundf(p->critChance * 100), CRIT_MULT)
+            : spotted ? ", spotted past its cover" : ""), x, ly, 10, (Color) { 120, 255, 170, 255 });
+    else if (p->guardMod < 1)
+        DrawText(TextFormat("DEFENSE LINK: their Aegis takes %d%% of this hit.", (int)roundf((1 - p->guardMod) * 100)), x, ly, 10,
+            (Color) { 130, 200, 255, 255 });
+>>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
     DrawText("[I] why   [V] formula   [L] log   hover anything", x, y + 122, 10, (Color) { 100, 200, 240, 255 });
 }
 
@@ -1533,6 +1744,7 @@ void uiBattleDraw(void) {
 
     BeginMode2D(layoutCamera());
     drawField(sx, sy);
+    drawLinkMarks();
     drawEffects();
     drawParticles();
     drawDamageNums();
@@ -1542,6 +1754,7 @@ void uiBattleDraw(void) {
         if (pos < battle.side[SIDE_PLAYER].numField) drawPlayerSlot(pos);
     }
     drawEnemyHeader();
+    drawLinkPanel();
     drawReactor();
     drawReserveRow();
 
@@ -1625,7 +1838,11 @@ void uiBattleDraw(void) {
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
         DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
+<<<<<<< HEAD
             : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [C] HACK [X] END",
+=======
+                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [K] LINK [P] PROVOKE [C] HACK [X] END",
+>>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
             30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {

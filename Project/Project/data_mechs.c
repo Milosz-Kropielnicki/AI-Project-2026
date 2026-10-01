@@ -113,6 +113,28 @@ const MechModel mechModels[NUM_MODELS] = {
       { { 10, 0, 15, 0, 0, 0, 0, 0, 0 } },
       { W_MACHINE_GUN, W_SHOTGUN, W_GRENADE_LAUNCHER, -1 },
       { REFIT_STANDARD_OPTICS, REFIT_HEAVY_PLATING, REFIT_SHIELD_ARM, REFIT_TREADS }, 2 },
+    // EW / Catcher: paints whatever it shoots at. Its Targeting Link gives an
+    // Artillery partner +15 Accuracy and crits against the mark. The delta
+    // makes it a frame worth fielding (the Catcher role alone is paper-thin).
+    { "EW-C-05", "SNARE", ROLE_CATCHER, "Target-painting frame. Marks prey for its artillery.", 7,
+      {50,90,80,255}, {120,255,170,255}, {170,255,200,255},
+      { { 35, 0.35f, 30, 0, 0, 0, 0, 0, 0 } },
+      { W_MACHINE_GUN, W_ARC_EMITTER, W_PULSE_LASER, -1 },
+      { REFIT_TARGETING_ARRAY, REFIT_STANDARD_FRAME, REFIT_STABILIZED_MOUNTS, REFIT_HOVER_SYSTEM }, 2 },
+    // EW / Aegis: projects a shield over a linked Heavy Assault and soaks a
+    // fifth of every hit it takes.
+    { "EW-A-21", "HALO", ROLE_AEGIS, "Shield projector. Takes a share of every hit on its heavy.", 8,
+      {60,80,130,255}, {130,200,255,255}, {170,230,255,255},
+      { { 35, 0.35f, 30, 0, 0, 0, 0, 0, 0 } },
+      { W_MACHINE_GUN, W_ARC_EMITTER, W_CORROSIVE_SPRAY, -1 },
+      { REFIT_EW_SUITE, REFIT_HEAVY_PLATING, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM }, 2 },
+    // Recon / Scout: spots targets; its Spotter Link lets an Artillery partner
+    // reach the spotted mech past the front line.
+    { "R-SC-12", "VANTAGE", ROLE_SCOUT, "Sensor-mast spotter. Calls shots past the front line.", 9,
+      {120,110,60,255}, {255,210,90,255}, {255,230,140,255},
+      { { 15, 0.10f, 10, 0, 0, 0, 0, 0, 0 } },
+      { W_MACHINE_GUN, W_PULSE_LASER, W_ARC_EMITTER, -1 },
+      { REFIT_LONG_RANGE_RADAR, REFIT_LIGHT_PLATING, REFIT_STANDARD_MOUNTS, REFIT_JUMP_JETS }, 2 },
 };
 
 // ============ REFIT MODULES ============
@@ -230,6 +252,32 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       { CHIP_PROVOCATION, CHIP_EMERGENCY_REPAIR, CHIP_HARDENED_KERNEL }, 3,
       TRAIT_DEFENSIVE, { BRANCH_BASTION }, 1,
       { 0.9f, 0.8f, 0.0f, 0.3f, 1.0f, 1.0f }, 0 },
+    // Catcher: paints targets with cheap accurate fire; with a Sniper or Bombard
+    // in the pack its Targeting Link makes their shots land and crit.
+    { "MARKER", "Catcher. Paints you so its artillery can't miss.",
+      CLASS_EW, ROLE_CATCHER, MODEL_SNARE,
+      { { W_MACHINE_GUN, W_ARC_EMITTER, W_PULSE_LASER, -1 },
+        { REFIT_TARGETING_ARRAY, REFIT_STANDARD_FRAME, REFIT_STABILIZED_MOUNTS, REFIT_HOVER_SYSTEM } },
+      { CHIP_PRECISION_STRIKE, CHIP_PREDICTIVE_TARGETING }, 2,
+      TRAIT_EFFICIENT, { BRANCH_SIGNAL }, 1,
+      { 1.0f, 0.6f, 0.6f, 0.5f, 1.0f, 1.0f }, 0 },
+    // Aegis: shields a Heavy Assault through its Defense Link.
+    { "SHIELDER", "Aegis. Projects a shield over its pack's heavy.",
+      CLASS_EW, ROLE_AEGIS, MODEL_HALO,
+      { { W_MACHINE_GUN, W_ARC_EMITTER, W_CORROSIVE_SPRAY, -1 },
+        { REFIT_EW_SUITE, REFIT_HEAVY_PLATING, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM } },
+      { CHIP_HARDENED_KERNEL, CHIP_EMERGENCY_REPAIR }, 2,
+      TRAIT_DEFENSIVE, { BRANCH_BASTION }, 1,
+      { 0.9f, 0.7f, 0.6f, 0.5f, 1.0f, 1.0f }, 0 },
+    // Scout: spots for artillery; with a Sniper or Bombard in the pack your rear
+    // line isn't safe.
+    { "SPOTTER", "Scout. Calls artillery fire past your front line.",
+      CLASS_RECON, ROLE_SCOUT, MODEL_VANTAGE,
+      { { W_MACHINE_GUN, W_PULSE_LASER, W_ARC_EMITTER, -1 },
+        { REFIT_LONG_RANGE_RADAR, REFIT_LIGHT_PLATING, REFIT_STANDARD_MOUNTS, REFIT_JUMP_JETS } },
+      { CHIP_EVASIVE_MANEUVER, CHIP_PREDICTIVE_TARGETING }, 2,
+      TRAIT_EFFICIENT, { BRANCH_GHOST }, 1,
+      { 1.0f, 0.6f, 0.4f, 0.5f, 1.0f, 1.0f }, 0 },
     // Trainer-only armor cracker on the OBLIVION chassis.
     { "ORDNANCE", "Heavy gun platform. Strips armor, then jams what is left.",
       CLASS_ARTILLERY, ROLE_ORDNANCE, MODEL_OBLIVION,

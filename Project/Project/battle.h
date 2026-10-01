@@ -44,6 +44,10 @@ typedef struct {
     float executeMod, overchargeMod, reductionMod, firstHitMod, adaptiveMod;
     float formatMod;        // team-battle damage pass (TEAM_DAMAGE_SCALE)
     float splashMod;        // area / cone falloff for a secondary target
+    float critMod;          // CRIT_MULT on a critical hit, else 1
+    float guardMod;         // share left after a Defense Link (or, for the Aegis, the share it takes)
+    float critChance;       // chance this hit is critical (Targeting Link vs the mark)
+    int linkAccuracy;       // Accuracy added by a link (already in accuracy)
     float raw;              // base x power x dmgMod
     int pen;                // weapon pen + Armor Analysis bonus (+ flank), percent
     int flankPen;           // penetration added by attacking from the flank
@@ -97,6 +101,10 @@ typedef struct {
     float formatMod;        // team-battle damage pass, 1 outside battle
     float splashMod;        // 1 for the primary target, x0.75 per extra area / cone target
     float armorIgnore;      // share of the target's Armor the attack ignores (flanking), 0 = none
+    int linkAccuracy;       // Accuracy from a link vs this target (included in attackerAccuracy, may pass 100)
+    float critChance;       // chance of a critical hit (x CRIT_MULT damage)
+    float critMod;          // CRIT_MULT when resolving a critical hit, else 1
+    float guardMod;         // damage share this target takes: 1 - an Aegis's share; the Aegis's own share for it
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -164,6 +172,8 @@ typedef struct {
     int lane;               // LANE_FRONT / LANE_REAR
     int flanking;           // on the flank until its next turn
     int moved;              // changed position this turn (one move a turn)
+    int mark;               // other side's slot this mech last aimed at (a link initiator's mark), -1 = none
+    int jammed, jammedBy;   // Signal Blackout: turns left / other side's slot of the Disruptor that jammed it
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
@@ -182,6 +192,7 @@ typedef struct {
     int field[MAX_FIELD];       // slot on each field position, -1 = empty
     int count, numField;
     int startRevision[MAX_TEAM];    // firmware revision when the battle began
+    unsigned char link[MAX_TEAM][MAX_TEAM];   // link[from][to]: LinkType between two slots, LINK_NONE = none
 } Side;
 
 // A visual cue for ui_battle.c; battle logic never touches effects directly
@@ -192,6 +203,7 @@ typedef struct {
     int armorDamage, integrityDamage;   // shown as separate numbers
     int lethal;
     int fromSlot, toSlot;               // field positions of the attacker and the target
+    int crit;                           // a critical hit
 } BattleEvent;
 #define MAX_BATTLE_EVENTS 8
 
@@ -300,6 +312,43 @@ int battleCanMove(int to, const char** reason);   // the commanded mech can move
 void battleMove(int to);
 int battleInterceptor(int side, int pos);   // Front ally that takes single-target / line shots aimed at pos, -1 if pos isn't covered
 
+// ============ COMBAT LINKS ============
+// A link pairs two allies on the field: an initiator (by role) and a partner (by
+// class). Each mech has at most one outgoing and one incoming link. Links form
+// at battle start and whenever a mech takes the field, or with the LINK action
+// (1 Energy, uses the initiator's action; it can re-target another partner).
+// They break when either mech drops below 25% Integrity, is switched out or is
+// disabled. An initiator's MARK is whatever it last aimed at.
+//   TARGETING  Catcher > Artillery    partner: +15 Accuracy (past 100) and 10% crit (x1.5 damage) vs the mark
+//   DEFENSE    Aegis > Heavy Assault  the Aegis takes 20% of every hit on its partner
+//   SPOTTER    Scout > Artillery      partner: +10 Accuracy vs the mark; its single-target / line shots at it ignore cover
+//   BLACKOUT   Disruptor > Recon      mechs the Disruptor has jammed can't target the partner until after their next turn
+// The game has no range or crits outside links: "+1 range" became reaching past
+// cover, and a crit is x1.5 damage.
+typedef enum { LINK_NONE, LINK_TARGETING, LINK_DEFENSE, LINK_SPOTTER, LINK_BLACKOUT, NUM_LINK_TYPES } LinkType;
+typedef struct {
+    const char* name;
+    const char* tag;                    // short label on the field
+    MechRole initiator;
+    MechClass partner;
+    ChipEffect effect; float value;     // what the link grants, resolved like a chip effect
+    ChipEffect effect2; float value2;
+    Color color;
+    const char* rule;                   // plain language, for tooltips
+} LinkDef;
+extern const LinkDef linkDefs[NUM_LINK_TYPES];
+#define LINK_BREAK_BELOW 0.25f
+#define LINK_ENERGY_COST 1
+#define CRIT_MULT 1.5f
+typedef struct { int from, to, type; } ActiveLink;   // slots on one side
+int battleLinks(int side, ActiveLink* out, int max);
+int battleLinkInitiator(const Combatant* c);   // LinkType this mech's role can start, LINK_NONE if none
+int battleMarkPos(int side, int slot);      // field position (other side) of this initiator's mark, -1
+int battleCanLink(const char** reason);     // the commanded mech can LINK now
+int battleLinkCandidate(void);              // slot (player side) [K] would link to, -1
+void battleLink(void);
+int battleHidden(int pos);                  // Signal Blackout: the commanded mech can't target this enemy
+
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);
 void battleStartTestRange(void);
@@ -311,7 +360,7 @@ int battleCanFire(int mount, const char** reason);
 void battleFire(int mount);
 void battleEndTurn(void);
 int battleAIChooseForPlayer(void);
-int battleAIMoveForPlayer(void);            // the enemy AI's formation move for the commanded mech (tests / autoplay); 1 if it moved
+int battleAIMoveForPlayer(void);            // the enemy AI's link / formation move for the commanded mech (tests / autoplay); 1 if it acted
 int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
 // Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
 int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)

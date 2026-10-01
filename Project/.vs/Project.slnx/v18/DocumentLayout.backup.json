@@ -78,6 +78,7 @@
           "Children": [
             {
               "$type": "Document",
+<<<<<<< HEAD
               "DocumentIndex": 2,
               "Title": "world.h",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
@@ -87,6 +88,17 @@
               "ViewState": "AgIAAD4AAAAAAAAAAAAAAGEAAAAGAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
               "WhenOpened": "2026-09-24T08:30:39.008Z",
+=======
+              "DocumentIndex": 0,
+              "Title": "main.c",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "RelativeDocumentMoniker": "Project\\main.c",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "RelativeToolTip": "Project\\main.c",
+              "ViewState": "AgIAADMAAAAAAAAAAAAAABYAAAAyAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-09-24T09:37:40.4Z",
+>>>>>>> 5abae1037f8252c7ae2975b334d204f96bfe4417
               "EditorCaption": ""
             },
             {

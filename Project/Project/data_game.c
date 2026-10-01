@@ -28,6 +28,9 @@ const CatalogEntry catalog[NUM_CATALOG] = {
     { CO_KESTREL, MODEL_WISP,     3,   650 },
     { CO_KESTREL, MODEL_HOUND,    3,   600 },
     { CO_KESTREL, MODEL_STATIC,   3,   700 },
+    { CO_KESTREL, MODEL_SNARE,    3,   650 },
+    { CO_KESTREL, MODEL_HALO,     3,   700 },
+    { CO_KESTREL, MODEL_VANTAGE,  3,   650 },
     { CO_HELIOS,  MODEL_LONGBOW,  5,  1150 },
     { CO_HELIOS,  MODEL_HAVOC,    5,  1250 },
 };
