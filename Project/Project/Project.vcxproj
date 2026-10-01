@@ -21,6 +21,7 @@
   <ItemGroup>
     <ClCompile Include="main.c" />
     <ClCompile Include="display.c" />
+    <ClCompile Include="transition.c" />
     <ClCompile Include="ui_map.c" />
     <ClCompile Include="ui_starter.c" />
     <ClCompile Include="world.c" />
@@ -42,6 +43,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="display.h" />
+    <ClInclude Include="transition.h" />
     <ClInclude Include="world.h" />
     <ClInclude Include="battle.h" />
     <ClInclude Include="mech.h" />

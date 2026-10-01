@@ -51,6 +51,11 @@ extern int starterSlot;
 extern int obtainedStarters;
 
 // ============ ENCOUNTERS ============
+// A trainer watches the tile it faces (and one further tile per extra
+// sightRange). Stepping into a watched tile starts the intro: the trainer's
+// comms bubble appears, a short transition wipe plays, then the battle loads.
+#define TRAINER_INTRO_TIME 1.6f     // seconds the bubble is up before the wipe
+
 typedef struct {
     char name[32];
     int faction;
@@ -66,6 +71,7 @@ typedef struct {
     int teamRevisions[MAX_TEAM];
     int numMechs;
     int numDefeated;
+    int sightRange;                 // tiles ahead it watches (0 = none)
 } Trainer;
 
 #define NUM_TRAINERS 17                // hubs and routes, plus the Omega boss

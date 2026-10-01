@@ -2,6 +2,7 @@
 #include "battle.h"
 #include "game.h"
 #include "ui.h"
+#include "transition.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -78,6 +79,11 @@ static int justEnteredZone = 0;
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
+
+// Trainer sighting: which trainer spotted us, and the intro phase
+static int spottedTrainer = -1;
+static float spotTimer = 0;             // counts up
+static int spotPhase = 0;               // 0 = none, 1 = bubble, 2 = wipe
 
 // ============ MAP GEN HELPERS ============
 static void setTile(int x, int y, int t) {
@@ -334,6 +340,8 @@ static int isRouteTile(int x, int y) {
 }
 
 // ============ TRAINERS ============
+// The final field of each initializer is sightRange: how many tiles ahead the
+// trainer watches. Stepping into a watched tile starts the intro sequence.
 static void initTrainers(void) {
     // --- Alpha hub ---
     trainers[0] = (Trainer){
@@ -341,21 +349,21 @@ static void initTrainers(void) {
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
         "Head east or south when you're ready.",
-        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0
+        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0, 1
     };
     trainers[1] = (Trainer){
         "SCOUT DANE", FAC_IRON_LEGION, 20, 8, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Route 1 is at the top of the map.",
-        0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0
+        0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0, 2
     };
     trainers[2] = (Trainer){
         "MECHANIC VOSS", FAC_CHROME_SYNDICATE, 8, 22, 0, { 120, 220, 255, 255 },
         "Nice frame. Let's see if it holds.",
         "Hmph. Not bad at all.",
         "Delta is south, past the west route.",
-        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0
+        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 1
     };
 
     // --- Route 1 (Alpha -> Beta) ---
@@ -364,7 +372,7 @@ static void initTrainers(void) {
         "No one passes this road without a fight.",
         "Fine... you've earned the crossing.",
         "Beta is straight ahead.",
-        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0
+        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 2
     };
 
     // --- Beta hub ---
@@ -373,21 +381,21 @@ static void initTrainers(void) {
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "Gamma lies east. Watch the ruins.",
-        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0
+        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0, 1
     };
     trainers[5] = (Trainer){
         "ENGINEER KESS", FAC_CHROME_SYNDICATE, 70, 20, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "The wasteland is further east still.",
-        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0
+        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0, 1
     };
     trainers[6] = (Trainer){
         "FOREMAN GRELL", FAC_IRON_LEGION, 54, 20, 0, { 200, 180, 100, 255 },
         "This rubble is ours. Move along.",
         "You move well for a freelancer.",
         "Two entrances, don't get lost.",
-        1, 0, { ARCH_ORDNANCE }, { 3 }, 1, 0
+        1, 0, { ARCH_ORDNANCE }, { 3 }, 1, 0, 1
     };
 
     // --- Route 2 (Beta -> Gamma) ---
@@ -396,7 +404,7 @@ static void initTrainers(void) {
         "Transmission intercepted. Terminating.",
         "Transmission... lost.",
         "Gamma's just past me.",
-        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 4, 4 }, 2, 0
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 4, 4 }, 2, 0, 2
     };
 
     // --- Gamma hub ---
@@ -405,14 +413,14 @@ static void initTrainers(void) {
         "You cannot hit what you cannot see.",
         "Even my stealth... failed.",
         "Delta is south. Omega is further.",
-        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0, 2
     };
     trainers[9] = (Trainer){
         "IRON SENTINEL", FAC_IRON_LEGION, 110, 20, 0, { 220, 220, 100, 255 },
         "Perimeter breach. Terminating.",
         "Perimeter... lost.",
         "The long loop is down the east side.",
-        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5 }, 2, 0
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5 }, 2, 0, 2
     };
 
     // --- Route 4 (Delta -> Gamma, east leg) ---
@@ -421,7 +429,7 @@ static void initTrainers(void) {
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
         "Gamma's just north.",
-        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0
+        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0, 2
     };
 
     // --- Route 3 (Alpha -> Delta) ---
@@ -430,7 +438,7 @@ static void initTrainers(void) {
         "Halt. State your business.",
         "Business concluded. Move on.",
         "Delta's to the east from here.",
-        1, 0, { ARCH_SKIRMISHER, ARCH_BRAWLER }, { 4, 4 }, 2, 0
+        1, 0, { ARCH_SKIRMISHER, ARCH_BRAWLER }, { 4, 4 }, 2, 0, 2
     };
 
     // --- Delta hub ---
@@ -439,14 +447,14 @@ static void initTrainers(void) {
         "This foundry forges war. Care to test?",
         "The forge... dims.",
         "Two ways out: east and west.",
-        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER, ARCH_BOMBARD }, { 6, 6, 6 }, 3, 0
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER, ARCH_BOMBARD }, { 6, 6, 6 }, 3, 0, 1
     };
     trainers[13] = (Trainer){
         "ICE RUNNER", FAC_CHROME_SYNDICATE, 70, 42, 0, { 180, 220, 255, 255 },
         "Cold steel cuts deepest.",
         "Frozen solid...",
         "Omega lies east.",
-        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 5, 5 }, 2, 0
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 5, 5 }, 2, 0, 1
     };
 
     // --- Route 5 (Delta -> Omega) ---
@@ -455,7 +463,7 @@ static void initTrainers(void) {
         "That chassis is Legion issue. Drop it.",
         "Legion's really slipping...",
         "Omega is due east.",
-        2, 0, { ARCH_JAMMER, ARCH_ORDNANCE }, { 6, 6 }, 2, 0
+        2, 0, { ARCH_JAMMER, ARCH_ORDNANCE }, { 6, 6 }, 2, 0, 1
     };
 
     // --- Omega hub ---
@@ -464,7 +472,7 @@ static void initTrainers(void) {
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0
+        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0, 2
     };
 
     // --- Omega, far corner: the boss, the machine itself, flanked by escorts.
@@ -474,7 +482,7 @@ static void initTrainers(void) {
         "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
         "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
         "...the Overseer's chassis sits silent.",
-        3, 0, { ARCH_SNIPER, ARCH_OVERSEER, ARCH_BOMBARD, ARCH_JAMMER }, { 10, 12, 10, 9 }, 4, 0
+        3, 0, { ARCH_SNIPER, ARCH_OVERSEER, ARCH_BOMBARD, ARCH_JAMMER }, { 10, 12, 10, 9 }, 4, 0, 2
     };
 }
 
@@ -486,6 +494,10 @@ void worldInit(void) {
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
     justEnteredZone = 1;
+    spottedTrainer = -1;
+    spotTimer = 0;
+    spotPhase = 0;
+    transitionReset();
 }
 
 // ============ STARTERS ============
@@ -653,6 +665,67 @@ void worldUpdate(float dt, GameState* state) {
         pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
     }
 
+    // ---- Trainer intro sequence: bubble, then wipe, then battle ----
+    if (spotPhase != 0) {
+        spotTimer += dt;
+        if (spotPhase == 1) {
+            // The comms bubble is up; allow the player to skip ahead.
+            if (spotTimer >= TRAINER_INTRO_TIME || confirmPressed()) {
+                spotPhase = 2;
+                spotTimer = 0;
+                messageTimer = 0;
+                consumeInput();
+                // Hand the close off to the shared transition module so the
+                // battle side can pick up where the world leaves off.
+                transitionStartClose(trainers[spottedTrainer].name, trainers[spottedTrainer].color);
+            }
+            return;
+        }
+        // spotPhase == 2: the shared transition is running the close.
+        transitionUpdate(dt);
+        if (transition.phase == 2 && transition.t >= TRANSITION_CLOSE_TIME + TRANSITION_HOLD_TIME) {
+            int t = spottedTrainer;
+            spottedTrainer = -1;
+            spotPhase = 0;
+            spotTimer = 0;
+            if (triggerTrainerEncounter(t)) {
+                // Switch the wipe to its opening half; the battle screen
+                // draws it, so the reveal happens over the fight.
+                transition.phase = 3;
+                transition.t = 0;
+                transition.cover = 1.0f;
+                *state = STATE_BATTLE;
+                return;
+            }
+            transitionReset();
+        }
+        return;
+    }
+
+    // ---- Trainer line of sight ----
+    // A trainer watches the tile(s) it faces. Stepping into one starts the
+    // intro: the trainer speaks, then the wipe plays.
+    if (!moving) {
+        for (int i = 0; i < NUM_TRAINERS; i++) {
+            Trainer* t = &trainers[i];
+            if (t->defeated || t->sightRange <= 0) continue;
+            int sx = t->x, sy = t->y;
+            int dx = (t->facing == 3) - (t->facing == 2);
+            int dy = (t->facing == 0) - (t->facing == 1);
+            for (int d = 0; d < t->sightRange; d++) {
+                sx += dx;
+                sy += dy;
+                if (sx == px && sy == py) {
+                    spottedTrainer = i;
+                    spotPhase = 1;
+                    spotTimer = 0;
+                    showMessage(TextFormat("\"%s\"", t->introLine), TRAINER_INTRO_TIME);
+                    return;
+                }
+            }
+        }
+    }
+
     if (arrived && !justEnteredZone && isEncounterTile(px, py)) {
         int region = worldRegionAt(px, py);
         int rate;
@@ -681,12 +754,6 @@ void worldUpdate(float dt, GameState* state) {
         else if (facing == 2) fx--;
         else if (facing == 3) fx++;
 
-        for (int i = 0; i < NUM_TRAINERS; i++) {
-            if (trainers[i].x == fx && trainers[i].y == fy) {
-                if (triggerTrainerEncounter(i)) { *state = STATE_BATTLE; return; }
-                break;
-            }
-        }
         if (getTile(fx, fy) == T_TERMINAL) {
             *state = STATE_TERMINAL;
             return;
@@ -705,11 +772,9 @@ void worldUpdate(float dt, GameState* state) {
     int nx = px + dx, ny = py + dy;
     facing = dir;
 
+    // Trainers are solid; you can't walk onto them
     for (int i = 0; i < NUM_TRAINERS; i++) {
-        if (trainers[i].x == nx && trainers[i].y == ny) {
-            if (fresh && triggerTrainerEncounter(i)) *state = STATE_BATTLE;
-            return;
-        }
+        if (trainers[i].x == nx && trainers[i].y == ny) return;
     }
 
     if (isSolid(nx, ny)) {
@@ -752,6 +817,26 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
         DrawText("!", screenX + 16, (int)(screenY - 14 + bounce), 22, (Color) { 255, 220, 80, 255 });
         if ((int)(glowTimer * 3) % 2 == 0)
             DrawCircle(screenX + 20, screenY - 4, 3, (Color) { 255, 80, 80, 255 });
+
+        // Sight cone: show which tiles the trainer is watching, so the player
+        // can read the trigger before walking into it.
+        if (t->sightRange > 0) {
+            int dx = (t->facing == 3) - (t->facing == 2);
+            int dy = (t->facing == 0) - (t->facing == 1);
+            float blink = 0.5f + 0.5f * sinf(glowTimer * 3);
+            for (int d = 0; d < t->sightRange; d++) {
+                int tx = t->x + dx * (d + 1);
+                int ty = t->y + dy * (d + 1);
+                Rectangle r = { (float)(tx * TILE_SIZE + 4), (float)(ty * TILE_SIZE + 4),
+                                (float)(TILE_SIZE - 8), (float)(TILE_SIZE - 8) };
+                DrawRectangleLinesEx(r, 1, (Color) { primary.r, primary.g, primary.b, (unsigned char)(60 + 60 * blink) });
+                // Center pip in the watched tile
+                DrawRectangle((int)(r.x + r.width / 2 - 1), (int)(r.y + r.height / 2 - 1), 2, 2,
+                    (Color) {
+                    primary.r, primary.g, primary.b, (unsigned char)(120 + 80 * blink)
+                });
+            }
+        }
     }
 }
 
@@ -945,6 +1030,9 @@ static void drawHud(void) {
         DrawRectangleLines(40, SCREEN_H - 130, screenW - 80, 90, (Color) { 80, 220, 255, 220 });
         DrawText(">> COMMS", 55, SCREEN_H - 122, 13, (Color) { 100, 240, 255, 255 });
         DrawText(message, 55, SCREEN_H - 100, 20, (Color) { 200, 240, 255, 255 });
+        // While a trainer is speaking, hint that the player can skip ahead
+        if (spotPhase == 1)
+            DrawText("[Z/CLICK] to engage", screenW - 260, SCREEN_H - 60, 14, (Color) { 255, 220, 100, 255 });
     }
 }
 
@@ -985,4 +1073,10 @@ void worldDraw(void) {
     EndMode2D();
 
     drawHud();
+
+    // The shared wipe draws on top of the world, spanning the whole canvas
+    // (raw canvas coordinates, not the fixed-layout camera).
+    if (transition.active && transition.phase == 2) {
+        transitionDraw();
+    }
 }

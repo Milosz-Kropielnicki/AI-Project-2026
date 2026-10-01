@@ -3,6 +3,7 @@
 #include "battle.h"
 #include "world.h"
 #include "audio.h"
+#include "transition.h"
 #include <stdio.h>
 #include <string.h>
 #include <math.h>
@@ -81,33 +82,33 @@ static void addFloatText(Vector2 pos, const char* text, int size, Color c) {
         }
 }
 
-// Particles that say what hit: sparks, glowing motes, rising embers, arcs,
-// fireball and smoke, dripping chemicals.
 static void munitionBurst(Vector2 at, int munition, Color c) {
     switch (munition) {
     case MUN_BALLISTIC:
         for (int i = 0; i < 20; i++) {
             float a = frandRange(0, 2 * PI), sp = frandRange(160, 400);
-            spawnParticleG(at, (Vector2) { cosf(a) * sp, sinf(a) * sp - 60 }, 0.35f, 2, (Color) { 255, 230, 150, 255 }, 600);
+            spawnParticleG(at, (Vector2) { cosf(a)* sp, sinf(a)* sp - 60 }, 0.35f, 2, (Color) { 255, 230, 150, 255 }, 600);
         }
         break;
     case MUN_ENERGY:
         for (int i = 0; i < 16; i++) {
             float a = frandRange(0, 2 * PI), sp = frandRange(20, 90);
-            spawnParticleG(at, (Vector2) { cosf(a) * sp, sinf(a) * sp - 30 }, 0.9f, 4, c, -20);
+            spawnParticleG(at, (Vector2) { cosf(a)* sp, sinf(a)* sp - 30 }, 0.9f, 4, c, -20);
         }
         break;
     case MUN_THERMAL:
         for (int i = 0; i < 24; i++) {
             Color ember = GetRandomValue(0, 1) ? (Color) { 255, 140, 40, 255 } : (Color) { 255, 70, 30, 255 };
             spawnParticleG((Vector2) { at.x + frandRange(-30, 30), at.y + frandRange(-20, 20) },
-                (Vector2) { frandRange(-50, 50), frandRange(-150, -40) }, 1.1f, 3, ember, -40);
+                (Vector2) {
+                frandRange(-50, 50), frandRange(-150, -40)
+            }, 1.1f, 3, ember, -40);
         }
         break;
     case MUN_ELECTROMAGNETIC:
         for (int i = 0; i < 22; i++) {
             float a = frandRange(0, 2 * PI), sp = frandRange(200, 440);
-            spawnParticleG(at, (Vector2) { cosf(a) * sp, sinf(a) * sp }, 0.18f, 2,
+            spawnParticleG(at, (Vector2) { cosf(a)* sp, sinf(a)* sp }, 0.18f, 2,
                 GetRandomValue(0, 2) ? c : WHITE, 0);
         }
         break;
@@ -115,12 +116,16 @@ static void munitionBurst(Vector2 at, int munition, Color c) {
         spawnBurst(at, 26, (Color) { 255, 170, 70, 255 }, 80, 300, 0.7f);
         for (int i = 0; i < 12; i++)
             spawnParticleG((Vector2) { at.x + frandRange(-25, 25), at.y + frandRange(-15, 15) },
-                (Vector2) { frandRange(-30, 30), frandRange(-60, -20) }, 1.5f, 8, (Color) { 90, 90, 100, 160 }, -10);
+                (Vector2) {
+            frandRange(-30, 30), frandRange(-60, -20)
+        }, 1.5f, 8, (Color) { 90, 90, 100, 160 }, -10);
         break;
     case MUN_CHEMICAL:
         for (int i = 0; i < 18; i++)
             spawnParticleG((Vector2) { at.x + frandRange(-20, 20), at.y },
-                (Vector2) { frandRange(-90, 90), frandRange(-140, -30) }, 0.9f, 3, c, 420);
+                (Vector2) {
+            frandRange(-90, 90), frandRange(-140, -30)
+        }, 0.9f, 3, c, 420);
         break;
     default: break;
     }
@@ -130,8 +135,6 @@ static void shakeScreen(float amount, float time) {
     if (amount > shakeAmount) { shakeAmount = amount; shakeTimer = time; }
 }
 
-// Impact: munition particles and sound, Armor and Integrity numbers kept
-// apart so the split is readable, shake - or a MISS marker.
 static void impact(Effect* e, int burst, float smin, float smax, float life, float shake, float shakeTime, float missOffset) {
     if (e->hit) {
         if (burst > 0) spawnBurst(e->to, burst / 2, e->color, smin, smax, life);
@@ -209,7 +212,9 @@ static void updateEffects(float dt) {
             if (p < 0.9f && GetRandomValue(0, 100) < 70) {
                 float jx = (float)GetRandomValue(-25, 25), jy = (float)GetRandomValue(-25, 25);
                 spawnParticle((Vector2) { cur.x + jx, cur.y + jy },
-                    (Vector2) { (float)GetRandomValue(-80, 80), (float)GetRandomValue(-80, 80) }, 0.25f, 3, e->color);
+                    (Vector2) {
+                    (float)GetRandomValue(-80, 80), (float)GetRandomValue(-80, 80)
+                }, 0.25f, 3, e->color);
             }
             if (!e->damageShown && p >= 0.7f) { e->damageShown = 1; impact(e, 18, 100, 300, 0.5f, 7, 0.25f, 0); }
             break;
@@ -224,7 +229,7 @@ static void updateEffects(float dt) {
                 else if (e->munition >= 0) sfxImpact(e->munition);
             }
             break;
-        case FX_SWITCH:   // the new mech drops in on a column of light
+        case FX_SWITCH:
             if (p < 0.6f && GetRandomValue(0, 100) < 70)
                 spawnParticleG((Vector2) { e->to.x + frandRange(-28, 28), e->to.y + 40 }, (Vector2) { 0, -frandRange(120, 260) },
                     0.5f, 3, e->color, 0);
@@ -299,7 +304,7 @@ static void drawEffects(void) {
             DrawText(txt, (int)(e->to.x - MeasureText(txt, 16) / 2), (int)(e->to.y - 90), 16, (Color) { 200, 255, 240, 255 });
             break;
         }
-        case FX_PROVOKE: {   // expanding war-horn rings and a banner
+        case FX_PROVOKE: {
             for (int k = 0; k < 3; k++) {
                 float q = p - k * 0.15f;
                 if (q <= 0) continue;
@@ -374,12 +379,16 @@ static void drawEffects(void) {
                 float rp = p - k * 0.15f;
                 if (rp > 0 && rp < 1)
                     DrawCircleLines((int)e->to.x, (int)e->to.y, rp * 120,
-                        (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(255 * (1 - rp)) });
+                        (Color) {
+                    e->color.r, e->color.g, e->color.b, (unsigned char)(255 * (1 - rp))
+                });
             }
             for (int k = 0; k < 6; k++) {
                 int ny = (int)e->to.y + GetRandomValue(-50, 50);
                 DrawLine((int)e->to.x + GetRandomValue(-60, 0), ny, (int)e->to.x + GetRandomValue(0, 60), ny,
-                    (Color) { e->color.r, e->color.g, e->color.b, 120 });
+                    (Color) {
+                    e->color.r, e->color.g, e->color.b, 120
+                });
             }
             break;
         case FX_MISSILE: {
@@ -391,7 +400,9 @@ static void drawEffects(void) {
                 for (int k = 0; k < 3; k++) {
                     float ofs = (k + 1) * 6.0f;
                     DrawCircleV((Vector2) { mpos.x - ofs, mpos.y + ofs * 0.5f }, 6.0f - k * 2,
-                        (Color) { 255, 180, 80, (unsigned char)(200 - k * 60) });
+                        (Color) {
+                        255, 180, 80, (unsigned char)(200 - k * 60)
+                    });
                 }
             }
             else {
@@ -432,19 +443,15 @@ static void drawDamageNums(void) {
 }
 
 // ============ TOOLTIPS ============
-// Hover anything with a number on it to see what it means. Hot areas are
-// registered while drawing; the first one under the mouse wins and is drawn
-// last, on top of everything.
 static struct {
     int active;
     char title[64];
     char body[400];
     Explanation why;
     int hasWhy;
-    int fixed;          // keyboard info box: drawn at a fixed spot, not at the mouse
+    int fixed;
 } tip;
 
-// Wraps text to width; draws it when draw is set. Returns the lines used.
 static int wrapText(const char* text, int x, int y, int width, int size, Color c, int draw) {
     char line[200] = "";
     int lines = 0;
@@ -499,11 +506,11 @@ static void tipDraw(void) {
     DrawRectangleLines(x, y, w, h, (Color) { 120, 220, 255, 230 });
     DrawText(tip.title, x + pad, y + pad, 14, (Color) { 150, 230, 255, 255 });
     int ly = y + pad + 18;
-    if (tip.body[0]) ly += wrapText(tip.body, x + pad, ly, w - pad * 2, size, (Color) { 220, 230, 240, 255 }, 1) * (size + 3) + 4;
+    if (tip.body[0]) ly += wrapText(tip.body, x + pad, ly, w - pad * 2, size, (Color) { 220, 230, 240, 255 }, 1)* (size + 3) + 4;
     if (tip.hasWhy)
         for (int i = 0; i < tip.why.n; i++)
             ly += wrapText(tip.why.line[i], x + pad, ly, w - pad * 2, size,
-                tip.why.warn[i] ? (Color) { 255, 150, 110, 255 } : (Color) { 190, 225, 200, 255 }, 1) * (size + 3);
+                tip.why.warn[i] ? (Color) { 255, 150, 110, 255 } : (Color) { 190, 225, 200, 255 }, 1)* (size + 3);
 }
 
 static const char* munitionPlain(int m) {
@@ -520,31 +527,25 @@ static const char* munitionPlain(int m) {
 // ============ BATTLE SCREEN ============
 static int weaponSel = 0;
 static int reselectAfterShot = 0;
-static int formulaView = 0;     // [V] preview panel: plain summary / full formula
-static int infoOpen = 0;        // [I] full breakdown of the selected weapon
+static int formulaView = 0;
+static int infoOpen = 0;
 static int logOpen = 0, logSel = 0;
-static int pickerOpen = 0, pickerSel = 0, pickerDeploy = 0;   // [S] switch / [D] deploy picker
-static int autoDeployRound = -1;   // the deploy picker opens by itself once per round
+static int pickerOpen = 0, pickerSel = 0, pickerDeploy = 0;
+static int autoDeployRound = -1;
 static int lastPhase = -1, heatWasCritical = 0, lastActor = -1;
 static const LogEntry* lastSeenLog = NULL;
 
-// Layout (3v3): enemy HUDs down the left, the player's down the right with the
-// commanded mech's reactor and the team cards under them, the machines in the
-// middle (enemy row above, player row below), the log strip, then the bottom
-// panel: weapons of the commanded mech on the left, the preview on the right.
 #define PANEL_Y (SCREEN_H - 180)
 #define ROW_Y (PANEL_Y + 26)
 #define SPRITE_SCALE 7
 
-// Formation rows: each side's Front row faces the other side, the Rear row sits
-// behind it, and a flanking mech steps out past its Front row
 #define ENEMY_REAR_Y 70
 #define ENEMY_FRONT_Y 112
 #define ENEMY_FLANK_Y 134
 #define PLAYER_FRONT_Y 288
 #define PLAYER_REAR_Y 326
 #define PLAYER_FLANK_Y 266
-static float rowY[2][MAX_FIELD];    // eased, so a mech slides when it changes position
+static float rowY[2][MAX_FIELD];
 
 static float laneRowY(int side, int pos) {
     const Combatant* c = battleField(side, pos);
@@ -588,7 +589,7 @@ static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 
 #define PICKER_X 130
 #define PICKER_W 540
 #define PICKER_ROW 46
-static int pickerRows(int* slots) {   // standing reserves; a forced deploy adds a last row to yield
+static int pickerRows(int* slots) {
     int n = battleSwitchList(slots, MAX_TEAM);
     if (pickerDeploy && battle.phase == BP_DEPLOY) slots[n++] = -1;
     return n;
@@ -610,10 +611,12 @@ void uiBattleOpen(void) {
     lastSeenLog = NULL;
     clearEffects();
     memset(rowY, 0, sizeof(rowY));
-    easeRows(0);   // snap into formation
+    easeRows(0);
+    // IMPORTANT: do NOT reset the transition here. It was handed off from the
+    // world side (phase 3 = opening) and needs to survive into the battle so
+    // the panels can reverse and reveal the fight.
 }
 
-// Sounds for things that happen inside the battle logic
 static void battleSounds(void) {
     if ((int)battle.phase != lastPhase) {
         if (battle.phase == BP_VICTORY) sfxPlay(battle.hacked ? SFX_HACK : SFX_VICTORY);
@@ -627,11 +630,10 @@ static void battleSounds(void) {
     }
     const MechStats* s = &battleFieldPlayer()->mech->stats;
     int critical = s->maxHeat > 0 && s->heat >= s->maxHeat * HEAT_CRITICAL;
-    if (critical && !heatWasCritical && lastActor == battle.actingSlot) sfxPlay(SFX_HEAT_WARN);   // not when just tabbing to a hot mech
+    if (critical && !heatWasCritical && lastActor == battle.actingSlot) sfxPlay(SFX_HEAT_WARN);
     heatWasCritical = critical;
 }
 
-// The battle log overlay takes over input while open
 static void updateLogOverlay(void) {
     int n = battleLogCount();
     if (IsKeyPressed(KEY_L) || IsKeyPressed(KEY_ESCAPE) || clickedOn(logStripRect())) { consumeInput(); logOpen = 0; return; }
@@ -659,8 +661,6 @@ static void openPicker(int deploy, int preselectSlot) {
     for (int i = 0; i < n; i++) if (slots[i] == preselectSlot) pickerSel = i;
 }
 
-// Switch picker (the commanded mech swaps with a reserve) / deploy picker (a
-// reserve fills an empty position; forced when nobody is on the field)
 static void updatePicker(void) {
     int forced = pickerDeploy && battle.phase == BP_DEPLOY;
     int slots[MAX_TEAM + 1], n = pickerRows(slots);
@@ -688,6 +688,18 @@ static void updatePicker(void) {
 }
 
 void uiBattleUpdate(float dt, GameState* state) {
+    // While the wipe is opening over the battle, tick the transition and
+    // ease rows / effects so nothing snaps when the panels lift - but do
+    // NOT run the battle logic. The fight is frozen behind the closed
+    // panels so the reveal shows its opening state, not an already-started
+    // battle. Once phase 3 ends, the next frame runs normally.
+    if (transition.active && transition.phase == 3) {
+        transitionUpdate(dt);
+        easeRows(dt);
+        updateEffects(dt);
+        return;
+    }
+
     battleUpdate(dt);
     easeRows(dt);
     updateEffects(dt);
@@ -738,7 +750,6 @@ void uiBattleUpdate(float dt, GameState* state) {
         }
         return;
     }
-    // Deploy picker: forced with nobody on the field, offered once a round otherwise
     if (!pickerOpen && !battleBusy() && battleCanDeploy()
         && (battle.phase == BP_DEPLOY || autoDeployRound != battle.round)) {
         autoDeployRound = battle.round;
@@ -747,7 +758,6 @@ void uiBattleUpdate(float dt, GameState* state) {
     if (pickerOpen) { updatePicker(); return; }
     if (battle.phase != BP_PLAYER_TURN || battleBusy()) return;
 
-    // Which mech, which target: TAB / click a friendly, Q / E / click an enemy
     if (IsKeyPressed(KEY_TAB) || clickedOn(nextButtonRect())) { consumeInput(); battleNextActor(); sfxPlay(SFX_UI_MOVE); return; }
     if (IsKeyPressed(KEY_Q)) { battleCycleTarget(-1); sfxPlay(SFX_UI_MOVE); }
     if (IsKeyPressed(KEY_E)) { battleCycleTarget(1); sfxPlay(SFX_UI_MOVE); }
@@ -761,18 +771,15 @@ void uiBattleUpdate(float dt, GameState* state) {
     }
     if (reselectAfterShot) { reselectAfterShot = 0; selectFireableWeapon(); }
 
-    // S is the switch key here, so weapons cycle with the arrow keys
     if (IsKeyPressed(KEY_DOWN) || IsKeyPressed(KEY_RIGHT)) { weaponSel = (weaponSel + 1) % MAX_WEAPONS; sfxPlay(SFX_UI_MOVE); }
-    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT))    { weaponSel = (weaponSel + MAX_WEAPONS - 1) % MAX_WEAPONS; sfxPlay(SFX_UI_MOVE); }
+    if (IsKeyPressed(KEY_UP) || IsKeyPressed(KEY_LEFT)) { weaponSel = (weaponSel + MAX_WEAPONS - 1) % MAX_WEAPONS; sfxPlay(SFX_UI_MOVE); }
 
-    // Mouse: hovering selects a weapon (and shows its preview), clicking fires it
     int clickedWeapon = 0;
     for (int i = 0; i < MAX_WEAPONS; i++) {
         if (mouseMoved() && mouseOver(weaponButtonRect(i))) weaponSel = i;
         if (clickedOn(weaponButtonRect(i))) { weaponSel = i; clickedWeapon = 1; }
     }
 
-    // [D] deploy, [S] switch (or click a reserve card)
     int cardSlot = -1;
     for (int i = 0; i < battle.side[SIDE_PLAYER].count; i++)
         if (clickedOn(reserveCardRect(i)) && battleSlotStanding(SIDE_PLAYER, i) && !battleSlotOnField(SIDE_PLAYER, i)) cardSlot = i;
@@ -800,7 +807,6 @@ void uiBattleUpdate(float dt, GameState* state) {
         else { snprintf(battle.log, sizeof(battle.log), "PROVOKE: %s", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
-    // [F] swap lanes, [G] go out on the flank
     int laneKey = IsKeyPressed(KEY_F) || clickedOn(laneButtonRect());
     int flankKey = IsKeyPressed(KEY_G) || clickedOn(flankButtonRect());
     if (laneKey || flankKey) {
@@ -846,11 +852,10 @@ static void drawStarfield(int count, float speed) {
     }
 }
 
-// Pip states: 0 = empty, 1 = charged, 2 = charged but spent by the previewed shot
 static void drawEnergyPip(int cx, int cy, int r, int state, int i) {
     float blink = 0.5f + 0.5f * sinf(glowTimer * 8);
     Color fill = state == 1 ? (Color) { 60, 200, 255, 255 }
-        : state == 2 ? (Color) { 60, 200, 255, (unsigned char)(90 + 120 * blink) } : (Color) { 40, 45, 60, 255 };
+    : state == 2 ? (Color) { 60, 200, 255, (unsigned char)(90 + 120 * blink) } : (Color) { 40, 45, 60, 255 };
     Color edge = state ? (Color) { 180, 240, 255, 255 } : (Color) { 70, 80, 100, 255 };
     if (state == 1) {
         float p = 0.5f + 0.5f * sinf(glowTimer * 5 + i);
@@ -861,7 +866,6 @@ static void drawEnergyPip(int cx, int cy, int r, int state, int i) {
     DrawCircle(cx - r / 3, cy - r / 3, r / 4.0f, (Color) { 255, 255, 255, (unsigned char)(state ? 220 : 40) });
 }
 
-// Blinking segment over a bar showing how much the previewed attack would remove
 static void drawLossGhost(int x, int y, int w, int h, int value, int loss, int max) {
     if (loss <= 0 || max <= 0) return;
     if (loss > value) loss = value;
@@ -871,7 +875,6 @@ static void drawLossGhost(int x, int y, int w, int h, int value, int loss, int m
     DrawRectangle(x0, y + 1, x1 - x0, h - 2, (Color) { 255, 255, 255, (unsigned char)(80 + 120 * blink) });
 }
 
-// Heat gauge with 25% ticks and a blinking preview of the next shot's heat
 static void drawHeatGauge(int x, int y, int w, int h, int heat, int maxHeat, int addHeat) {
     drawHeatBar(x, y, w, h, heat, maxHeat);
     if (addHeat > 0 && maxHeat > 0) {
@@ -886,7 +889,6 @@ static void drawHeatGauge(int x, int y, int w, int h, int heat, int maxHeat, int
     for (int q = 1; q < 4; q++) DrawLine(x + w * q / 4, y, x + w * q / 4, y + h, (Color) { 60, 30, 20, 255 });
 }
 
-// Compact effective values; red/green when battle modifiers move them off the base stat
 static void drawReadouts(const MechStats* s, int mobility, int accuracy, int x, int y) {
     Color base = { 170, 200, 230, 255 }, down = { 255, 130, 120, 255 }, up = { 120, 255, 160, 255 };
     DrawText(TextFormat("ACC %d", accuracy), x, y, 10, accuracy < s->accuracy ? down : accuracy > s->accuracy ? up : base);
@@ -909,8 +911,6 @@ static int previewSelected(AttackPreview* p) {
     return battle.phase == BP_PLAYER_TURN && battle.dialogue == DLG_NONE && battlePreviewPlayer(weaponSel, p);
 }
 
-// What the selected weapon would do to each enemy position (primary + splash), for the HUD ghosts.
-// framePrimary is where the shot lands first: the target, or the Front guard covering it.
 static int framePreviewOk[MAX_FIELD];
 static AttackPreview framePreview[MAX_FIELD];
 static int framePrimary = -1;
@@ -925,7 +925,6 @@ static void computeFramePreviews(void) {
     if (n > 0) framePrimary = pos[0];
 }
 static int intercepted(void) { return framePrimary >= 0 && framePrimary != battle.playerTarget; }
-// The enemy the selected weapon actually hits first
 static const Combatant* previewVictim(void) {
     const Combatant* c = battleField(SIDE_ENEMY, framePrimary);
     return c ? c : battleFieldEnemy();
@@ -938,7 +937,6 @@ static const char* threatRules(void) {
         THREAT_BUFF, THREAT_PROVOKE, THREAT_PASSIVE, THREAT_PASSIVE_IRONCLAD, THREAT_DECAY, THREAT_MAX);
 }
 
-// Threat bar: yellow to red as it fills, pulsing orange frame while provoking
 static void drawThreatBar(int x, int y, int w, int h, const Combatant* c) {
     float f = c->threat / (float)THREAT_MAX;
     Color fill = { 255, (unsigned char)(220 - 170 * f), 60, 255 };
@@ -950,7 +948,6 @@ static void drawThreatBar(int x, int y, int w, int h, const Combatant* c) {
     }
 }
 
-// FRONT / REAR / FLANK tag, right-aligned at rx. A Rear mech nobody covers is red.
 static Color laneColor(int side, int pos, const Combatant* c) {
     if (c->flanking) return (Color) { 255, 160, 70, 255 };
     if (c->lane == LANE_FRONT) return (Color) { 210, 220, 240, 255 };
@@ -1000,13 +997,13 @@ static const char* pendingText(const Combatant* c) {
     return pending ? TextFormat("%d QUEUED", pending) : NULL;
 }
 
-// One enemy on the field; the target gets a pulsing frame and the selected
-// weapon's damage ghosts (splash targets too)
 static void drawEnemySlot(int pos) {
     Rectangle r = hudRect(SIDE_ENEMY, pos);
     const Combatant* c = battleField(SIDE_ENEMY, pos);
-    if (!c) { drawEmptySlot(r, TextFormat("POSITION %d  EMPTY", pos + 1), battleSideStanding(SIDE_ENEMY) > battleFieldCount(SIDE_ENEMY)
-        ? "A reserve moves up next enemy phase" : NULL); return; }
+    if (!c) {
+        drawEmptySlot(r, TextFormat("POSITION %d  EMPTY", pos + 1), battleSideStanding(SIDE_ENEMY) > battleFieldCount(SIDE_ENEMY)
+            ? "A reserve moves up next enemy phase" : NULL); return;
+    }
     int x = (int)r.x, y = (int)r.y, target = pos == battle.playerTarget && battle.phase == BP_PLAYER_TURN;
     const Mech* m = c->mech;
     const MechStats* s = &m->stats;
@@ -1033,7 +1030,9 @@ static void drawEnemySlot(int pos) {
         drawLossGhost(x + 8, y + 32, 150, 6, s->integrity, framePreview[pos].integrityDamage, s->maxIntegrity);
         drawLossGhost(x + 8, y + 42, 150, 5, s->armor, framePreview[pos].armorDamage, s->maxArmor);
         if (!target && !guarding) DrawText(TextFormat("SPLASH %d%%", (int)roundf(framePreview[pos].splashMod * 100)), x + 124, y + 6, 10,
-            (Color) { 255, 170, 90, 255 });
+            (Color) {
+            255, 170, 90, 255
+        });
     }
     DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), x + 164, y + 30, 10, WHITE);
     DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), x + 164, y + 40, 10, (Color) { 150, 190, 240, 255 });
@@ -1041,18 +1040,17 @@ static void drawEnemySlot(int pos) {
     drawThreatBar(x + 8, y + 64, 224, 2, c);
     tipText((Rectangle) { (float)x + 8, (float)y + 62, 224, 6 }, TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : ""),
         c->provoking ? "It is PROVOKING: your single-target weapons must aim at it until its next turn. Area and cone weapons still reach the others."
-                     : threatRules());
+        : threatRules());
     tipText((Rectangle) { (float)x + 8, (float)y + 30, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "The machine's health. At 0 it is scrapped. Penetrating damage and anything Armor can't absorb lands here.");
     tipText((Rectangle) { (float)x + 8, (float)y + 41, 230, 9 }, TextFormat("ARMOR %d/%d", s->armor, s->maxArmor),
         "A second pool on top of Integrity. Each hit splits: the weapon's penetration % goes straight to Integrity, "
         "the rest is soaked by Armor until it runs out, then spills over. Armor Analysis and Siege add penetration.");
     tipText((Rectangle) { (float)x, (float)y, 118, 18 }, TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)),
-        target && intercepted() ? TextFormat("Covered: this weapon would hit %s in the Front instead. Area and cone weapons "
+        target&& intercepted() ? TextFormat("Covered: this weapon would hit %s in the Front instead. Area and cone weapons "
             "reach it.", previewVictim()->mech->name) : "Click (or Q / E) to target this machine.");
 }
 
-// One of the player's field mechs: acting / done / locked state, pools and heat
 static void drawPlayerSlot(int pos) {
     Rectangle r = hudRect(SIDE_PLAYER, pos);
     const Combatant* c = battleField(SIDE_PLAYER, pos);
@@ -1065,7 +1063,7 @@ static void drawPlayerSlot(int pos) {
     float blink = 0.5f + 0.5f * sinf(glowTimer * 6);
     DrawRectangleRec(r, acting ? (Color) { 26, 42, 64, 240 } : (Color) { 18, 26, 42, 230 });
     Color edge = acting ? (Color) { accent.r, accent.g, accent.b, (unsigned char)(170 + 85 * blink) }
-        : c->done ? (Color) { 70, 80, 100, 220 } : (Color) { accent.r, accent.g, accent.b, 160 };
+    : c->done ? (Color) { 70, 80, 100, 220 } : (Color) { accent.r, accent.g, accent.b, 160 };
     DrawRectangleLinesEx(r, acting ? 2.0f : 1.0f, edge);
     DrawText(m->name, x + 8, y + 4, 14, c->done && !acting ? (Color) { 150, 160, 180, 255 } : accent);
     drawLaneBadge(x + 234, y + 4, SIDE_PLAYER, pos, c);
@@ -1083,7 +1081,6 @@ static void drawPlayerSlot(int pos) {
         ? (Color) { 255, 170, 80, 255 } : (Color) { 255, 170, 100, 255 };
     DrawText(heatFrac >= HEAT_CRITICAL ? "HEAT CRIT" : TextFormat("HEAT %d/%d", s->heat, s->maxHeat), x + 164, y + 38, 10, hc);
     drawReadouts(s, combatMobility(c), combatAccuracy(c), x + 8, y + 50);
-    // Energy pips and status
     for (int e = 0; e < (s->maxEnergy > s->energy ? s->maxEnergy : s->energy); e++)
         DrawCircle(x + 12 + e * 11, y + 66, 4, e < s->energy ? (Color) { 60, 200, 255, 255 } : (Color) { 40, 45, 60, 255 });
     int loudest = 1;
@@ -1109,7 +1106,6 @@ static void drawPlayerSlot(int pos) {
         : c->done ? "Already acted this phase (or arrived this round)." : "Click (or TAB) to command this mech.");
 }
 
-// Enemy squad header and names: the player knows what can come in, just not when
 static void drawEnemyHeader(void) {
     int x = 8, y = 226;
     const Side* sd = &battle.side[SIDE_ENEMY];
@@ -1140,7 +1136,6 @@ static void drawEnemyHeader(void) {
     }
 }
 
-// Reactor of the mech being commanded
 static void drawReactor(void) {
     const Combatant* c = battleFieldPlayer();
     const MechStats* s = &c->mech->stats;
@@ -1180,7 +1175,6 @@ static void drawReactor(void) {
     }
 }
 
-// Six small cards: the whole team as it stands in this battle
 static void drawReserveRow(void) {
     const Side* sd = &battle.side[SIDE_PLAYER];
     for (int i = 0; i < MAX_TEAM; i++) {
@@ -1236,7 +1230,6 @@ static void drawReticle(Rectangle r, Color rc) {
     DrawLineEx((Vector2) { r.x + r.width, r.y + r.height }, (Vector2) { r.x + r.width, r.y + r.height - L }, 2, rc);
 }
 
-// Faint ground lines for each side's Front and Rear rows (the HUD badges name them)
 static void drawLaneRows(void) {
     static const int rows[4] = { ENEMY_REAR_Y, ENEMY_FRONT_Y, PLAYER_FRONT_Y, PLAYER_REAR_Y };
     for (int i = 0; i < 4; i++) {
@@ -1246,9 +1239,6 @@ static void drawLaneRows(void) {
     }
 }
 
-// The machines on the field: target reticle on the enemy you aim at, a glow
-// under the mech you command, dashed markers on empty positions; flankers get
-// chevrons, and a covered target points at the guard that takes the shot
 static void drawField(float sx, float sy) {
     float blink = 0.5f + 0.5f * sinf(glowTimer * 6);
     drawLaneRows();
@@ -1264,7 +1254,7 @@ static void drawField(float sx, float sy) {
                 DrawEllipse((int)v.x, (int)v.y + 36, 36, 10, (Color) { a.r, a.g, a.b, (unsigned char)(60 + 60 * blink) });
                 DrawEllipseLines((int)v.x, (int)v.y + 36, 36, 10, a);
             }
-            if (c->flanking) {   // chevrons either side, pointing at the other side
+            if (c->flanking) {
                 int dir = side == SIDE_PLAYER ? -1 : 1;
                 Color fc = { 255, 160, 70, (unsigned char)(120 + 100 * blink) };
                 for (int s2 = -1; s2 <= 1; s2 += 2)
@@ -1285,11 +1275,11 @@ static void drawField(float sx, float sy) {
                 DrawText("FLANK", (int)v.x - MeasureText("FLANK", 10) / 2, (int)v.y + 54, 10, (Color) { 255, 160, 70, 255 });
             else if (side == SIDE_PLAYER && c->done && !acting && battle.phase == BP_PLAYER_TURN)
                 DrawText("DONE", (int)v.x - MeasureText("DONE", 10) / 2, (int)v.y + 54, 10, (Color) { 130, 140, 160, 255 });
-            if (side == SIDE_ENEMY && framePreviewOk[p]) {   // reticle where the shot lands, a lighter one on splash targets
+            if (side == SIDE_ENEMY && framePreviewOk[p]) {
                 int primary = p == framePrimary;
                 drawReticle(spriteRect(side, p), primary ? (Color) { 255, 220, 80, (unsigned char)(160 + 95 * blink) } : (Color) { 255, 150, 80, 150 });
             }
-            if (side == SIDE_ENEMY && p == battle.playerTarget && intercepted()) {   // aimed here, but the guard steps in
+            if (side == SIDE_ENEMY && p == battle.playerTarget && intercepted()) {
                 Vector2 g = slotPos(SIDE_ENEMY, framePrimary);
                 Color cc = { 120, 220, 255, (unsigned char)(120 + 100 * blink) };
                 drawReticle(spriteRect(side, p), (Color) { 120, 150, 190, 150 });
@@ -1322,14 +1312,13 @@ static void drawWeaponButton(int i) {
 
     AttackPreview p;
     battlePreviewPlayer(i, &p);
-    // Armor penetration badge and the on-hit split (red = Integrity, blue = Armor)
     if (w->baseDamage > 0) {
         const char* tag;
         Color tc;
-        if (p.armorBefore <= 0) { tag = "NO ARMOR"; tc = (Color) { 255, 120, 110, 255 }; }
-        else if (p.pen >= 50) { tag = TextFormat("PIERCE %d%%", p.pen); tc = (Color) { 120, 255, 160, 255 }; }
-        else if (p.integrityDamage * 3 < p.armorDamage) { tag = TextFormat("BLOCKED %d%%", p.pen); tc = (Color) { 255, 150, 110, 255 }; }
-        else { tag = TextFormat("PEN %d%%", p.pen); tc = (Color) { 255, 220, 120, 255 }; }
+        if (p.armorBefore <= 0) { tag = "NO ARMOR"; tc = (Color){ 255, 120, 110, 255 }; }
+        else if (p.pen >= 50) { tag = TextFormat("PIERCE %d%%", p.pen); tc = (Color){ 120, 255, 160, 255 }; }
+        else if (p.integrityDamage * 3 < p.armorDamage) { tag = TextFormat("BLOCKED %d%%", p.pen); tc = (Color){ 255, 150, 110, 255 }; }
+        else { tag = TextFormat("PEN %d%%", p.pen); tc = (Color){ 255, 220, 120, 255 }; }
         DrawText(tag, bx + 200, by + 3, 10, usable ? tc : (Color) { 110, 120, 140, 255 });
         int total = p.armorDamage + p.integrityDamage;
         if (total > 0) {
@@ -1343,9 +1332,11 @@ static void drawWeaponButton(int i) {
         : TextFormat("HIT %d%%  SCRAMBLE %d  HEAT+%d", (int)roundf(p.hitChance * 100), p.scramble, p.heat);
     if (!usable && reason) info = reason;
     DrawText(info, bx + 24, by + 18, 10, usable ? (Color) { 150, 200, 220, 255 } : (Color) { 255, 120, 120, 255 });
-    if (w->ammo > 0 && usable)   // a blocked weapon shows its reason there instead
+    if (w->ammo > 0 && usable)
         DrawText(TextFormat("AMMO %d/%d", battleFieldPlayer()->mech->weapons[i].ammo, w->ammo), bx + 225, by + 18, 10,
-            (Color) { 150, 200, 220, 255 });
+            (Color) {
+        150, 200, 220, 255
+    });
     for (int e = 0; e < w->energyCost; e++) {
         int ex = bx + (int)r.width - 14 - e * 14, ey = by + 10;
         DrawCircle(ex, ey, 5, usable ? (Color) { 60, 200, 255, 255 } : (Color) { 70, 80, 100, 255 });
@@ -1356,7 +1347,6 @@ static void drawWeaponButton(int i) {
         tipWhy(r, w->name, TextFormat("%s  Mount rating %d/5.", munitionPlain(w->munition), battleFieldPlayer()->mech->weapons[i].rating), &why);
 }
 
-// Plain-language summary of the selected weapon: what it will do and what to watch out for
 static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, good = { 120, 255, 160, 255 }, warn = { 255, 150, 110, 255 };
     const MechStats* ds = &previewVictim()->mech->stats;
@@ -1405,11 +1395,12 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
     int splash = 0;
     for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != framePrimary;
     if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[w->targeting], splash), x + 130, ly, 10,
-        (Color) { 255, 170, 90, 255 });
+        (Color) {
+        255, 170, 90, 255
+    });
     DrawText("[I] why   [V] formula   [L] log   hover anything", x, y + 122, 10, (Color) { 100, 200, 240, 255 });
 }
 
-// Every step of the attack formula for the selected weapon, before it is fired
 static void drawPreviewPanel(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, dim = { 130, 150, 175, 255 }, res = { 120, 255, 160, 255 };
     DrawText(TextFormat("PREVIEW  %s > %s%s", w->name, previewVictim()->mech->name, intercepted() ? " (COVERING)" : ""), x, y, 12,
@@ -1434,7 +1425,6 @@ static void drawPreviewPanel(const AttackPreview* p, const Weapon* w, int x, int
         x, ly += lh, 10, heatAfter > p->maxHeat ? (Color) { 255, 120, 110, 255 } : (Color) { 255, 170, 100, 255 });
 }
 
-// Switch / deploy picker: every standing reserve with what it brings in
 static void drawPicker(void) {
     int deploying = pickerDeploy, forced = pickerDeploy && battle.phase == BP_DEPLOY;
     int slots[MAX_TEAM + 1], n = pickerRows(slots);
@@ -1470,7 +1460,9 @@ static void drawPicker(void) {
         int pending = c->nextSkipTurn + (c->nextDisabledWeapon >= 0) + (c->nextAccPenalty > 0) + c->nextEnergyLoss
             + c->nextEnergyTax + c->nextRandomTargeting;
         if (pending) DrawText(TextFormat("%d SCRAMBLE%s QUEUED", pending, pending > 1 ? "S" : ""), x + 440, y + 28, 10,
-            (Color) { 200, 150, 255, 255 });
+            (Color) {
+            200, 150, 255, 255
+        });
         DrawText(TextFormat("MOB %d  ACC %d", st->mobility, st->accuracy), x + 440, y + 4, 10, (Color) { 170, 200, 230, 255 });
         DrawText(TextFormat("STB %d  PWR %.2f", st->stability, st->power), x + 440, y + 16, 10, (Color) { 170, 200, 230, 255 });
     }
@@ -1480,12 +1472,11 @@ static void drawPicker(void) {
             out->mech->name, out->mech->stats.energy);
     DrawText(rule, PICKER_X + 12, top + h - 36, 10, (Color) { 255, 220, 120, 255 });
     DrawText(deploying ? (forced ? "Damage, Heat and queued scrambles stay with each mech.   [W/S] select   [Z/CLICK] deploy"
-                                 : "Damage, Heat and queued scrambles stay with each mech.   [Z/CLICK] deploy   [ESC] not now")
-                       : "The new mech can't switch out on its next turn.   [W/S] select   [Z/CLICK] switch   [ESC] cancel",
+        : "Damage, Heat and queued scrambles stay with each mech.   [Z/CLICK] deploy   [ESC] not now")
+        : "The new mech can't switch out on its next turn.   [W/S] select   [Z/CLICK] switch   [ESC] cancel",
         PICKER_X + 12, top + h - 22, 10, (Color) { 120, 200, 240, 255 });
 }
 
-// Scrollable history; the selected entry expands into its full breakdown
 static void drawLogOverlay(void) {
     int x = 20, y = 58, w = SCREEN_W - 40, h = PANEL_Y - 24 - 58;
     DrawRectangle(x, y, w, h, (Color) { 6, 10, 22, 255 });
@@ -1554,7 +1545,6 @@ void uiBattleDraw(void) {
     drawReactor();
     drawReserveRow();
 
-    // Log strip and bottom panel
     DrawRectangle(20, PANEL_Y - 22, SCREEN_W - 40, 20, (Color) { 10, 15, 30, 200 });
     DrawText(battle.log, 30, PANEL_Y - 18, 12, (Color) { 190, 220, 240, 255 });
     DrawText("[L] LOG", SCREEN_W - 70, PANEL_Y - 17, 10, (Color) { 100, 200, 240, 255 });
@@ -1570,7 +1560,9 @@ void uiBattleDraw(void) {
             for (int q = 0; q < MAX_FIELD; q++) { const Combatant* c = battleField(SIDE_PLAYER, q); ready += c && !c->done; }
             DrawText(TextFormat(">> %s", actor->mech->name), 30, PANEL_Y + 6, 14, mechModel(actor->mech)->accent);
             DrawText(TextFormat("%d TO ACT", ready), 30 + MeasureText(TextFormat(">> %s", actor->mech->name), 14) + 8, PANEL_Y + 9, 10,
-                (Color) { 120, 200, 240, 255 });
+                (Color) {
+                120, 200, 240, 255
+            });
             for (int i = 0; i < MAX_WEAPONS; i++) drawWeaponButton(i);
         }
         else {
@@ -1590,9 +1582,9 @@ void uiBattleDraw(void) {
                 "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", PROVOKE_ENERGY_COST, THREAT_PROVOKE)
             : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads).", noProvoke ? noProvoke : "-"));
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
-        if (actor) {   // formation, under the reactor
+        if (actor) {
             int toRear = actor->lane == LANE_FRONT;
-            const char *noLane = NULL, *noFlank = NULL;
+            const char* noLane = NULL, * noFlank = NULL;
             int canLane = battleCanMove(toRear ? LANE_REAR : LANE_FRONT, &noLane);
             int canFlank = battleCanMove(MOVE_FLANK, &noFlank);
             const char* cost = battleMoveCost(actor) ? TextFormat("%d EN", MOVE_ENERGY_COST) : "free";
@@ -1633,7 +1625,7 @@ void uiBattleDraw(void) {
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
         DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
-                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [C] HACK [X] END",
+            : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [C] HACK [X] END",
             30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {
@@ -1667,7 +1659,7 @@ void uiBattleDraw(void) {
     }
     if (pickerOpen) { tip.active = 0; drawPicker(); }
     else if (logOpen) drawLogOverlay();
-    else if (infoOpen && p && actor) {   // keyboard route to the same breakdown the weapon tooltip shows
+    else if (infoOpen && p && actor) {
         Explanation why;
         if (battleExplainPlayer(weaponSel, &why)) {
             const Weapon* w = mechWeapon(actor->mech, weaponSel);
@@ -1681,6 +1673,13 @@ void uiBattleDraw(void) {
     }
     tipDraw();
     EndMode2D();
+
+    // The wipe opens over the battle, spanning the whole canvas. Drawn last
+    // so it sits on top of everything (including tooltips), and OUTSIDE
+    // BeginMode2D so it uses raw canvas coordinates.
+    if (transition.active && transition.phase == 3) {
+        transitionDraw();
+    }
 }
 
 // ============ FIRMWARE REVISION SCREEN ============
@@ -1692,7 +1691,6 @@ static Rectangle optionRect(int i) {
     return (Rectangle) { 130.0f + col * 185, 430.0f + row * 50, 175, 40 };
 }
 
-// Every team mech that gained revisions in the battle gets its own screen
 static Mech* revMech(void) {
     if (revIdx < battle.numRevisions && battle.revTeam[revIdx] < teamSize) return &team[battle.revTeam[revIdx]];
     return rosterActive();
@@ -1736,7 +1734,7 @@ void uiRevisionUpdate(float dt, GameState* state) {
         }
         return;
     }
-    if (firmwareBranchesPending(&m->fw) > 0) {   // major revision: choose a Firmware Branch
+    if (firmwareBranchesPending(&m->fw) > 0) {
         if (RIGHT_PRESSED) branchSel = (branchSel + 1) % NUM_BRANCHES;
         if (LEFT_PRESSED)  branchSel = (branchSel + NUM_BRANCHES - 1) % NUM_BRANCHES;
         if (DOWN_PRESSED)  branchSel = (branchSel + 3) % NUM_BRANCHES;
@@ -1792,7 +1790,9 @@ void uiRevisionDraw(void) {
 
     if (m->fw.optPoints > 0) {
         drawTextCentered(TextFormat("OPTIMIZATION POINTS: %d  -  choose an upgrade", m->fw.optPoints), 400, 18,
-            (Color) { 255, 220, 120, 255 });
+            (Color) {
+            255, 220, 120, 255
+        });
         for (int i = 0; i < NUM_OPTIMIZATIONS; i++) {
             const Optimization* o = &optimizations[i];
             drawButton(optionRect(i), TextFormat("+%d %s", o->amount, statName(o->stat)), 16, i == optSel, 1);
