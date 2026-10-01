@@ -3,6 +3,14 @@
   "WorkspaceRootPath": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\",
   "Documents": [
     {
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+    },
+    {
       "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\ui_battle.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\ui_battle.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
@@ -13,14 +21,6 @@
     {
       "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\data_game.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\data_game.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
-    },
-    {
-      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
-      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
     {
       "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\transition.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
@@ -74,17 +74,17 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 6,
+          "SelectedChildIndex": 0,
           "Children": [
             {
               "$type": "Document",
-              "DocumentIndex": 3,
+              "DocumentIndex": 0,
               "Title": "world.h",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
               "RelativeDocumentMoniker": "Project\\world.h",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
-              "RelativeToolTip": "Project\\world.h",
-              "ViewState": "AgIAAE0AAAAAAAAAAAAAAGEAAAAGAAAAAAAAAA==",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h*",
+              "RelativeToolTip": "Project\\world.h*",
+              "ViewState": "AgIAAEEAAAAAAAAAAAAAAGQAAAAGAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
               "WhenOpened": "2026-09-24T08:30:39.008Z",
               "EditorCaption": ""
@@ -141,39 +141,39 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 2,
+              "DocumentIndex": 4,
               "Title": "data_game.c",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\data_game.c",
               "RelativeDocumentMoniker": "Project\\data_game.c",
               "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\data_game.c",
               "RelativeToolTip": "Project\\data_game.c",
-              "ViewState": "AgIAACkAAAAAAAAAAAAAAC8AAABSAAAAAAAAAA==",
+              "ViewState": "AgIAAE8AAAAAAAAAAAAAAFUAAABSAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-30T10:46:58.435Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 0,
+              "DocumentIndex": 2,
               "Title": "ui_battle.c",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\ui_battle.c",
               "RelativeDocumentMoniker": "Project\\ui_battle.c",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\ui_battle.c*",
-              "RelativeToolTip": "Project\\ui_battle.c*",
-              "ViewState": "AgIAAL0HAAAAAAAAAAAAAOAHAAABAAAAAAAAAA==",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\ui_battle.c",
+              "RelativeToolTip": "Project\\ui_battle.c",
+              "ViewState": "AgIAAN4HAAAAAAAAAAAAAP4HAAAQAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-30T10:30:41.29Z",
               "EditorCaption": ""
             },
             {
               "$type": "Document",
-              "DocumentIndex": 1,
+              "DocumentIndex": 3,
               "Title": "battle.c",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\battle.c",
               "RelativeDocumentMoniker": "Project\\battle.c",
               "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\battle.c",
               "RelativeToolTip": "Project\\battle.c",
-              "ViewState": "AgIAAAoEAAAAAAAAAAAhwBgEAAA4AAAAAAAAAA==",
+              "ViewState": "AgIAADYEAAAAAAAAAAAhwEQEAAA4AAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-24T09:18:19.737Z",
               "EditorCaption": ""
@@ -204,13 +204,13 @@
             },
             {
               "$type": "Document",
-              "DocumentIndex": 4,
+              "DocumentIndex": 1,
               "Title": "world.c",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
               "RelativeDocumentMoniker": "Project\\world.c",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
-              "RelativeToolTip": "Project\\world.c",
-              "ViewState": "AgIAABYEAAAAAAAAAAAAADgEAAAFAAAAAAAAAA==",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c*",
+              "RelativeToolTip": "Project\\world.c*",
+              "ViewState": "AgIAADwEAAAAAAAAAAAAAF8EAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-24T08:30:55.322Z",
               "EditorCaption": ""

@@ -54,7 +54,10 @@ extern int obtainedStarters;
 // A trainer watches the tile it faces (and one further tile per extra
 // sightRange). Stepping into a watched tile starts the intro: the trainer's
 // comms bubble appears, a short transition wipe plays, then the battle loads.
+// Wild encounters use the same intro: a pack is spotted, a bubble names it,
+// the wipe plays, then the battle loads.
 #define TRAINER_INTRO_TIME 1.6f     // seconds the bubble is up before the wipe
+#define WILD_INTRO_TIME    1.4f     // seconds a wild ambush bubble is up
 
 typedef struct {
     char name[32];
