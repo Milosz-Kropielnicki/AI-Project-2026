@@ -66,8 +66,21 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 0,
           "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "world.h",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeDocumentMoniker": "Project\\world.h",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeToolTip": "Project\\world.h",
+              "ViewState": "AgIAAFIAAAAAAAAAAAAmwFUAAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2026-09-24T08:30:39.008Z",
+              "EditorCaption": ""
+            },
             {
               "$type": "Document",
               "DocumentIndex": 2,
@@ -79,19 +92,6 @@
               "ViewState": "AgIAAGcAAAAAAAAAAAAAAHcAAABLAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-30T11:06:25.475Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "world.h",
-              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
-              "RelativeDocumentMoniker": "Project\\world.h",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h*",
-              "RelativeToolTip": "Project\\world.h*",
-              "ViewState": "AgIAADkAAAAAAAAAAAAqwFsAAAAGAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
-              "WhenOpened": "2026-09-24T08:30:39.008Z",
               "EditorCaption": ""
             },
             {
@@ -172,8 +172,8 @@
               "Title": "world.c",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
               "RelativeDocumentMoniker": "Project\\world.c",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c*",
-              "RelativeToolTip": "Project\\world.c*",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c",
+              "RelativeToolTip": "Project\\world.c",
               "ViewState": "AgIAAK8DAAAAAAAAAAAqwNEDAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
               "WhenOpened": "2026-09-24T08:30:55.322Z",

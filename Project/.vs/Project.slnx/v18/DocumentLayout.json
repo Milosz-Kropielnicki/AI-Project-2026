@@ -66,8 +66,21 @@
       "DocumentGroups": [
         {
           "DockedWidth": 200,
-          "SelectedChildIndex": 1,
+          "SelectedChildIndex": 0,
           "Children": [
+            {
+              "$type": "Document",
+              "DocumentIndex": 0,
+              "Title": "world.h",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeDocumentMoniker": "Project\\world.h",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
+              "RelativeToolTip": "Project\\world.h",
+              "ViewState": "AgIAAEgAAAAAAAAAAADwv1UAAAAnAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
+              "WhenOpened": "2026-09-24T08:30:39.008Z",
+              "EditorCaption": ""
+            },
             {
               "$type": "Document",
               "DocumentIndex": 2,
@@ -78,21 +91,7 @@
               "RelativeToolTip": "Project\\ui_map.c",
               "ViewState": "AgIAAGcAAAAAAAAAAAAAAHcAAABLAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
-              "WhenOpened": "2026-09-30T11:06:25.475Z",
-              "EditorCaption": ""
-            },
-            {
-              "$type": "Document",
-              "DocumentIndex": 0,
-              "Title": "world.h",
-              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
-              "RelativeDocumentMoniker": "Project\\world.h",
-              "ToolTip": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.h",
-              "RelativeToolTip": "Project\\world.h",
-              "ViewState": "AgIAADkAAAAAAAAAAAAqwEwAAAAVAAAAAAAAAA==",
-              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
-              "WhenOpened": "2026-09-24T08:30:39.008Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-09-30T11:06:25.475Z"
             },
             {
               "$type": "Document",
@@ -176,8 +175,7 @@
               "RelativeToolTip": "Project\\world.c",
               "ViewState": "AgIAAK8DAAAAAAAAAAAqwNEDAAABAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
-              "WhenOpened": "2026-09-24T08:30:55.322Z",
-              "EditorCaption": ""
+              "WhenOpened": "2026-09-24T08:30:55.322Z"
             },
             {
               "$type": "Document",
