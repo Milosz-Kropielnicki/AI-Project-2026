@@ -58,6 +58,7 @@ static float effectDuration(int kind) {
     case FX_BEAM: return 0.5f;
     case FX_SCAN: return 1.0f;
     case FX_SWITCH: return 0.8f;
+    case FX_PROVOKE: return 0.9f;
     default: return 0.55f;
     }
 }
@@ -298,6 +299,16 @@ static void drawEffects(void) {
             DrawText(txt, (int)(e->to.x - MeasureText(txt, 16) / 2), (int)(e->to.y - 90), 16, (Color) { 200, 255, 240, 255 });
             break;
         }
+        case FX_PROVOKE: {   // expanding war-horn rings and a banner
+            for (int k = 0; k < 3; k++) {
+                float q = p - k * 0.15f;
+                if (q <= 0) continue;
+                DrawCircleLines((int)e->to.x, (int)e->to.y, 20 + q * 70, (Color) { 255, 150, 60, (unsigned char)(220 * (1 - q)) });
+            }
+            const char* txt = "PROVOKE!";
+            DrawText(txt, (int)(e->to.x - MeasureText(txt, 14) / 2), (int)(e->to.y - 62), 14, (Color) { 255, 170, 80, (unsigned char)(255 * (1 - p * 0.5f)) });
+            break;
+        }
         case FX_SWITCH: {
             float h = 110 * (p < 0.5f ? p * 2 : 1), a = p < 0.5f ? 1 : (1 - p) * 2;
             DrawRectangle((int)e->to.x - 34, (int)(e->to.y + 48 - h), 68, (int)h, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(70 * a) });
@@ -525,11 +536,36 @@ static const LogEntry* lastSeenLog = NULL;
 #define ROW_Y (PANEL_Y + 26)
 #define SPRITE_SCALE 7
 
+// Formation rows: each side's Front row faces the other side, the Rear row sits
+// behind it, and a flanking mech steps out past its Front row
+#define ENEMY_REAR_Y 70
+#define ENEMY_FRONT_Y 112
+#define ENEMY_FLANK_Y 134
+#define PLAYER_FRONT_Y 288
+#define PLAYER_REAR_Y 326
+#define PLAYER_FLANK_Y 266
+static float rowY[2][MAX_FIELD];    // eased, so a mech slides when it changes position
+
+static float laneRowY(int side, int pos) {
+    const Combatant* c = battleField(side, pos);
+    if (side == SIDE_PLAYER)
+        return !c ? (PLAYER_FRONT_Y + PLAYER_REAR_Y) / 2.0f : c->flanking ? PLAYER_FLANK_Y : c->lane == LANE_FRONT ? PLAYER_FRONT_Y : PLAYER_REAR_Y;
+    return !c ? (ENEMY_FRONT_Y + ENEMY_REAR_Y) / 2.0f : c->flanking ? ENEMY_FLANK_Y : c->lane == LANE_FRONT ? ENEMY_FRONT_Y : ENEMY_REAR_Y;
+}
+
+static void easeRows(float dt) {
+    float k = dt > 0 ? (dt * 10 < 1 ? dt * 10 : 1) : 1;
+    for (int side = 0; side < 2; side++)
+        for (int p = 0; p < MAX_FIELD; p++) {
+            float to = laneRowY(side, p);
+            rowY[side][p] = rowY[side][p] == 0 ? to : rowY[side][p] + (to - rowY[side][p]) * k;
+        }
+}
+
 static Vector2 slotPos(int side, int pos) {
-    static const Vector2 enemy[MAX_FIELD] = { { 318, 96 }, { 400, 72 }, { 482, 96 } };
-    static const Vector2 player[MAX_FIELD] = { { 318, 296 }, { 400, 320 }, { 482, 296 } };
+    static const float x[MAX_FIELD] = { 318, 400, 482 };
     if (pos < 0 || pos >= MAX_FIELD) pos = 0;
-    return side == SIDE_PLAYER ? player[pos] : enemy[pos];
+    return (Vector2) { x[pos], rowY[side][pos] != 0 ? rowY[side][pos] : laneRowY(side, pos) };
 }
 static Rectangle spriteRect(int side, int pos) {
     Vector2 v = slotPos(side, pos);
@@ -539,11 +575,14 @@ static Rectangle hudRect(int side, int pos) {
     return side == SIDE_PLAYER ? (Rectangle) { 552, 8.0f + pos * 78, 240, 74 } : (Rectangle) { 8, 8.0f + pos * 72, 240, 68 };
 }
 static Rectangle weaponButtonRect(int i) { return (Rectangle) { 30, (float)(ROW_Y + i * 34), 355, 30 }; }
-static Rectangle deployButtonRect(void) { return (Rectangle) { 240, PANEL_Y + 4, 92, 18 }; }
-static Rectangle switchButtonRect(void) { return (Rectangle) { 337, PANEL_Y + 4, 92, 18 }; }
-static Rectangle hackButtonRect(void) { return (Rectangle) { 434, PANEL_Y + 4, 82, 18 }; }
-static Rectangle nextButtonRect(void) { return (Rectangle) { 521, PANEL_Y + 4, 100, 18 }; }
-static Rectangle endTurnButtonRect(void) { return (Rectangle) { 626, PANEL_Y + 4, 144, 18 }; }
+static Rectangle deployButtonRect(void) { return (Rectangle) { 240, PANEL_Y + 4, 82, 18 }; }
+static Rectangle switchButtonRect(void) { return (Rectangle) { 326, PANEL_Y + 4, 82, 18 }; }
+static Rectangle provokeButtonRect(void) { return (Rectangle) { 412, PANEL_Y + 4, 92, 18 }; }
+static Rectangle hackButtonRect(void) { return (Rectangle) { 508, PANEL_Y + 4, 72, 18 }; }
+static Rectangle nextButtonRect(void) { return (Rectangle) { 584, PANEL_Y + 4, 86, 18 }; }
+static Rectangle endTurnButtonRect(void) { return (Rectangle) { 674, PANEL_Y + 4, 96, 18 }; }
+static Rectangle laneButtonRect(void) { return (Rectangle) { 552, 381, 118, 15 }; }
+static Rectangle flankButtonRect(void) { return (Rectangle) { 674, 381, 118, 15 }; }
 static Rectangle logStripRect(void) { return (Rectangle) { 20, PANEL_Y - 22, SCREEN_W - 40, 20 }; }
 static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 302, 37, 40 }; }
 #define PICKER_X 130
@@ -570,6 +609,8 @@ void uiBattleOpen(void) {
     heatWasCritical = 0;
     lastSeenLog = NULL;
     clearEffects();
+    memset(rowY, 0, sizeof(rowY));
+    easeRows(0);   // snap into formation
 }
 
 // Sounds for things that happen inside the battle logic
@@ -648,14 +689,15 @@ static void updatePicker(void) {
 
 void uiBattleUpdate(float dt, GameState* state) {
     battleUpdate(dt);
+    easeRows(dt);
     updateEffects(dt);
     BattleEvent ev;
     while (battlePopEvent(&ev)) {
         int own = ev.fromPlayer ? SIDE_PLAYER : SIDE_ENEMY, other = ev.fromPlayer ? SIDE_ENEMY : SIDE_PLAYER;
-        if (ev.fx == FX_SWITCH) {
+        if (ev.fx == FX_SWITCH || ev.fx == FX_PROVOKE) {
             Vector2 at = slotPos(own, ev.toSlot);
             addEffect(&ev, at, at);
-            sfxPlay(SFX_SWITCH);
+            sfxPlay(ev.fx == FX_SWITCH ? SFX_SWITCH : SFX_PROVOKE);
             continue;
         }
         addEffect(&ev, slotPos(own, ev.fromSlot), slotPos(other, ev.toSlot));
@@ -749,6 +791,25 @@ void uiBattleUpdate(float dt, GameState* state) {
             snprintf(battle.log, sizeof(battle.log), "SWITCH: %s", reason);
             sfxPlay(SFX_UI_DENY);
         }
+        return;
+    }
+    if (IsKeyPressed(KEY_P) || clickedOn(provokeButtonRect())) {
+        consumeInput();
+        const char* reason = NULL;
+        if (battleCanProvoke(&reason)) battleProvoke();
+        else { snprintf(battle.log, sizeof(battle.log), "PROVOKE: %s", reason); sfxPlay(SFX_UI_DENY); }
+        return;
+    }
+    // [F] swap lanes, [G] go out on the flank
+    int laneKey = IsKeyPressed(KEY_F) || clickedOn(laneButtonRect());
+    int flankKey = IsKeyPressed(KEY_G) || clickedOn(flankButtonRect());
+    if (laneKey || flankKey) {
+        consumeInput();
+        const Combatant* a = battleActing();
+        int to = flankKey ? MOVE_FLANK : a && a->lane == LANE_FRONT ? LANE_REAR : LANE_FRONT;
+        const char* reason = NULL;
+        if (battleCanMove(to, &reason)) { battleMove(to); sfxPlay(SFX_UI_CONFIRM); }
+        else { snprintf(battle.log, sizeof(battle.log), "%s: %s", flankKey ? "FLANK" : "MOVE", reason); sfxPlay(SFX_UI_DENY); }
         return;
     }
     if ((IsKeyPressed(KEY_C) || clickedOn(hackButtonRect())) && battleCanHack()) {
@@ -848,16 +909,79 @@ static int previewSelected(AttackPreview* p) {
     return battle.phase == BP_PLAYER_TURN && battle.dialogue == DLG_NONE && battlePreviewPlayer(weaponSel, p);
 }
 
-// What the selected weapon would do to each enemy position (primary + splash), for the HUD ghosts
+// What the selected weapon would do to each enemy position (primary + splash), for the HUD ghosts.
+// framePrimary is where the shot lands first: the target, or the Front guard covering it.
 static int framePreviewOk[MAX_FIELD];
 static AttackPreview framePreview[MAX_FIELD];
+static int framePrimary = -1;
 static void computeFramePreviews(void) {
     memset(framePreviewOk, 0, sizeof(framePreviewOk));
+    framePrimary = -1;
     if (battle.phase != BP_PLAYER_TURN || battle.dialogue != DLG_NONE || battleBusy()) return;
     int pos[MAX_FIELD];
     AttackPreview all[MAX_FIELD];
     int n = battlePreviewTargets(weaponSel, pos, all, MAX_FIELD);
     for (int k = 0; k < n; k++) { framePreview[pos[k]] = all[k]; framePreviewOk[pos[k]] = 1; }
+    if (n > 0) framePrimary = pos[0];
+}
+static int intercepted(void) { return framePrimary >= 0 && framePrimary != battle.playerTarget; }
+// The enemy the selected weapon actually hits first
+static const Combatant* previewVictim(void) {
+    const Combatant* c = battleField(SIDE_ENEMY, framePrimary);
+    return c ? c : battleFieldEnemy();
+}
+
+static const char* threatRules(void) {
+    return TextFormat("How much the enemy AI wants to shoot this mech: each attack's value is multiplied by 1 + threat/100. "
+        "Attacking +%d a turn (+%d with area, cone or heavy weapons), repair +%d, buff +%d, PROVOKE +%d, +%d per round on the "
+        "field (an Ironclad +%d); -%d at the start of every round. Max %d.", THREAT_ATTACK, THREAT_HEAVY_ATTACK, THREAT_REPAIR,
+        THREAT_BUFF, THREAT_PROVOKE, THREAT_PASSIVE, THREAT_PASSIVE_IRONCLAD, THREAT_DECAY, THREAT_MAX);
+}
+
+// Threat bar: yellow to red as it fills, pulsing orange frame while provoking
+static void drawThreatBar(int x, int y, int w, int h, const Combatant* c) {
+    float f = c->threat / (float)THREAT_MAX;
+    Color fill = { 255, (unsigned char)(220 - 170 * f), 60, 255 };
+    DrawRectangle(x, y, w, h, (Color) { 30, 24, 20, 255 });
+    DrawRectangle(x, y, (int)(w * f), h, fill);
+    if (c->provoking) {
+        float blink = 0.5f + 0.5f * sinf(glowTimer * 8);
+        DrawRectangleLines(x - 1, y - 1, w + 2, h + 2, (Color) { 255, 150, 60, (unsigned char)(150 + 105 * blink) });
+    }
+}
+
+// FRONT / REAR / FLANK tag, right-aligned at rx. A Rear mech nobody covers is red.
+static Color laneColor(int side, int pos, const Combatant* c) {
+    if (c->flanking) return (Color) { 255, 160, 70, 255 };
+    if (c->lane == LANE_FRONT) return (Color) { 210, 220, 240, 255 };
+    return battleInterceptor(side, pos) >= 0 ? (Color) { 120, 230, 160, 255 } : (Color) { 255, 110, 100, 255 };
+}
+
+static void drawLaneBadge(int rx, int y, int side, int pos, const Combatant* c) {
+    const char* t = c->flanking ? "FLANK" : c->lane == LANE_FRONT ? "FRONT" : "REAR";
+    Color col = laneColor(side, pos, c);
+    int w = MeasureText(t, 10) + 8;
+    Rectangle r = { (float)(rx - w), (float)y, (float)w, 12 };
+    DrawRectangleRec(r, (Color) { col.r / 6, col.g / 6, col.b / 6, 230 });
+    DrawRectangleLinesEx(r, 1, col);
+    DrawText(t, rx - w + 4, y + 1, 10, col);
+    int guard = battleInterceptor(side, pos);
+    const char* move = side == SIDE_PLAYER ? TextFormat(" [F] swaps lanes: %s.", battleMoveCost(c) ? "1 EN" : "free for Recon / EW") : "";
+    const char* body;
+    if (c->flanking)
+        body = TextFormat("Out on the flank until its next turn: its attacks ignore %d%% of the target's Armor, it is at -%d Mobility, "
+            "and it is out of formation - it doesn't cover the Rear and nothing covers it.", (int)roundf(FLANK_ARMOR_IGNORE * 100),
+            FLANK_MOBILITY_PENALTY);
+    else if (c->lane == LANE_FRONT)
+        body = TextFormat("Front row: single-target and line attacks aimed at a Rear ally hit this mech instead. Area and cone "
+            "weapons ignore formation.%s", move);
+    else if (guard >= 0)
+        body = TextFormat("Rear row, COVERED by %s: single-target and line attacks aimed here hit it instead. Area and cone weapons "
+            "still reach this mech.%s", battleField(side, guard)->mech->name, move);
+    else
+        body = TextFormat("Rear row, but EXPOSED: %s, so attacks land here directly.%s",
+            c->provoking ? "a provoking mech gives up its cover" : "no Front ally is in formation", move);
+    tipText(r, c->flanking ? "FLANK" : c->lane == LANE_FRONT ? "FRONT" : guard >= 0 ? "REAR (COVERED)" : "REAR (EXPOSED)", body);
 }
 
 static void drawEmptySlot(Rectangle r, const char* label, const char* sub) {
@@ -873,7 +997,7 @@ static void drawEmptySlot(Rectangle r, const char* label, const char* sub) {
 static const char* pendingText(const Combatant* c) {
     int pending = c->nextSkipTurn + (c->nextDisabledWeapon >= 0) + (c->nextAccPenalty > 0) + c->nextEnergyLoss
         + c->nextEnergyTax + c->nextRandomTargeting;
-    return pending ? TextFormat("%d SCRAMBLE%s QUEUED", pending, pending > 1 ? "S" : "") : NULL;
+    return pending ? TextFormat("%d QUEUED", pending) : NULL;
 }
 
 // One enemy on the field; the target gets a pulsing frame and the selected
@@ -891,27 +1015,41 @@ static void drawEnemySlot(int pos) {
     Color edge = target ? (Color) { 255, 220, 80, (unsigned char)(170 + 85 * blink) } : (Color) { 200, 80, 80, 200 };
     DrawRectangleLinesEx(r, target ? 2.0f : 1.0f, edge);
     DrawText(m->name, x + 8, y + 4, 14, (Color) { 255, 210, 210, 255 });
-    DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), x + 196, y + 6, 10, WHITE);
-    if (target) DrawText("TARGET", x + 124, y + 6, 10, (Color) { 255, 220, 80, 255 });
+    drawLaneBadge(x + 234, y + 4, SIDE_ENEMY, pos, c);
+    int guarding = framePrimary == pos && intercepted();
+    if (target) DrawText(intercepted() ? "COVERED" : "TARGET", x + 124, y + 6, 10,
+        intercepted() ? (Color) { 120, 220, 255, 255 } : (Color) { 255, 220, 80, 255 });
+    else if (guarding) DrawText("GUARDS", x + 124, y + 6, 10, (Color) { 120, 220, 255, 255 });
+    else if (c->provoking) DrawText("PROVOKE", x + 124, y + 6, 10, (Color) { 255, 150, 60, 255 });
     const char* arch = c->archetype >= 0 ? TextFormat(" [%s%s]", archetypes[c->archetype].boss ? "BOSS " : "", archetypes[c->archetype].name) : "";
-    DrawText(TextFormat("%s %s%s", mechModel(m)->name, roleName(mechRole(m)), arch), x + 8, y + 19, 10, (Color) { 200, 200, 240, 255 });
+    const char* fw = TextFormat("FW %s", firmwareLabel(m->fw.revision));
+    const char* model = TextFormat("%s %s%s", mechModel(m)->name, roleName(mechRole(m)), arch);
+    if (MeasureText(model, 10) + MeasureText(fw, 10) + 8 > 226) model = TextFormat("%s%s", roleName(mechRole(m)), arch);
+    DrawText(model, x + 8, y + 19, 10, (Color) { 200, 200, 240, 255 });
+    DrawText(fw, x + 234 - MeasureText(fw, 10), y + 19, 10, WHITE);
     drawIntegrityBar(x + 8, y + 32, 150, 6, s->integrity, s->maxIntegrity);
     drawArmorBar(x + 8, y + 42, 150, 5, s->armor, s->maxArmor);
     if (framePreviewOk[pos]) {
         drawLossGhost(x + 8, y + 32, 150, 6, s->integrity, framePreview[pos].integrityDamage, s->maxIntegrity);
         drawLossGhost(x + 8, y + 42, 150, 5, s->armor, framePreview[pos].armorDamage, s->maxArmor);
-        if (!target) DrawText(TextFormat("SPLASH %d%%", (int)roundf(framePreview[pos].splashMod * 100)), x + 124, y + 6, 10,
+        if (!target && !guarding) DrawText(TextFormat("SPLASH %d%%", (int)roundf(framePreview[pos].splashMod * 100)), x + 124, y + 6, 10,
             (Color) { 255, 170, 90, 255 });
     }
     DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), x + 164, y + 30, 10, WHITE);
     DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), x + 164, y + 40, 10, (Color) { 150, 190, 240, 255 });
     drawReadouts(s, combatMobility(c), combatAccuracy(c), x + 8, y + 53);
+    drawThreatBar(x + 8, y + 64, 224, 2, c);
+    tipText((Rectangle) { (float)x + 8, (float)y + 62, 224, 6 }, TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : ""),
+        c->provoking ? "It is PROVOKING: your single-target weapons must aim at it until its next turn. Area and cone weapons still reach the others."
+                     : threatRules());
     tipText((Rectangle) { (float)x + 8, (float)y + 30, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "The machine's health. At 0 it is scrapped. Penetrating damage and anything Armor can't absorb lands here.");
     tipText((Rectangle) { (float)x + 8, (float)y + 41, 230, 9 }, TextFormat("ARMOR %d/%d", s->armor, s->maxArmor),
         "A second pool on top of Integrity. Each hit splits: the weapon's penetration % goes straight to Integrity, "
         "the rest is soaked by Armor until it runs out, then spills over. Armor Analysis and Siege add penetration.");
-    tipText((Rectangle) { (float)x, (float)y, 130, 18 }, m->name, "Click (or Q / E) to target this machine.");
+    tipText((Rectangle) { (float)x, (float)y, 118, 18 }, TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)),
+        target && intercepted() ? TextFormat("Covered: this weapon would hit %s in the Front instead. Area and cone weapons "
+            "reach it.", previewVictim()->mech->name) : "Click (or Q / E) to target this machine.");
 }
 
 // One of the player's field mechs: acting / done / locked state, pools and heat
@@ -930,15 +1068,15 @@ static void drawPlayerSlot(int pos) {
         : c->done ? (Color) { 70, 80, 100, 220 } : (Color) { accent.r, accent.g, accent.b, 160 };
     DrawRectangleLinesEx(r, acting ? 2.0f : 1.0f, edge);
     DrawText(m->name, x + 8, y + 4, 14, c->done && !acting ? (Color) { 150, 160, 180, 255 } : accent);
-    DrawText(TextFormat("FW %s", firmwareLabel(m->fw.revision)), x + 184, y + 6, 10, WHITE);
+    drawLaneBadge(x + 234, y + 4, SIDE_PLAYER, pos, c);
     const char* tag = acting ? "ACTING" : c->skipTurn ? "SCRAMBLED" : c->done ? "DONE" : battle.phase == BP_PLAYER_TURN ? "READY [TAB]" : "";
     Color tc = acting ? accent : c->skipTurn ? (Color) { 200, 150, 255, 255 } : c->done ? (Color) { 120, 130, 150, 255 } : (Color) { 120, 255, 180, 255 };
-    DrawText(tag, x + 180 - MeasureText(tag, 10), y + 6, 10, tc);
+    DrawText(tag, x + 186 - MeasureText(tag, 10), y + 6, 10, tc);
     drawIntegrityBar(x + 8, y + 22, 150, 6, s->integrity, s->maxIntegrity);
     DrawText(TextFormat("INT %d/%d", s->integrity, s->maxIntegrity), x + 164, y + 20, 10, WHITE);
     drawArmorBar(x + 8, y + 31, 150, 5, s->armor, s->maxArmor);
     DrawText(TextFormat("ARM %d/%d", s->armor, s->maxArmor), x + 164, y + 29, 10, (Color) { 150, 190, 240, 255 });
-    int addHeat = acting && framePreviewOk[battle.playerTarget] ? framePreview[battle.playerTarget].heat : 0;
+    int addHeat = acting && framePrimary >= 0 ? framePreview[framePrimary].heat : 0;
     drawHeatGauge(x + 8, y + 40, 150, 5, s->heat, s->maxHeat, addHeat);
     float heatFrac = s->maxHeat > 0 ? (float)s->heat / s->maxHeat : 0;
     Color hc = heatFrac >= HEAT_CRITICAL ? (Color) { 255, 70, 60, (unsigned char)(140 + 115 * blink) } : heatFrac >= 0.5f
@@ -948,8 +1086,16 @@ static void drawPlayerSlot(int pos) {
     // Energy pips and status
     for (int e = 0; e < (s->maxEnergy > s->energy ? s->maxEnergy : s->energy); e++)
         DrawCircle(x + 12 + e * 11, y + 66, 4, e < s->energy ? (Color) { 60, 200, 255, 255 } : (Color) { 40, 45, 60, 255 });
+    int loudest = 1;
+    for (int q = 0; q < MAX_FIELD; q++) { const Combatant* o = battleField(SIDE_PLAYER, q); if (o && o != c && o->threat >= c->threat) loudest = 0; }
+    DrawText(c->provoking ? "PROV" : loudest && c->threat > 0 ? "AGGRO" : "THR", x + 66, y + 61, 10,
+        c->provoking ? (Color) { 255, 150, 60, 255 } : loudest && c->threat > 0 ? (Color) { 255, 110, 80, 255 } : (Color) { 170, 150, 130, 255 });
+    drawThreatBar(x + 100, y + 64, 60, 4, c);
+    tipText((Rectangle) { (float)x + 64, (float)y + 60, 100, 12 },
+        TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
+        c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
     const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED" : pendingText(c);
-    if (status) DrawText(status, x + 110, y + 61, 10, (Color) { 200, 150, 255, 255 });
+    if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "
         "deploys there. The battle is lost when no mech is left standing.");
@@ -958,7 +1104,8 @@ static void drawPlayerSlot(int pos) {
     tipText((Rectangle) { (float)x + 8, (float)y + 38, 230, 10 }, TextFormat("HEAT %d / %d", s->heat, s->maxHeat),
         TextFormat("Every shot adds heat. A weapon that would push heat past %d can't fire (THERMAL LIMIT). At the start of "
             "your phase %d heat vents. Above 75%% you are one or two shots from locking your big weapons.", s->maxHeat, s->cooling));
-    tipText((Rectangle) { (float)x, (float)y, 130, 18 }, m->name, acting ? "The mech you are commanding. Its weapons are in the panel below."
+    tipText((Rectangle) { (float)x, (float)y, 118, 18 }, TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)),
+        acting ? "The mech you are commanding. Its weapons are in the panel below."
         : c->done ? "Already acted this phase (or arrived this round)." : "Click (or TAB) to command this mech.");
 }
 
@@ -997,7 +1144,7 @@ static void drawEnemyHeader(void) {
 static void drawReactor(void) {
     const Combatant* c = battleFieldPlayer();
     const MechStats* s = &c->mech->stats;
-    int spend = framePreviewOk[battle.playerTarget] ? framePreview[battle.playerTarget].energyCost : 0;
+    int spend = framePrimary >= 0 ? framePreview[framePrimary].energyCost : 0;
     int pips = s->maxEnergy > s->energy ? s->maxEnergy : s->energy;
     DrawRectangle(552, 244, 240, 52, (Color) { 15, 25, 45, 230 });
     DrawRectangleLines(552, 244, 240, 52, (Color) { 100, 200, 255, 220 });
@@ -1077,10 +1224,34 @@ static void drawReserveRow(void) {
     }
 }
 
+static void drawReticle(Rectangle r, Color rc) {
+    int L = 12;
+    DrawLineEx((Vector2) { r.x, r.y }, (Vector2) { r.x + L, r.y }, 2, rc);
+    DrawLineEx((Vector2) { r.x, r.y }, (Vector2) { r.x, r.y + L }, 2, rc);
+    DrawLineEx((Vector2) { r.x + r.width, r.y }, (Vector2) { r.x + r.width - L, r.y }, 2, rc);
+    DrawLineEx((Vector2) { r.x + r.width, r.y }, (Vector2) { r.x + r.width, r.y + L }, 2, rc);
+    DrawLineEx((Vector2) { r.x, r.y + r.height }, (Vector2) { r.x + L, r.y + r.height }, 2, rc);
+    DrawLineEx((Vector2) { r.x, r.y + r.height }, (Vector2) { r.x, r.y + r.height - L }, 2, rc);
+    DrawLineEx((Vector2) { r.x + r.width, r.y + r.height }, (Vector2) { r.x + r.width - L, r.y + r.height }, 2, rc);
+    DrawLineEx((Vector2) { r.x + r.width, r.y + r.height }, (Vector2) { r.x + r.width, r.y + r.height - L }, 2, rc);
+}
+
+// Faint ground lines for each side's Front and Rear rows (the HUD badges name them)
+static void drawLaneRows(void) {
+    static const int rows[4] = { ENEMY_REAR_Y, ENEMY_FRONT_Y, PLAYER_FRONT_Y, PLAYER_REAR_Y };
+    for (int i = 0; i < 4; i++) {
+        int y = rows[i] + 36;
+        Color c = i == 0 || i == 3 ? (Color) { 90, 140, 120, 90 } : (Color) { 140, 150, 180, 90 };
+        for (int x = 276; x < 526; x += 12) DrawLine(x, y, x + 6, y, c);
+    }
+}
+
 // The machines on the field: target reticle on the enemy you aim at, a glow
-// under the mech you command, dashed markers on empty positions
+// under the mech you command, dashed markers on empty positions; flankers get
+// chevrons, and a covered target points at the guard that takes the shot
 static void drawField(float sx, float sy) {
     float blink = 0.5f + 0.5f * sinf(glowTimer * 6);
+    drawLaneRows();
     for (int side = 0; side < 2; side++)
         for (int p = 0; p < MAX_FIELD; p++) {
             if (p >= battle.side[side].numField) continue;
@@ -1093,22 +1264,39 @@ static void drawField(float sx, float sy) {
                 DrawEllipse((int)v.x, (int)v.y + 36, 36, 10, (Color) { a.r, a.g, a.b, (unsigned char)(60 + 60 * blink) });
                 DrawEllipseLines((int)v.x, (int)v.y + 36, 36, 10, a);
             }
+            if (c->flanking) {   // chevrons either side, pointing at the other side
+                int dir = side == SIDE_PLAYER ? -1 : 1;
+                Color fc = { 255, 160, 70, (unsigned char)(120 + 100 * blink) };
+                for (int s2 = -1; s2 <= 1; s2 += 2)
+                    for (int k = 0; k < 2; k++) {
+                        float cx = v.x + s2 * 34, cy = v.y + dir * (k * 8 - 4);
+                        DrawLineEx((Vector2) { cx - 6, cy - dir * 4 }, (Vector2) { cx, cy }, 2, fc);
+                        DrawLineEx((Vector2) { cx + 6, cy - dir * 4 }, (Vector2) { cx, cy }, 2, fc);
+                    }
+            }
             drawMechBattle(c->mech->model, (int)(v.x + sx), (int)(v.y + sy), SPRITE_SCALE, side == SIDE_ENEMY);
-            if (side == SIDE_PLAYER && c->done && !acting && battle.phase == BP_PLAYER_TURN)
-                DrawText("DONE", (int)v.x - MeasureText("DONE", 10) / 2, (int)v.y + 40, 10, (Color) { 130, 140, 160, 255 });
-            if (side == SIDE_ENEMY && framePreviewOk[p]) {   // reticle on the target, a lighter one on splash targets
-                Rectangle r = spriteRect(side, p);
-                int primary = p == battle.playerTarget;
-                Color rc = primary ? (Color) { 255, 220, 80, (unsigned char)(160 + 95 * blink) } : (Color) { 255, 150, 80, 150 };
-                int L = 12;
-                DrawLineEx((Vector2) { r.x, r.y }, (Vector2) { r.x + L, r.y }, 2, rc);
-                DrawLineEx((Vector2) { r.x, r.y }, (Vector2) { r.x, r.y + L }, 2, rc);
-                DrawLineEx((Vector2) { r.x + r.width, r.y }, (Vector2) { r.x + r.width - L, r.y }, 2, rc);
-                DrawLineEx((Vector2) { r.x + r.width, r.y }, (Vector2) { r.x + r.width, r.y + L }, 2, rc);
-                DrawLineEx((Vector2) { r.x, r.y + r.height }, (Vector2) { r.x + L, r.y + r.height }, 2, rc);
-                DrawLineEx((Vector2) { r.x, r.y + r.height }, (Vector2) { r.x, r.y + r.height - L }, 2, rc);
-                DrawLineEx((Vector2) { r.x + r.width, r.y + r.height }, (Vector2) { r.x + r.width - L, r.y + r.height }, 2, rc);
-                DrawLineEx((Vector2) { r.x + r.width, r.y + r.height }, (Vector2) { r.x + r.width, r.y + r.height - L }, 2, rc);
+            drawThreatBar((int)v.x - 25, (int)v.y + 48, 50, 4, c);
+            if (c->provoking) {
+                float pb = 0.5f + 0.5f * sinf(glowTimer * 8);
+                DrawCircleLines((int)v.x, (int)v.y, 40 + 3 * pb, (Color) { 255, 150, 60, (unsigned char)(120 + 100 * pb) });
+                DrawText("PROVOKING", (int)v.x - MeasureText("PROVOKING", 10) / 2, (int)v.y + 54, 10, (Color) { 255, 150, 60, 255 });
+            }
+            else if (c->flanking)
+                DrawText("FLANK", (int)v.x - MeasureText("FLANK", 10) / 2, (int)v.y + 54, 10, (Color) { 255, 160, 70, 255 });
+            else if (side == SIDE_PLAYER && c->done && !acting && battle.phase == BP_PLAYER_TURN)
+                DrawText("DONE", (int)v.x - MeasureText("DONE", 10) / 2, (int)v.y + 54, 10, (Color) { 130, 140, 160, 255 });
+            if (side == SIDE_ENEMY && framePreviewOk[p]) {   // reticle where the shot lands, a lighter one on splash targets
+                int primary = p == framePrimary;
+                drawReticle(spriteRect(side, p), primary ? (Color) { 255, 220, 80, (unsigned char)(160 + 95 * blink) } : (Color) { 255, 150, 80, 150 });
+            }
+            if (side == SIDE_ENEMY && p == battle.playerTarget && intercepted()) {   // aimed here, but the guard steps in
+                Vector2 g = slotPos(SIDE_ENEMY, framePrimary);
+                Color cc = { 120, 220, 255, (unsigned char)(120 + 100 * blink) };
+                drawReticle(spriteRect(side, p), (Color) { 120, 150, 190, 150 });
+                Vector2 from = { v.x + (g.x > v.x ? 30.0f : -30.0f), v.y + 18 }, to = { g.x + (g.x > v.x ? -30.0f : 30.0f), g.y };
+                DrawLineEx(from, to, 2, cc);
+                DrawCircleV(to, 3, cc);
+                DrawText("COVERED", (int)v.x - MeasureText("COVERED", 10) / 2, (int)v.y - 56, 10, (Color) { 120, 220, 255, 255 });
             }
         }
 }
@@ -1155,7 +1343,7 @@ static void drawWeaponButton(int i) {
         : TextFormat("HIT %d%%  SCRAMBLE %d  HEAT+%d", (int)roundf(p.hitChance * 100), p.scramble, p.heat);
     if (!usable && reason) info = reason;
     DrawText(info, bx + 24, by + 18, 10, usable ? (Color) { 150, 200, 220, 255 } : (Color) { 255, 120, 120, 255 });
-    if (w->ammo > 0)
+    if (w->ammo > 0 && usable)   // a blocked weapon shows its reason there instead
         DrawText(TextFormat("AMMO %d/%d", battleFieldPlayer()->mech->weapons[i].ammo, w->ammo), bx + 225, by + 18, 10,
             (Color) { 150, 200, 220, 255 });
     for (int e = 0; e < w->energyCost; e++) {
@@ -1171,9 +1359,12 @@ static void drawWeaponButton(int i) {
 // Plain-language summary of the selected weapon: what it will do and what to watch out for
 static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, good = { 120, 255, 160, 255 }, warn = { 255, 150, 110, 255 };
-    const MechStats* ds = &battleFieldEnemy()->mech->stats;
+    const MechStats* ds = &previewVictim()->mech->stats;
     int hitPct = (int)roundf(p->hitChance * 100);
-    DrawText(TextFormat("%s > %s", w->name, battleFieldEnemy()->mech->name), x, y, 12, munitionColor(w->munition));
+    DrawText(TextFormat("%s > %s", w->name, previewVictim()->mech->name), x, y, 12, munitionColor(w->munition));
+    if (intercepted())
+        DrawText(TextFormat("COVERING %s", battleFieldEnemy()->mech->name), x + 20 + MeasureText(TextFormat("%s > %s", w->name,
+            previewVictim()->mech->name), 12), y + 1, 10, (Color) { 120, 220, 255, 255 });
     int ly = y + 17;
     DrawText(TextFormat("%d%% TO HIT", hitPct), x, ly, 14, hitPct >= 70 ? good : hitPct >= 40 ? (Color) { 255, 220, 120, 255 } : warn);
     if (w->baseDamage > 0) {
@@ -1212,7 +1403,7 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
     ly += 13;
     DrawText(TextFormat("Costs %d EN (%d left).", p->energyCost, p->energyBefore - p->energyCost), x, ly, 10, txt);
     int splash = 0;
-    for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != battle.playerTarget;
+    for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != framePrimary;
     if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[w->targeting], splash), x + 130, ly, 10,
         (Color) { 255, 170, 90, 255 });
     DrawText("[I] why   [V] formula   [L] log   hover anything", x, y + 122, 10, (Color) { 100, 200, 240, 255 });
@@ -1221,7 +1412,8 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
 // Every step of the attack formula for the selected weapon, before it is fired
 static void drawPreviewPanel(const AttackPreview* p, const Weapon* w, int x, int y) {
     Color txt = { 210, 225, 240, 255 }, dim = { 130, 150, 175, 255 }, res = { 120, 255, 160, 255 };
-    DrawText(TextFormat("PREVIEW  %s > %s", w->name, battleFieldEnemy()->mech->name), x, y, 12, munitionColor(w->munition));
+    DrawText(TextFormat("PREVIEW  %s > %s%s", w->name, previewVictim()->mech->name, intercepted() ? " (COVERING)" : ""), x, y, 12,
+        munitionColor(w->munition));
     int ly = y + 16, lh = 12;
     DrawText(TextFormat("HIT  %d%% x %d/100 x (1 - %d/200) = %.1f%%%s", p->weaponAcc, p->accuracy, p->mobility,
         p->hitUnclamped * 100, p->spoofMod < 1 ? TextFormat(" x spoof %.2f", p->spoofMod) : ""), x, ly, 10, txt);
@@ -1390,7 +1582,33 @@ void uiBattleDraw(void) {
         int canSwitch = battleCanSwitch(&noSwitch) || (noSwitch && strcmp(noSwitch, "STANDBY") == 0);
         drawButton(deployButtonRect(), "DEPLOY [D]", 12, 0, battleCanDeploy());
         drawButton(switchButtonRect(), "SWITCH [S]", 12, 0, canSwitch);
+        const char* noProvoke = NULL;
+        int canProvoke = battleCanProvoke(&noProvoke);
+        drawButton(provokeButtonRect(), "PROVOKE [P]", 12, 0, canProvoke);
+        tipText(provokeButtonRect(), "PROVOKE", canProvoke
+            ? TextFormat("%d EN: Threat +%d, and every enemy single-target attack must aim at this mech until its next turn. "
+                "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", PROVOKE_ENERGY_COST, THREAT_PROVOKE)
+            : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads).", noProvoke ? noProvoke : "-"));
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
+        if (actor) {   // formation, under the reactor
+            int toRear = actor->lane == LANE_FRONT;
+            const char *noLane = NULL, *noFlank = NULL;
+            int canLane = battleCanMove(toRear ? LANE_REAR : LANE_FRONT, &noLane);
+            int canFlank = battleCanMove(MOVE_FLANK, &noFlank);
+            const char* cost = battleMoveCost(actor) ? TextFormat("%d EN", MOVE_ENERGY_COST) : "free";
+            drawButton(laneButtonRect(), TextFormat("%s [F]", toRear ? "TO REAR" : "TO FRONT"), 10, 0, canLane);
+            drawButton(flankButtonRect(), "FLANK [G]", 10, 0, canFlank);
+            tipText(laneButtonRect(), toRear ? "MOVE TO THE REAR" : "MOVE TO THE FRONT", canLane
+                ? TextFormat("%s (Recon and EW move free), once a turn - the mech can still act. %s", cost, toRear
+                    ? "REAR: a Front ally takes single-target and line attacks aimed at it; area and cone weapons still reach it."
+                    : "FRONT: it takes single-target and line attacks aimed at its Rear allies.")
+                : TextFormat("Can't move: %s.", noLane ? noLane : "-"));
+            tipText(flankButtonRect(), "FLANK", canFlank
+                ? TextFormat("Free for Recon / EW, once a turn - the mech can still act. Until its next turn its attacks ignore %d%% "
+                    "of the target's Armor, but it is at -%d Mobility and out of formation: it doesn't cover the Rear and nothing "
+                    "covers it.", (int)roundf(FLANK_ARMOR_IGNORE * 100), FLANK_MOBILITY_PENALTY)
+                : TextFormat("Can't flank: %s.", noFlank ? noFlank : "-"));
+        }
         drawButton(nextButtonRect(), "NEXT [TAB]", 12, 0, actor != NULL);
         drawButton(endTurnButtonRect(), "END TURN [X]", 12, 0, battleFieldCount(SIDE_PLAYER) > 0);
         tipText(deployButtonRect(), "DEPLOY", battleCanDeploy()
@@ -1415,7 +1633,7 @@ void uiBattleDraw(void) {
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
         DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
-                                  : "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT MECH [S] SWITCH [D] DEPLOY [X] END [C] HACK [L] LOG",
+                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [P] PROVOKE [C] HACK [X] END",
             30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {

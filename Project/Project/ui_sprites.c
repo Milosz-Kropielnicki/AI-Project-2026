@@ -60,6 +60,11 @@ void drawMechOverworld(int model, int x, int y, int facingDir, float t) {
         tri(x + 12.0f, y + 6.0f, x + 8.0f, y - 4.0f, x + 16.0f, y + 6.0f, (Color) { 220, 30, 60, 255 });
         tri(x + 28.0f, y + 6.0f, x + 32.0f, y - 4.0f, x + 24.0f, y + 6.0f, (Color) { 220, 30, 60, 255 });
         break;
+    case 6:   // tower shield, visor
+        DrawRectangle(x + 2, y + 14, 7, 18, accent);
+        DrawRectangle(x + 3, y + 15, 5, 16, scaleColor(body, 3, 4));
+        DrawRectangle(x + 15, y + 9, 10, 2, glow);
+        break;
     }
 
     // Chest core
@@ -144,6 +149,13 @@ void drawMechBattle(int model, int cx, int cy, int s, int isEnemy) {
         DrawCircle(cx, cy + P(6), F(8), (Color) { glow.r, glow.g, glow.b, (unsigned char)(200 + pulse * 55) });
         DrawCircle(cx, cy + P(6), F(4), (Color) { 255, 220, 220, 255 });
         DrawCircleLines(cx, cy, F(60), (Color) { glow.r, glow.g, glow.b, (unsigned char)(40 + pulse * 40) });
+        break;
+    case 6:   // tower shield on the left arm, visor slit, shoulder plates
+        DrawRectangle(cx - P(62), cy - P(24), P(22), P(56), accent);
+        DrawRectangle(cx - P(58), cy - P(20), P(14), P(48), scaleColor(body, 3, 4));
+        DrawRectangle(cx - P(54), cy - P(8), P(6), P(24), accent);
+        DrawRectangle(cx - P(12), cy - P(22), P(24), P(4), (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
+        DrawRectangle(cx + P(30), cy - P(14), P(18), P(8), accent);
         break;
     }
 

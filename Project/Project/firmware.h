@@ -68,6 +68,7 @@ typedef enum {
     CFX_OVERCHARGE,         // Energy munitions deal +value (fraction) damage and +50% Heat
     CFX_RECURSIVE_TARGETING,// every miss: +value Accuracy for the rest of the battle
     CFX_DEAD_MAN,           // on reaching 0 Integrity: one final attack, free of Energy and Heat
+    CFX_PROVOCATION,        // unlocks PROVOKE: +value Threat, enemy single-target attacks must aim here for a round
     // branches and traits
     CFX_EXECUTE,            // +value (fraction) damage vs targets below 50% Integrity
     CFX_PEN_BONUS,          // +value Armor Penetration on every attack
@@ -98,7 +99,7 @@ enum {
     CHIP_ARMOR_ANALYSIS, CHIP_ARMOR_BREACH, CHIP_PRECISION_STRIKE, CHIP_EMERGENCY_EVASION,
     CHIP_EVASIVE_MANEUVER, CHIP_EMERGENCY_POWER, CHIP_COUNTER_INTRUSION, CHIP_TARGETING_SPOOF,
     CHIP_SYSTEM_RECOVERY, CHIP_LAST_STAND, CHIP_EMERGENCY_REPAIR, CHIP_COOLANT_DUMP, CHIP_OVERCHARGE,
-    CHIP_RECURSIVE_TARGETING, CHIP_DEAD_MAN,
+    CHIP_RECURSIVE_TARGETING, CHIP_DEAD_MAN, CHIP_PROVOCATION,
     NUM_CHIPS
 };
 extern const ChipDef chipDefs[NUM_CHIPS];     // data_chips.c

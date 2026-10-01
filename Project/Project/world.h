@@ -68,7 +68,7 @@ typedef struct {
     int numDefeated;
 } Trainer;
 
-#define NUM_TRAINERS 16
+#define NUM_TRAINERS 17                // hubs and routes, plus the Omega boss
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);

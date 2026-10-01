@@ -348,7 +348,7 @@ static void initTrainers(void) {
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Route 1 is at the top of the map.",
-        0, 0, { ARCH_PROWLER }, { 1 }, 1, 0
+        0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0
     };
     trainers[2] = (Trainer){
         "MECHANIC VOSS", FAC_CHROME_SYNDICATE, 8, 22, 0, { 120, 220, 255, 255 },
@@ -373,14 +373,14 @@ static void initTrainers(void) {
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "Gamma lies east. Watch the ruins.",
-        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER }, { 3, 3 }, 2, 0
+        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0
     };
     trainers[5] = (Trainer){
         "ENGINEER KESS", FAC_CHROME_SYNDICATE, 70, 20, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "The wasteland is further east still.",
-        2, 0, { ARCH_JAMMER, ARCH_SNIPER }, { 3, 3 }, 2, 0
+        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0
     };
     trainers[6] = (Trainer){
         "FOREMAN GRELL", FAC_IRON_LEGION, 54, 20, 0, { 200, 180, 100, 255 },
@@ -405,7 +405,7 @@ static void initTrainers(void) {
         "You cannot hit what you cannot see.",
         "Even my stealth... failed.",
         "Delta is south. Omega is further.",
-        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER }, { 5, 5 }, 2, 0
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0
     };
     trainers[9] = (Trainer){
         "IRON SENTINEL", FAC_IRON_LEGION, 110, 20, 0, { 220, 220, 100, 255 },
@@ -421,7 +421,7 @@ static void initTrainers(void) {
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
         "Gamma's just north.",
-        2, 0, { ARCH_BERSERKER, ARCH_BOMBARD }, { 5, 5 }, 2, 0
+        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0
     };
 
     // --- Route 3 (Alpha -> Delta) ---
@@ -464,7 +464,17 @@ static void initTrainers(void) {
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        3, 0, { ARCH_BOMBARD, ARCH_BRAWLER, ARCH_ORDNANCE }, { 7, 7, 9 }, 3, 0
+        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0
+    };
+
+    // --- Omega, far corner: the boss, the machine itself, flanked by escorts.
+    // Firmware 3.0 with Recursive Targeting and Dead-Man Protocol.
+    trainers[16] = (Trainer){
+        "FACTORY OVERSEER", FAC_BLACK_BOX, 112, 53, 0, { 200, 60, 255, 255 },
+        "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
+        "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
+        "...the Overseer's chassis sits silent.",
+        3, 0, { ARCH_SNIPER, ARCH_OVERSEER, ARCH_BOMBARD, ARCH_JAMMER }, { 10, 12, 10, 9 }, 4, 0
     };
 }
 

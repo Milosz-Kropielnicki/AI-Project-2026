@@ -62,6 +62,10 @@ const ChipDef chipDefs[NUM_CHIPS] = {
     { "DEAD-MAN PROTOCOL",              CAT_TRIGGERED, RARITY_BLACK_BOX,    4, CFX_DEAD_MAN,            STAT_INTEGRITY,  1,
       "On reaching 0 Integrity: one final attack, free of Energy and Heat.",
       "When this machine is destroyed, it gets one last free shot with its best weapon before going down." },
+    { "PROVOCATION PROTOCOL",           CAT_DEFENSIVE, RARITY_ADVANCED,     2, CFX_PROVOCATION,         STAT_ARMOR,      50,
+      "Action, 1 EN: +50 Threat; enemy single-target attacks must target this mech until its next turn.",
+      "Unlocks PROVOKE [P]. For 1 Energy, every enemy single-target shot has to aim at this mech until its next turn, "
+      "keeping fire off your damaged mechs. Area and cone weapons still hit everyone. Built for a tough Ironclad." },
 };
 
 // ============ FIRMWARE BRANCHES (doc 7.16) ============

@@ -65,7 +65,7 @@ typedef struct {
 } CatalogEntry;
 
 enum { CO_ATLAS, CO_KESTREL, CO_HELIOS, NUM_COMPANIES };   // one showroom per zone, same order
-#define NUM_CATALOG 8
+#define NUM_CATALOG 9
 extern const Company companies[NUM_COMPANIES];
 extern const CatalogEntry catalog[NUM_CATALOG];
 
