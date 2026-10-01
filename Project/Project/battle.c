@@ -87,8 +87,12 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->adaptiveMod = ctx->targetLastMunition == w->munition ? 1.0f - fwEffect(target, CFX_ADAPTIVE) : 1.0f;
     out->formatMod = ctx->formatMod > 0 ? ctx->formatMod : 1.0f;
     out->splashMod = ctx->splashMod > 0 ? ctx->splashMod : 1.0f;
+    out->critMod = ctx->critMod > 0 ? ctx->critMod : 1.0f;
+    out->guardMod = ctx->guardMod > 0 ? ctx->guardMod : 1.0f;
+    out->critChance = ctx->critChance;
+    out->linkAccuracy = ctx->linkAccuracy;
     out->dmgMod = out->executeMod * out->overchargeMod * out->reductionMod * out->firstHitMod * out->adaptiveMod
-        * out->formatMod * out->splashMod;
+        * out->formatMod * out->splashMod * out->critMod * out->guardMod;
     out->raw = formulaRawDamage(w->baseDamage, out->power) * out->dmgMod;
     out->pen = w->armorPen + (int)fwEffect(attacker, CFX_PEN_BONUS);                     // Siege Kernel
     if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(fwEffect(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
@@ -134,6 +138,10 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     c.formatMod = 1.0f;
     c.splashMod = 1.0f;
     c.armorIgnore = 0;
+    c.linkAccuracy = 0;
+    c.critChance = 0;
+    c.critMod = 1.0f;
+    c.guardMod = 1.0f;
     return c;
 }
 
@@ -146,7 +154,8 @@ float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
     const MechStats* ds = &target->stats;
 
     // Armor vs penetration: stripping Armor is worth less than Integrity damage
-    float value = ai->damage * (p.armorDamage * ai->armorBias + p.integrityDamage) * p.hitChance;
+    float value = ai->damage * (p.armorDamage * ai->armorBias + p.integrityDamage) * p.hitChance
+        * (1.0f + p.critChance * (CRIT_MULT - 1.0f));
     if (p.integrityDamage >= ds->integrity) value += ai->finisher * 40.0f * p.hitChance;
 
     // Stability: a scramble is only worth what gets past the target's resistance,
@@ -263,6 +272,9 @@ static int pendingScrambles(const Combatant* c) {
     return n;
 }
 
+static float linkEffect(const Combatant* c, ChipEffect e, const Combatant* vs);
+static Combatant* guardOf(const Combatant* d, float* share);
+
 static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     AttackContext ctx;
     ctx.attackerAccuracy = combatAccuracy(a);
@@ -279,6 +291,12 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     ctx.formatMod = TEAM_DAMAGE_SCALE;
     ctx.splashMod = 1.0f;
     ctx.armorIgnore = a->flanking ? FLANK_ARMOR_IGNORE : 0;
+    ctx.linkAccuracy = (int)linkEffect(a, CFX_LINK_MARK_ACCURACY, d);   // on top of the 0-100 clamp
+    ctx.attackerAccuracy += ctx.linkAccuracy;
+    ctx.critChance = linkEffect(a, CFX_LINK_MARK_CRIT, d);
+    ctx.critMod = 1.0f;
+    float share = 0;
+    ctx.guardMod = guardOf(d, &share) ? 1.0f - share : 1.0f;
     return ctx;
 }
 
@@ -314,6 +332,7 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     if (precision) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Precision Strike +%d", precision);
     if (recursive) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Recursive Targeting +%d", recursive);
     if (a->accPenalty) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", scrambled -%d", a->accPenalty);
+    if (p->linkAccuracy) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", link +%d", p->linkAccuracy);
     if (d->evasiveBonus) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", evading +%d", d->evasiveBonus);
     if (integrityBelow(d, 0.25f) && fwEffect(d->mech, CFX_EMERGENCY_EVASION) > 0)
         snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", Emergency Evasion +%d", (int)fwEffect(d->mech, CFX_EMERGENCY_EVASION));
@@ -336,11 +355,18 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         if (p->firstHitMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target Defensive Kernel -%d%%", (int)roundf((1 - p->firstHitMod) * 100));
         if (p->adaptiveMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", adapted to %s -%d%%", munitionNames[w->munition], (int)roundf((1 - p->adaptiveMod) * 100));
         if (p->formatMod != 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", team battle x%.2f", p->formatMod);
+        if (p->critMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", CRITICAL x%.1f", p->critMod);
+        if (p->guardMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Defense Link x%.2f", p->guardMod);
         say(x, 0, "DAMAGE %.0f: %d base x %.2f Power%s", p->raw, p->baseDamage, p->power,
             p->dmgMod != 1 ? TextFormat(" x %.2f firmware", p->dmgMod) : "");
         if (mods[0]) say(x, 0, "   %s", mods + 2);
         if (p->splashMod < 1) say(x, 1, "   SPLASH: a secondary target of %s takes %d%% (-25%% per extra target)",
             targetingNames[w->targeting], (int)roundf(p->splashMod * 100));
+        const Combatant* guard = p->guardMod < 1 ? guardOf(d, NULL) : NULL;
+        if (guard) say(x, 1, "   DEFENSE LINK: %s takes %d%% of this hit through its own Armor", guard->mech->name,
+            (int)roundf((1 - p->guardMod) * 100));
+        if (p->critChance > 0 && p->critMod <= 1)
+            say(x, 0, "   CRIT %d%% (Targeting Link vs the mark): a crit deals x%.1f", (int)roundf(p->critChance * 100), CRIT_MULT);
 
         // ---- armor vs penetration ----
         int analysis = ds->armor > ARMORED_THRESHOLD ? (int)roundf(fwEffect(a->mech, CFX_PEN_VS_ARMORED) * 100) : 0;
@@ -414,6 +440,8 @@ static void initCombatant(Combatant* c, Mech* m) {
     c->lastMunitionTaken = -1;
     c->archetype = -1;
     c->ai = &aiDefault;
+    c->mark = -1;
+    c->jammedBy = -1;
 }
 
 // A mech entering the battle: clean firmware, cold, fully loaded
@@ -553,9 +581,11 @@ int battleInterceptor(int side, int pos) {
 // Single-target and line shots are stopped by cover; area and cone reach past it
 static int coverStops(const Weapon* w) { return w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE; }
 
-// The field position a weapon aimed at `aim` actually hits first
-static int aimedAt(const Weapon* w, int side, int aim) {
+// The field position a weapon aimed at `aim` actually hits first. A Spotter
+// Link lets the attacker reach its partner's mark past cover.
+static int aimedAt(const Combatant* a, const Weapon* w, int side, int aim) {
     if (!w || !coverStops(w)) return aim;
+    if (a && linkEffect(a, CFX_LINK_MARK_REACH, battleField(side, aim)) > 0) return aim;
     int g = battleInterceptor(side, aim);
     return g >= 0 ? g : aim;
 }
@@ -575,16 +605,108 @@ static int defaultLane(int side, const Combatant* c) {
     }
 }
 
+// ============ COMBAT LINKS: STATE ============
+const LinkDef linkDefs[NUM_LINK_TYPES] = {
+    { "NONE", "", ROLE_NONE, CLASS_HEAVY_ASSAULT, CFX_NONE, 0, CFX_NONE, 0, { 0, 0, 0, 0 }, "" },
+    { "TARGETING LINK", "TGT", ROLE_CATCHER, CLASS_ARTILLERY, CFX_LINK_MARK_ACCURACY, 15, CFX_LINK_MARK_CRIT, 0.10f,
+      { 120, 255, 170, 255 }, "The Artillery gets +15 Accuracy (even past 100) and a 10% chance to crit for x1.5 damage against "
+      "whatever the Catcher last aimed at." },
+    { "DEFENSE LINK", "DEF", ROLE_AEGIS, CLASS_HEAVY_ASSAULT, CFX_LINK_GUARD, 0.20f, CFX_NONE, 0,
+      { 130, 200, 255, 255 }, "The Aegis takes 20% of every hit on the Heavy Assault, through its own Armor." },
+    { "SPOTTER LINK", "SPOT", ROLE_SCOUT, CLASS_ARTILLERY, CFX_LINK_MARK_ACCURACY, 10, CFX_LINK_MARK_REACH, 1,
+      { 255, 210, 90, 255 }, "The Artillery gets +10 Accuracy against whatever the Scout last aimed at, and its single-target "
+      "and line shots reach that mech even when it is covered in the Rear." },
+    { "SIGNAL BLACKOUT", "BLK", ROLE_DISRUPTOR, CLASS_RECON, CFX_LINK_BLACKOUT, 1, CFX_NONE, 0,
+      { 200, 150, 255, 255 }, "Mechs the Disruptor jams (a scramble that lands) can't target the Recon until after their next turn." },
+};
+
+static int sideOf(const Combatant* c) {
+    const Combatant* p = battle.side[SIDE_PLAYER].slot;
+    return c >= p && c < p + MAX_TEAM ? SIDE_PLAYER : SIDE_ENEMY;
+}
+static int slotOf(const Combatant* c) { return (int)(c - battle.side[sideOf(c)].slot); }
+static int fieldPosOf(int side, int slot) {
+    for (int p = 0; slot >= 0 && p < MAX_FIELD; p++) if (battle.side[side].field[p] == slot) return p;
+    return -1;
+}
+
+int battleLinkInitiator(const Combatant* c) {
+#ifdef NO_LINKS_TEST   // test builds only: the player's mechs never link, for comparison
+    if (sideOf(c) == SIDE_PLAYER) return LINK_NONE;
+#endif
+    for (int t = 1; t < NUM_LINK_TYPES; t++) if (mechRole(c->mech) == linkDefs[t].initiator) return t;
+    return LINK_NONE;
+}
+static int linkTypeFor(const Combatant* from, const Combatant* to) {
+    int t = battleLinkInitiator(from);
+    return t != LINK_NONE && mechClass(to->mech) == linkDefs[t].partner ? t : LINK_NONE;
+}
+// Partner of slot's outgoing link / initiator of its incoming link, -1 if none
+static int linkOut(int side, int slot, int* type) {
+    for (int j = 0; j < MAX_TEAM; j++)
+        if (battle.side[side].link[slot][j]) { if (type) *type = battle.side[side].link[slot][j]; return j; }
+    return -1;
+}
+static int linkIn(int side, int slot, int* type) {
+    for (int i = 0; i < MAX_TEAM; i++)
+        if (battle.side[side].link[i][slot]) { if (type) *type = battle.side[side].link[i][slot]; return i; }
+    return -1;
+}
+
+int battleLinks(int side, ActiveLink* out, int max) {
+    int n = 0;
+    for (int i = 0; i < MAX_TEAM; i++)
+        for (int j = 0; j < MAX_TEAM && n < max; j++)
+            if (battle.side[side].link[i][j]) out[n++] = (ActiveLink){ i, j, battle.side[side].link[i][j] };
+    return n;
+}
+
+int battleMarkPos(int side, int slot) {
+    int m = battle.side[side].slot[slot].mark;
+    return m >= 0 ? fieldPosOf(1 - side, m) : -1;
+}
+
+static int isMarkEffect(ChipEffect e) { return e == CFX_LINK_MARK_ACCURACY || e == CFX_LINK_MARK_CRIT || e == CFX_LINK_MARK_REACH; }
+
+// What links grant a mech, resolved like a chip effect: the effects of its
+// incoming link. Mark effects only count against the initiator's mark (vs).
+static float linkEffect(const Combatant* c, ChipEffect e, const Combatant* vs) {
+    int side = sideOf(c), type, from = linkIn(side, slotOf(c), &type);
+    if (from < 0) return 0;
+    const LinkDef* L = &linkDefs[type];
+    if (isMarkEffect(e)) {
+        int m = battleMarkPos(side, from);
+        if (!vs || m < 0 || battleField(1 - side, m) != vs) return 0;
+    }
+    return (L->effect == e ? L->value : 0) + (L->effect2 == e ? L->value2 : 0);
+}
+
+// CFX_LINK_GUARD: the initiator guarding d, and the share of each hit it takes
+static Combatant* guardOf(const Combatant* d, float* share) {
+    int side = sideOf(d), type, from = linkIn(side, slotOf(d), &type);
+    if (from < 0 || linkDefs[type].effect != CFX_LINK_GUARD) return NULL;
+    if (share) *share = linkDefs[type].value;
+    return &battle.side[side].slot[from];
+}
+
+// CFX_LINK_BLACKOUT: a was jammed by the initiator linked to d
+static int hiddenFrom(const Combatant* a, const Combatant* d) {
+    if (!a || !d || a->jammed <= 0) return 0;
+    int type, from = linkIn(sideOf(d), slotOf(d), &type);
+    return from >= 0 && linkDefs[type].effect == CFX_LINK_BLACKOUT && a->jammedBy == from;
+}
+int battleHidden(int pos) { return hiddenFrom(battleActing(), battleField(SIDE_ENEMY, pos)); }
+
 // ============ TARGETS ============
 // Enemy field positions a weapon reaches when aimed at `primary`, with each
 // one's damage share: AREA covers the whole field, CONE the target and the
 // positions next to it, anything else only the target. A single-target or line
 // weapon aimed at a covered Rear mech hits its Front guard instead. Extra targets are
 // ordered nearest first and each takes SPLASH_FALLOFF less (compounding).
-static int weaponTargets(const Weapon* w, int side, int primary, int* pos, float* mod, int max) {
+static int weaponTargets(const Combatant* a, const Weapon* w, int side, int primary, int* pos, float* mod, int max) {
     int n = 0;
     if (!w || !battleField(side, primary) || max < 1) return 0;
-    primary = aimedAt(w, side, primary);
+    primary = aimedAt(a, w, side, primary);
     pos[n] = primary;
     mod[n++] = 1.0f;
     if (w->targeting != TARGET_AREA && w->targeting != TARGET_CONE) return n;
@@ -614,7 +736,7 @@ int battlePreviewTargets(int mount, int* pos, AttackPreview* out, int max) {
     const Weapon* w = a ? mechWeapon(a->mech, mount) : NULL;
     int p[MAX_FIELD];
     float mod[MAX_FIELD];
-    int n = weaponTargets(w, SIDE_ENEMY, battle.playerTarget, p, mod, max < MAX_FIELD ? max : MAX_FIELD);
+    int n = weaponTargets(a, w, SIDE_ENEMY, battle.playerTarget, p, mod, max < MAX_FIELD ? max : MAX_FIELD);
     for (int k = 0; k < n; k++) {
         Combatant* d = battleField(SIDE_ENEMY, p[k]);
         AttackContext ctx = splashContext(a, d, mod[k], k > 0);
@@ -645,7 +767,8 @@ int battleExplainPlayer(int mount, Explanation* out) {
         say(out, 1, "COVERED: %s is in the Rear - %s in the Front takes single-target and line shots. Area and cone weapons reach it.",
             aim->mech->name, battleField(SIDE_ENEMY, pos[0])->mech->name);
     else if (battleInterceptor(SIDE_ENEMY, battle.playerTarget) >= 0)
-        say(out, 0, "REACHES THE REAR: %s weapons ignore the Front guard.", targetingNames[w->targeting]);
+        say(out, 0, coverStops(w) ? "SPOTTED: your Spotter Link calls this shot past the Front guard."
+            : TextFormat("REACHES THE REAR: %s weapons ignore the Front guard.", targetingNames[w->targeting]));
     for (int k = 1; k < n; k++)
         say(out, 0, "SPLASH -> %s: %d%% damage, %d%% to hit, ARM -%d INT -%d", battleField(SIDE_ENEMY, pos[k])->mech->name,
             (int)roundf(all[k].splashMod * 100), (int)roundf(all[k].hitChance * 100), all[k].armorDamage, all[k].integrityDamage);
@@ -696,28 +819,82 @@ static int singleTarget(const Weapon* w) { return w->targeting != TARGET_AREA &&
 // the Energy / Heat / scramble checks (Dead-Man Protocol's free shot). If why is
 // given, it gets a plain explanation of the pick.
 static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
+                          char* why, int whySize);
+
+// Teamwork for link initiators: what aiming at each position on the other side
+// is worth to the partner. A Catcher or Scout marks what it aims at, so the
+// gain is how much better the partner's best shot gets with that mark (zero
+// once the partner has acted). A Disruptor's jam blinds a mech to its Recon, so
+// the gain is what that mech would otherwise do to the Recon. Returns the link's
+// kind: 0 none, 1 mark, 2 jam.
+static int linkAimBonus(const Combatant* a, int targetSide, float* bonus) {
+    static int busy = 0;   // the partner's own choice doesn't recurse
+    for (int t = 0; t < MAX_FIELD; t++) bonus[t] = 0;
+    int side = sideOf(a), type, partner = linkOut(side, slotOf(a), &type);
+    if (busy || partner < 0) return 0;
+    const LinkDef* L = &linkDefs[type];
+    Combatant* b = &battle.side[side].slot[partner];
+    int kind = isMarkEffect(L->effect) || isMarkEffect(L->effect2) ? 1 : L->effect == CFX_LINK_BLACKOUT ? 2 : 0;
+    busy = 1;
+    if (kind == 1 && !b->done) {
+        Combatant* m = (Combatant*)a;
+        int keep = m->mark;
+        float base = 0, with = 0;
+        aiChooseAction(b, targetSide, 0, NULL, &base, NULL, 0);
+        for (int t = 0; t < MAX_FIELD; t++) {
+            if (!battleField(targetSide, t)) continue;
+            m->mark = battle.side[targetSide].field[t];
+            aiChooseAction(b, targetSide, 0, NULL, &with, NULL, 0);
+            bonus[t] = with > base ? with - base : 0;
+        }
+        m->mark = keep;
+    }
+    else if (kind == 2) {
+        int pp = fieldPosOf(side, partner);
+        for (int t = 0; t < MAX_FIELD; t++) {
+            Combatant* e = battleField(targetSide, t);
+            int at = -1;
+            float score = 0;
+            if (!e || e->jammed > 0) continue;
+            aiChooseAction(e, side, 0, &at, &score, NULL, 0);
+            if (at == pp && score > 0) bonus[t] = score;
+        }
+    }
+    busy = 0;
+    return kind;
+}
+
+static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
                           char* why, int whySize) {
     int best = -1, bestPos = -1, provoker = battleProvoker(targetSide);
-    float bestValue = -1, perTarget[MAX_FIELD], rawOf[MAX_FIELD];
+    float bestValue = -1, perTarget[MAX_FIELD], rawOf[MAX_FIELD], aimBonus[MAX_FIELD];
+    int linkKind = linkAimBonus(a, targetSide, aimBonus);
     for (int t = 0; t < MAX_FIELD; t++) perTarget[t] = rawOf[t] = -1;
     for (int t = 0; t < MAX_FIELD; t++) {
-        if (!battleField(targetSide, t)) continue;
+        if (!battleField(targetSide, t) || hiddenFrom(a, battleField(targetSide, t))) continue;   // Signal Blackout
         for (int i = 0; i < MAX_WEAPONS; i++) {
             const Weapon* w = mechWeapon(a->mech, i);
             if (!w) continue;
             if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
             if (provoker >= 0 && t != provoker && singleTarget(w)) continue;
-            if (aimedAt(w, targetSide, t) != t) continue;   // covered: same as aiming at its guard
+            // covered: same as aiming at its guard - unless the aim itself is worth something (a mark)
+            if (aimedAt(a, w, targetSide, t) != t && !(linkKind == 1 && aimBonus[t] > 0)) continue;
             int pos[MAX_FIELD];
             float mod[MAX_FIELD], v = 0, raw = 0;
-            int n = weaponTargets(w, targetSide, t, pos, mod, MAX_FIELD);
+            int n = weaponTargets(a, w, targetSide, t, pos, mod, MAX_FIELD);
             for (int k = 0; k < n; k++) {
                 const Combatant* d = battleField(targetSide, pos[k]);
                 AttackContext ctx = splashContext(a, d, mod[k], k > 0);
                 float s = aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai);
                 raw += s;
                 v += s * battleThreatFactor(d);
+                if (k == 0 && linkKind == 2 && w->scramble > 0 && aimBonus[pos[0]] > 0) {   // jam it before it shoots the Recon
+                    AttackPreview jp;
+                    attackPreview(a->mech, w, d->mech, &ctx, &jp);
+                    v += aimBonus[pos[0]] * jp.hitChance * (1 - jp.resist);
+                }
             }
+            if (linkKind == 1) v += aimBonus[t];   // marking it for the partner
             if (v > perTarget[t]) { perTarget[t] = v; rawOf[t] = raw; }
             if (v > bestValue) { bestValue = v; best = i; bestPos = t; }
         }
@@ -749,6 +926,7 @@ static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResource
 static void turnStart(Combatant* c, int onField, char* note, int size) {
     MechStats* s = &c->mech->stats;
     note[0] = 0;
+    if (c->jammed > 0) c->jammed--;   // Signal Blackout: active through the jammed mech's next turn
     firmwareCorruptionTick(&c->mech->fw);
     mechRefreshStats(c->mech);   // a stat chip may have come back online
     s->energy = s->maxEnergy - c->nextEnergyLoss + (int)fwEffect(c->mech, CFX_BONUS_ENERGY);
@@ -841,6 +1019,8 @@ static float fxDuration(int fx) {
     case FX_BEAM: return 0.5f;
     case FX_SCAN: return 1.0f;
     case FX_SWITCH: return 0.8f;
+    case FX_GUARD: return 0.5f;
+    case FX_LINK: return 0.7f;
     default: return 0.55f;
     }
 }
@@ -852,6 +1032,142 @@ static void logLine(const char* fmt, ...) {
     vsnprintf(battle.log, sizeof(battle.log), fmt, args);
     va_end(args);
     syncLog();
+}
+
+// ============ COMBAT LINKS: FORMING AND BREAKING ============
+// A history entry that leaves the log strip alone
+static LogEntry* logNote(const char* text, int side) {
+    char keep[256];
+    snprintf(keep, sizeof(keep), "%s", lastLogged);
+    LogEntry* e = logPush(text, side, -1);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", keep);
+    return e;
+}
+
+static int canHoldLink(int side, int slot) {
+    return battleSlotStanding(side, slot) && slotOnField(&battle.side[side], slot)
+        && !integrityBelow(&battle.side[side].slot[slot], LINK_BREAK_BELOW);
+}
+
+// `from` can link to `to` now (to may already be its partner)
+static int linkEligible(int side, int from, int to) {
+    if (from == to || !canHoldLink(side, from) || !canHoldLink(side, to)) return 0;
+    if (linkTypeFor(&battle.side[side].slot[from], &battle.side[side].slot[to]) == LINK_NONE) return 0;
+    int in = linkIn(side, to, NULL);
+    return in < 0 || in == from;
+}
+
+static LogEntry* setLink(int side, int from, int to) {
+    Side* sd = &battle.side[side];
+    int type = linkTypeFor(&sd->slot[from], &sd->slot[to]);
+    for (int j = 0; j < MAX_TEAM; j++) sd->link[from][j] = LINK_NONE;
+    sd->link[from][to] = (unsigned char)type;
+    const LinkDef* L = &linkDefs[type];
+    LogEntry* e = logNote(TextFormat("%s%s: %s > %s.", side == SIDE_PLAYER ? "" : "Enemy ", L->name, sd->mech[from].name,
+        sd->mech[to].name), side == SIDE_PLAYER);
+    say(&e->why, 0, "%s", L->rule);
+    say(&e->why, 0, "It breaks if either mech drops below 25%% Integrity, is switched out or is disabled.");
+    pushEvent(FX_LINK, side == SIDE_PLAYER, fieldPosOf(side, from), fieldPosOf(side, to), 0, 1, L->color);
+    return e;
+}
+
+// Breaks every link a mech can no longer hold: below 25% Integrity, off the
+// field, disabled
+static void linkUpkeep(void) {
+    for (int side = 0; side < 2; side++) {
+        Side* sd = &battle.side[side];
+        for (int i = 0; i < MAX_TEAM; i++)
+            for (int j = 0; j < MAX_TEAM; j++) {
+                if (!sd->link[i][j] || (canHoldLink(side, i) && canHoldLink(side, j))) continue;
+                int bad = canHoldLink(side, i) ? j : i;
+                const char* why = !battleSlotStanding(side, bad) ? "is out of the fight"
+                    : !slotOnField(sd, bad) ? "switched out" : "dropped below 25% Integrity";
+                logNote(TextFormat("%s%s LOST: %s > %s (%s %s).", side == SIDE_PLAYER ? "" : "Enemy ", linkDefs[sd->link[i][j]].name,
+                    sd->mech[i].name, sd->mech[j].name, sd->mech[bad].name, why), side == SIDE_PLAYER);
+                sd->link[i][j] = LINK_NONE;
+            }
+    }
+}
+
+// Links form by themselves at battle start and when a mech takes the field:
+// each initiator on the field without a link picks a partner (onlySlot >= 0:
+// only pairs that involve that mech). An Aegis prefers a Front guard, the
+// others the hardest-hitting partner.
+static void autoLink(int side, int onlySlot) {
+    Side* sd = &battle.side[side];
+    for (int p = 0; p < MAX_FIELD; p++) {
+        int i = sd->field[p];
+        if (i < 0 || linkOut(side, i, NULL) >= 0 || battleLinkInitiator(&sd->slot[i]) == LINK_NONE) continue;
+        int best = -1;
+        float bestScore = -1;
+        for (int q = 0; q < MAX_FIELD; q++) {
+            int j = sd->field[q];
+            if (j < 0 || !linkEligible(side, i, j) || (onlySlot >= 0 && i != onlySlot && j != onlySlot)) continue;
+            const Combatant* o = &sd->slot[j];
+            float score = battleLinkInitiator(&sd->slot[i]) == LINK_DEFENSE ? guards(o) * 1000.0f + o->threat : o->mech->stats.power * 100;
+            if (score > bestScore) { bestScore = score; best = j; }
+        }
+        if (best >= 0) setLink(side, i, best);
+    }
+}
+
+// The partner the LINK action picks: the next eligible one after the current
+// partner, in field order
+static int nextLinkPartner(int side, int from) {
+    int cur = linkOut(side, from, NULL), start = cur >= 0 ? fieldPosOf(side, cur) + 1 : 0;
+    for (int k = 0; k < MAX_FIELD; k++) {
+        int j = battle.side[side].field[(start + k) % MAX_FIELD];
+        if (j >= 0 && j != cur && linkEligible(side, from, j)) return j;
+    }
+    return -1;
+}
+
+static const char* linkBlock(int side, const Combatant* c) {
+    if (battleLinkInitiator(c) == LINK_NONE) return "ONLY CATCHER / AEGIS / SCOUT / DISRUPTOR";
+    if (integrityBelow(c, LINK_BREAK_BELOW)) return "BELOW 25% INTEGRITY";
+    if (c->mech->stats.energy < LINK_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    if (nextLinkPartner(side, slotOf(c)) < 0) return linkOut(side, slotOf(c), NULL) >= 0 ? "NO OTHER PARTNER" : "NO PARTNER ON THE FIELD";
+    return NULL;
+}
+
+static void doLink(Combatant* c, int side) {
+    int to = nextLinkPartner(side, slotOf(c));
+    c->mech->stats.energy -= LINK_ENERGY_COST;
+    c->actionsThisTurn++;
+    LogEntry* e = setLink(side, slotOf(c), to);
+    say(&e->why, 0, "LINK action: %d EN.", LINK_ENERGY_COST);
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+    battle.animTimer = 0.6f;
+}
+
+int battleCanLink(const char** reason) {
+    const char* r = NULL;
+    Combatant* a = battleActing();
+    if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
+    else if (!a) r = "NO MECH TO COMMAND";
+    else r = linkBlock(SIDE_PLAYER, a);
+    if (reason) *reason = r;
+    return r == NULL;
+}
+
+int battleLinkCandidate(void) {
+    Combatant* a = battleActing();
+    return a && battleLinkInitiator(a) != LINK_NONE ? nextLinkPartner(SIDE_PLAYER, slotOf(a)) : -1;
+}
+
+void battleLink(void) {
+    if (!battleCanLink(NULL)) return;
+    doLink(battleActing(), SIDE_PLAYER);
+    battle.phaseActed = 1;
+}
+
+// AI: an initiator with no link re-links before it acts
+static int aiConsiderLink(int side, int pos) {
+    Combatant* c = battleField(side, pos);
+    if (!c || c->actionsThisTurn > 0 || linkOut(side, slotOf(c), NULL) >= 0 || linkBlock(side, c)) return 0;
+    doLink(c, side);
+    return 1;
 }
 
 // ============ ACTIONS ============
@@ -903,7 +1219,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     int isPlayer = aSide == SIDE_PLAYER;
     int pos[MAX_FIELD];
     float mod[MAX_FIELD];
-    int n = weaponTargets(w, dSide, primary, pos, mod, MAX_FIELD);
+    int n = weaponTargets(a, w, dSide, primary, pos, mod, MAX_FIELD);
     if (n == 0) return;
     // Formation, as it stood when the shot was fired
     const char* coveredName = pos[0] != primary ? battleField(dSide, primary)->mech->name : NULL;
@@ -911,6 +1227,8 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     if (coveredName)
         snprintf(formation, sizeof(formation), "COVERED: %s is in the Rear, so %s in the Front took the %s shot",
             coveredName, battleField(dSide, pos[0])->mech->name, w->targeting == TARGET_LINE ? "line" : "single-target");
+    else if (battleInterceptor(dSide, primary) >= 0 && coverStops(w))
+        snprintf(formation, sizeof(formation), "SPOTTED: the Spotter Link calls this shot past the Front guard");
     else if (battleInterceptor(dSide, primary) >= 0)
         snprintf(formation, sizeof(formation), "REACHES THE REAR: %s weapons ignore the Front guard", targetingNames[w->targeting]);
     else if (coverStops(w))
@@ -920,6 +1238,8 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
                     battleField(dSide, t)->mech->name);
                 break;
             }
+
+    a->mark = battle.side[dSide].field[primary];   // what a link initiator aims at is its mark
 
     // Previews and explanations first, before anything changes
     AttackPreview p[MAX_FIELD];
@@ -941,13 +1261,24 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     for (int k = 0; k < n; k++) {
         Combatant* d = battleField(dSide, pos[k]);
         MechStats* ds = &d->mech->stats;
-        int lethalBefore = p[k].integrityDamage >= ds->integrity;
         d->attackedThisRound = 1;
-        float roll = frand();
-        int hit = roll < p[k].hitChance;
+        float roll = frand(), critRoll = -1;
+        int hit = roll < p[k].hitChance, crit = 0;
+        if (hit && p[k].critChance > 0) {   // Targeting Link: the numbers again at x1.5
+            critRoll = frand();
+            crit = critRoll < p[k].critChance;
+            if (crit) {
+                AttackContext cc = splashContext(a, d, mod[k], k > 0);
+                cc.critMod = CRIT_MULT;
+                attackPreview(a->mech, w, d->mech, &cc, &p[k]);
+                explainAttack(a, d, w, &p[k], &why[k]);   // the breakdown shows the crit's numbers
+            }
+        }
+        int lethalBefore = p[k].integrityDamage >= ds->integrity;
         float scrambleRoll = -1;
-        int total = 0;
-        char extra[96] = "", line[256];
+        int total = 0, guardPos = -1, guardTotal = 0;
+        AttackPreview gp;
+        char extra[160] = "", line[256], guardLine[160] = "";
         if (hit) {
             ds->armor -= p[k].armorDamage;
             ds->integrity -= p[k].integrityDamage;
@@ -966,7 +1297,34 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
                     if (heal > 0) battleAddThreat(d, THREAT_REPAIR);
                     snprintf(extra, sizeof(extra), " Scramble resisted%s.", heal > 0 ? " (recovered)" : "");
                 }
-                else snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p[k].scramble, w->virus));
+                else {
+                    snprintf(extra, sizeof(extra), " SCRAMBLED: %s!", applyScramble(d, p[k].scramble, w->virus));
+                    int type, partner = linkOut(aSide, slotOf(a), &type);
+                    if (partner >= 0 && linkDefs[type].effect == CFX_LINK_BLACKOUT) {   // jammed: it loses sight of the partner
+                        d->jammed = 2;
+                        d->jammedBy = slotOf(a);
+                        snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " BLACKOUT: it can't see %s.",
+                            battle.side[aSide].mech[partner].name);
+                    }
+                }
+            }
+            // Defense Link: the Aegis takes its share of the hit through its own Armor
+            float share = 0;
+            Combatant* g = w->baseDamage > 0 ? guardOf(d, &share) : NULL;
+            if (g && g->mech->stats.integrity > 0) {
+                AttackContext gc = liveContext(a, g);
+                gc.splashMod = mod[k];
+                gc.guardMod = share;
+                gc.critMod = crit ? CRIT_MULT : 1.0f;
+                gc.breachReady = 0;
+                gc.energyTax = 0;
+                attackPreview(a->mech, w, g->mech, &gc, &gp);
+                g->mech->stats.armor -= gp.armorDamage;
+                g->mech->stats.integrity = clampi(g->mech->stats.integrity - gp.integrityDamage, 0, g->mech->stats.maxIntegrity);
+                guardTotal = gp.armorDamage + gp.integrityDamage;
+                guardPos = fieldPosOf(dSide, slotOf(g));
+                snprintf(guardLine, sizeof(guardLine), "   DEFENSE LINK: %s absorbs %d%% - %d DMG (%d ARM / %d INT).", g->mech->name,
+                    (int)roundf(share * 100), guardTotal, gp.armorDamage, gp.integrityDamage);
             }
         }
         if (k == 0) {
@@ -975,19 +1333,22 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
             else snprintf(victim, sizeof(victim), "%s", d->mech->name);
             if (!hit) snprintf(line, sizeof(line), "%s%s fired %s at %s... MISSED! (%d%% to hit)", prefix ? prefix : "", who,
                 w->name, victim, (int)roundf(p[k].hitChance * 100));
-            else if (total > 0) snprintf(line, sizeof(line), "%s%s fired %s at %s! %d DMG (%d ARM / %d INT).%s", prefix ? prefix : "",
-                who, w->name, victim, total, p[k].armorDamage, p[k].integrityDamage, extra);
+            else if (total > 0) snprintf(line, sizeof(line), "%s%s fired %s at %s! %s%d DMG (%d ARM / %d INT).%s", prefix ? prefix : "",
+                who, w->name, victim, crit ? "CRITICAL! " : "", total, p[k].armorDamage, p[k].integrityDamage, extra);
             else snprintf(line, sizeof(line), "%s%s activated %s on %s.%s", prefix ? prefix : "", who, w->name, victim, extra);
             snprintf(first, sizeof(first), "%s", line);
             if (!hit && fwEffect(a->mech, CFX_RECURSIVE_TARGETING) > 0) a->missStacks++;
         }
         else if (!hit) snprintf(line, sizeof(line), "   splash misses %s (%d%% to hit)", d->mech->name, (int)roundf(p[k].hitChance * 100));
-        else snprintf(line, sizeof(line), "   splash hits %s: %d DMG (%d ARM / %d INT).%s", d->mech->name, total,
-            p[k].armorDamage, p[k].integrityDamage, extra);
+        else snprintf(line, sizeof(line), "   splash hits %s: %s%d DMG (%d ARM / %d INT).%s", d->mech->name, crit ? "CRITICAL! " : "",
+            total, p[k].armorDamage, p[k].integrityDamage, extra);
 
         // History entry: the roll first, then the reasons
         LogEntry* le = logPush(line, isPlayer, w->munition);
         say(&le->why, !hit, "ROLL %d vs %d%% to hit -> %s", (int)(roll * 100), (int)roundf(p[k].hitChance * 100), hit ? "HIT" : "MISS");
+        if (critRoll >= 0)
+            say(&le->why, 0, "CRIT ROLL %d vs %d%% -> %s", (int)(critRoll * 100), (int)roundf(p[k].critChance * 100),
+                crit ? TextFormat("CRITICAL, x%.1f damage", CRIT_MULT) : "normal hit");
         if (scrambleRoll >= 0)
             say(&le->why, 0, "SCRAMBLE ROLL %d vs %d%% resist -> %s", (int)(scrambleRoll * 100), (int)roundf(p[k].resist * 100),
                 scrambleRoll < p[k].resist ? "resisted" : "landed");
@@ -1001,6 +1362,18 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
             ev->armorDamage = hit ? p[k].armorDamage : 0;
             ev->integrityDamage = hit ? p[k].integrityDamage : 0;
             ev->lethal = hit && lethalBefore;
+            ev->crit = crit;
+        }
+        if (guardLine[0]) {
+            LogEntry* ge = logPush(guardLine, isPlayer, w->munition);
+            say(&ge->why, 0, "%s", linkDefs[LINK_DEFENSE].rule);
+            BattleEvent* gev = pushEvent(FX_GUARD, dSide == SIDE_PLAYER, pos[k], guardPos, guardTotal, 1, linkDefs[LINK_DEFENSE].color);
+            if (gev) {
+                gev->munition = w->munition;
+                gev->armorDamage = gp.armorDamage;
+                gev->integrityDamage = gp.integrityDamage;
+                gev->lethal = battleField(dSide, guardPos)->mech->stats.integrity <= 0;
+            }
         }
     }
     a->actionsThisTurn++;
@@ -1008,6 +1381,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     int gain = n > 1 || !singleTarget(w) || w->energyCost >= 2 ? THREAT_HEAVY_ATTACK : THREAT_ATTACK;
     if (gain > a->attackThreat) { battleAddThreat(a, gain - a->attackThreat); a->attackThreat = gain; }   // once per turn
     targetWhy[0] = 0;
+    linkUpkeep();   // a mech knocked below 25% loses its link
     if (n > 1) snprintf(battle.log, sizeof(battle.log), "%s (+%d splash)", first, n - 1);
     else snprintf(battle.log, sizeof(battle.log), "%s", first);
     snprintf(lastLogged, sizeof(lastLogged), "%s", battle.log);   // already in the history
@@ -1182,6 +1556,8 @@ static void putOnField(int side, int pos, int slot, int paid) {
     in->fielded = 1;
     pushEvent(FX_SWITCH, side == SIDE_PLAYER, pos, pos, 0, 1, mechModel(in->mech)->accent);
     battle.animTimer = fxDuration(FX_SWITCH);
+    linkUpkeep();           // the outgoing mech's links break...
+    autoLink(side, slot);   // ...and the incoming one links up with whoever fits
 }
 
 int battleCanSwitch(const char** reason) {
@@ -1345,7 +1721,7 @@ static int aiConsiderMove(int side, int pos) {
     int target;
     int mount = aiChooseAction(c, other, 0, &target, NULL, NULL, 0);
     const Weapon* w = mount >= 0 ? mechWeapon(c->mech, mount) : NULL;
-    if (!w || w->baseDamage <= 0 || battleField(other, aimedAt(w, other, target))->mech->stats.armor <= 0) return 0;
+    if (!w || w->baseDamage <= 0 || battleField(other, aimedAt(c, w, other, target))->mech->stats.armor <= 0) return 0;
     doMove(c, side, MOVE_FLANK);
     return 1;
 }
@@ -1437,6 +1813,7 @@ static void sideOpenField(int side, const int* order, int n) {
             if (recon == pass) c->lane = defaultLane(side, c);
             else if (recon) c->lane = LANE_REAR;   // until its turn to choose
         }
+    autoLink(side, -1);   // links form from the roles on the field
 }
 
 // The player side carries the whole team: the active mech and the next ones in
@@ -1773,6 +2150,7 @@ static void enemyStep(void) {
         if (!c || c->done) continue;
         if (enemyConsiderSwitch(battle.enemyActing)) return;
         if (enemyConsiderProvoke(battle.enemyActing)) return;
+        if (aiConsiderLink(SIDE_ENEMY, battle.enemyActing)) return;
         if (aiConsiderMove(SIDE_ENEMY, battle.enemyActing)) return;
         float score;
         int target;
@@ -1821,6 +2199,10 @@ int battleCanFire(int mount, const char** reason) {
         if (reason) *reason = r;
         return 0;
     }
+    if (battleHidden(battle.playerTarget)) {
+        if (reason) *reason = TextFormat("BLACKOUT - CAN'T SEE %s", battleTarget()->mech->name);
+        return 0;
+    }
     const Weapon* w = mechWeapon(battleActing()->mech, mount);
     int provoker = battleProvoker(SIDE_ENEMY);
     if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(w)) {
@@ -1839,10 +2221,10 @@ void battleFire(int mount) {
     syncLog();
 }
 
-// Autoplay for tests: the enemy AI's formation move for the commanded mech
+// Autoplay for tests: the enemy AI's link / formation move for the commanded mech
 int battleAIMoveForPlayer(void) {
     if (battle.phase != BP_PLAYER_TURN || battleBusy() || !battleActing()) return 0;
-    if (!aiConsiderMove(SIDE_PLAYER, battle.actingSlot)) return 0;
+    if (!aiConsiderLink(SIDE_PLAYER, battle.actingSlot) && !aiConsiderMove(SIDE_PLAYER, battle.actingSlot)) return 0;
     battle.phaseActed = 1;
     return 1;
 }
@@ -1906,6 +2288,7 @@ void battleHack(void) {
         battle.hacked = 1;
         d->out = 1;
         battle.side[SIDE_ENEMY].field[battle.playerTarget] = -1;
+        linkUpkeep();
         if (battle.trainer >= 0) {
             trainers[battle.trainer].numDefeated++;
             awardData(revisionDataForTrainer(&caught, trainers[battle.trainer].tier));

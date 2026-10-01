@@ -65,6 +65,21 @@ void drawMechOverworld(int model, int x, int y, int facingDir, float t) {
         DrawRectangle(x + 3, y + 15, 5, 16, scaleColor(body, 3, 4));
         DrawRectangle(x + 15, y + 9, 10, 2, glow);
         break;
+    case 7:   // targeting dish on the shoulder
+        DrawLine(x + 30, y + 18, x + 34, y + 8, accent);
+        DrawCircleLines(x + 34, y + 7, 4, accent);
+        DrawCircle(x + 34, y + 7, 1, glow);
+        break;
+    case 8:   // halo ring over the head
+        DrawEllipseLines(x + 20, y + 3, 9, 3, (Color) { glow.r, glow.g, glow.b, (unsigned char)(160 + pulse * 95) });
+        DrawRectangle(x + 4, y + 20, 3, 8, accent);
+        DrawRectangle(x + 33, y + 20, 3, 8, accent);
+        break;
+    case 9:   // sensor mast with a big optic
+        DrawRectangle(x + 19, y - 4, 2, 10, accent);
+        DrawCircle(x + 20, y - 5, 3, accent);
+        DrawCircle(x + 20, y - 5, 1.5f, (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
+        break;
     }
 
     // Chest core
@@ -156,6 +171,29 @@ void drawMechBattle(int model, int cx, int cy, int s, int isEnemy) {
         DrawRectangle(cx - P(54), cy - P(8), P(6), P(24), accent);
         DrawRectangle(cx - P(12), cy - P(22), P(24), P(4), (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
         DrawRectangle(cx + P(30), cy - P(14), P(18), P(8), accent);
+        break;
+    case 7:   // targeting dish on a shoulder boom, laser sight
+        DrawLineEx((Vector2) { cx + F(34), cy - F(8) }, (Vector2) { cx + F(48), cy - F(34) }, F(3), accent);
+        DrawCircle(cx + P(50), cy - P(38), F(11), scaleColor(body, 3, 4));
+        DrawCircleLines(cx + P(50), cy - P(38), F(11), accent);
+        DrawCircleLines(cx + P(50), cy - P(38), F(6), accent);
+        DrawCircle(cx + P(50), cy - P(38), F(2), (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
+        DrawRectangle(cx - P(54), cy + P(2), P(10), P(4), (Color) { 255, 60, 60, (unsigned char)(120 + pulse * 120) });
+        break;
+    case 8:   // halo ring, shield emitter fins on both arms
+        DrawEllipseLines(cx, cy - P(44), F(30), F(8), (Color) { glow.r, glow.g, glow.b, (unsigned char)(150 + pulse * 105) });
+        DrawEllipseLines(cx, cy - P(44), F(26), F(6), accent);
+        tri(cx - F(46), cy - F(4), cx - F(58), cy - F(20), cx - F(46), cy + F(16), accent);
+        tri(cx + F(46), cy - F(4), cx + F(58), cy - F(20), cx + F(46), cy + F(16), accent);
+        DrawCircleLines(cx, cy + P(6), F(16), (Color) { glow.r, glow.g, glow.b, (unsigned char)(60 + pulse * 60) });
+        break;
+    case 9:   // tall sensor mast with a big optic, slim antennae
+        DrawRectangle(cx - P(3), cy - P(62), P(6), P(34), accent);
+        DrawCircle(cx, cy - P(64), F(9), scaleColor(body, 3, 4));
+        DrawCircle(cx, cy - P(64), F(6), accent);
+        DrawCircle(cx, cy - P(64), F(3), (Color) { glow.r, glow.g, glow.b, (unsigned char)(200 + pulse * 55) });
+        DrawLine(cx - P(14), cy - P(30), cx - P(24), cy - P(50), accent);
+        DrawLine(cx + P(14), cy - P(30), cx + P(24), cy - P(50), accent);
         break;
     }
 

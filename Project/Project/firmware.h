@@ -79,6 +79,12 @@ typedef enum {
     CFX_POWER_WHEN_DAMAGED, // below 50% Integrity: +value Power
     CFX_FIRST_HIT_SHIELD,   // first attack received each battle deals -value (fraction) damage
     CFX_ADAPTIVE,           // -value (fraction) damage from the munition that last damaged it
+    // combat links (granted by an active link between two field mechs, see battle.h)
+    CFX_LINK_MARK_ACCURACY, // vs the link initiator's mark: +value Accuracy (may pass 100)
+    CFX_LINK_MARK_CRIT,     // vs the link initiator's mark: value (fraction) chance of a critical hit
+    CFX_LINK_MARK_REACH,    // vs the link initiator's mark: single-target and line shots reach past cover
+    CFX_LINK_GUARD,         // the initiator takes value (fraction) of every hit on its partner
+    CFX_LINK_BLACKOUT,      // mechs the initiator has jammed can't target its partner
     NUM_CHIP_EFFECTS
 } ChipEffect;
 

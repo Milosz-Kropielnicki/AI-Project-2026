@@ -54,7 +54,7 @@ typedef enum {
 typedef enum { TARGET_SINGLE, TARGET_AREA, TARGET_CONE, TARGET_LINE } Targeting;
 
 // Battle visual used when a weapon fires
-enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE, FX_SWITCH, FX_PROVOKE };
+enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE, FX_SWITCH, FX_PROVOKE, FX_GUARD, FX_LINK };
 
 typedef struct {
     char name[32];
@@ -125,6 +125,7 @@ typedef struct {
 enum {
     MODEL_NOVA, MODEL_BULWARK, MODEL_WISP, MODEL_RAZOR, MODEL_HAVOC, MODEL_OBLIVION,
     MODEL_HOUND, MODEL_STATIC, MODEL_LONGBOW, MODEL_DUMMY, MODEL_RAMPART,
+    MODEL_SNARE, MODEL_HALO, MODEL_VANTAGE,     // the link initiators: Catcher, Aegis, Scout
     NUM_MODELS
 };
 extern const MechModel mechModels[NUM_MODELS];    // data_mechs.c
@@ -244,6 +245,7 @@ typedef struct {
 
 enum {
     ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SNIPER, ARCH_SKIRMISHER, ARCH_JAMMER, ARCH_PROWLER, ARCH_BOMBARD, ARCH_GUARDIAN,
+    ARCH_MARKER, ARCH_SHIELDER, ARCH_SPOTTER,
     ARCH_ORDNANCE, ARCH_OVERSEER,   // trainer-only
     NUM_ARCHETYPES
 };
