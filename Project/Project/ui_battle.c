@@ -1165,7 +1165,8 @@ static void drawPlayerSlot(int pos) {
         TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
         c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
     const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED"
-        : c->jammed > 0 ? "JAMMED" : c->hazard > 0 ? "HAZARD" : c->slowed > 0 ? "SLOWED" : pendingText(c);
+        : c->jammed > 0 ? "JAMMED" : c->hazard > 0 ? "HAZARD" : c->slowed > 0 ? "SLOWED"
+        : c->fresh && mechEffect(c->mech, CFX_STEALTH) > 0 ? "UNSEEN" : pendingText(c);
     if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "

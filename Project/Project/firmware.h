@@ -96,6 +96,27 @@ typedef enum {
     CFX_SCRAMBLE_ARC,       // single-target scramble weapons hit like a cone
     CFX_HAZARD,             // enemies its area / cone attacks hit take value damage at the start of their next turn
     CFX_SLOW,               // targets it hits lose value Mobility until their next turn
+    CFX_ENTRENCHED,         // +value (fraction) damage until it first changes position
+    CFX_SKIP_IMMUNE,        // scrambles can never cost it a turn
+    CFX_SHIELD_WALL,        // as a Front guard, also covers the Front allies next to it
+    CFX_INTERCEPT_GUARD,    // shots it intercepts deal value (fraction) less to it
+    CFX_SPLASH_BOOST,       // its area / cone splash falls off value less per extra target
+    CFX_ARMOR_SHRED,        // every hit strips +value (fraction) more Armor
+    CFX_SELF_MARK,          // +value Accuracy (past 100) vs the last mech it aimed at
+    CFX_STEALTH_CRIT,       // its first attack after taking the field is a critical hit
+    CFX_STEALTH,            // can't be targeted until it first attacks after taking the field
+    CFX_ENTRY_JAM,          // taking the field: the other side's field mechs -value Accuracy on their next turn
+    CFX_FLANK_BOOST,        // flanking ignores +value (fraction) more Armor
+    CFX_TRUE_DODGE,         // +value Mobility, even past 100
+    CFX_FIRST_STRIKE,       // its first attack after taking the field: +value (fraction) damage
+    CFX_PACK_HUNTER,        // +value (fraction) damage vs a target an ally hit this round
+    CFX_ACCURACY_AURA,      // the other mechs on its side's field: +value Accuracy (past 100)
+    CFX_CLEANSE,            // at its turn start, corruption on its side's field mechs ticks down once more
+    CFX_TRAP,               // the other side's mechs take value damage when they change position
+    CFX_DECOY,              // attacks on it: x(1 - value) chance to hit
+    CFX_FRONT_AURA,         // its side's Front-lane mechs take value (fraction) less damage
+    CFX_BARRIER_AURA,       // its side's field mechs take value (fraction) less damage
+    CFX_EMERGENCY_COVER,    // single-target / line shots aimed at an ally below 30% Integrity hit it instead
     NUM_CHIP_EFFECTS
 } ChipEffect;
 

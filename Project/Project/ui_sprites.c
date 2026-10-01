@@ -90,6 +90,21 @@ void drawMechOverworld(int model, int x, int y, int facingDir, float t) {
         DrawLine(x + 34, y + 21, x + 40, y + 21, accent);
         DrawLine(x + 34, y + 23, x + 40, y + 23, accent);
         break;
+    case 12:  // a ram on each arm
+        DrawRectangle(x, y + 20, 6, 4, accent);
+        DrawRectangle(x + 34, y + 20, 6, 4, accent);
+        break;
+    case 13:  // mortar tubes racked on the back
+        for (int k = 0; k < 3; k++) DrawRectangle(x + 12 + k * 6, y + 2, 4, 8, scaleColor(accent, 3, 4));
+        break;
+    case 14:  // ammo belt over the shoulder into a gun
+        DrawLine(x + 8, y + 18, x + 34, y + 24, accent);
+        DrawRectangle(x + 32, y + 21, 8, 3, scaleColor(body, 1, 2));
+        break;
+    case 15:  // deployer pods on the hips
+        DrawCircle(x + 7, y + 28, 3, accent);
+        DrawCircle(x + 33, y + 28, 3, accent);
+        break;
     }
 
     // Chest core
@@ -225,6 +240,42 @@ void drawMechBattle(int model, int cx, int cy, int s, int isEnemy) {
         DrawCircle(cx - P(30), cy - P(14), F(3), (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
         break;
     }
+    case 12:    // a splitting ram on each arm: piston housing and a wedge
+        for (int sgn = -1; sgn <= 1; sgn += 2) {
+            int ax = sgn < 0 ? cx - P(70) : cx + P(46);
+            DrawRectangle(ax, cy + P(2), P(24), P(10), scaleColor(body, 2, 3));
+            tri(sgn < 0 ? cx - F(70) : cx + F(70), cy - F(4), sgn < 0 ? cx - F(80) : cx + F(80), cy + F(7),
+                sgn < 0 ? cx - F(70) : cx + F(70), cy + F(18), accent);
+            DrawLine(ax + P(2), cy + P(7), ax + P(22), cy + P(7), (Color) { glow.r, glow.g, glow.b, (unsigned char)(150 + pulse * 100) });
+        }
+        break;
+    case 13:    // a rack of mortar tubes on the back, glowing at the muzzles
+        for (int k = 0; k < 4; k++) {
+            int tx = cx - P(30) + k * P(16);
+            DrawRectangle(tx, cy - P(52), P(10), P(24), scaleColor(body, 1, 2));
+            DrawRectangle(tx, cy - P(54), P(10), P(4), accent);
+            DrawCircle(tx + P(5), cy - P(52), F(2), (Color) { 255, 140, 60, (unsigned char)(150 + pulse * 100) });
+        }
+        break;
+    case 14: {  // belt-fed gun: an ammo belt from a back box to the right arm's long barrel
+        DrawRectangle(cx - P(40), cy - P(20), P(16), P(20), scaleColor(body, 2, 3));
+        for (int k = 0; k < 8; k++) {
+            float u = (k + fmodf(glowTimer * 6, 1.0f)) / 8.0f;
+            DrawRectangle(cx - P(26) + (int)(u * P(70)), cy - P(14) + (int)(u * P(18)), P(4), P(5), accent);
+        }
+        DrawRectangle(cx + P(34), cy + P(2), P(40), P(6), scaleColor(body, 1, 2));
+        DrawRectangle(cx + P(70), cy + P(1), P(6), P(8), accent);
+        break;
+    }
+    case 15:    // deployer pods on the hips and a dispenser hatch on the chest
+        DrawCircle(cx - P(34), cy + P(20), F(9), scaleColor(body, 2, 3));
+        DrawCircle(cx + P(34), cy + P(20), F(9), scaleColor(body, 2, 3));
+        DrawCircleLines(cx - P(34), cy + P(20), F(9), accent);
+        DrawCircleLines(cx + P(34), cy + P(20), F(9), accent);
+        DrawCircle(cx - P(34), cy + P(20), F(3), (Color) { glow.r, glow.g, glow.b, (unsigned char)(150 + pulse * 100) });
+        DrawCircle(cx + P(34), cy + P(20), F(3), (Color) { glow.r, glow.g, glow.b, (unsigned char)(150 + pulse * 100) });
+        DrawRectangle(cx - P(10), cy + P(10), P(20), P(6), accent);
+        break;
     }
 
     if (m->look != 5)

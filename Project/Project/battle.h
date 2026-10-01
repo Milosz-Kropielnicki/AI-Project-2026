@@ -47,6 +47,9 @@ typedef struct {
     float critMod;          // CRIT_MULT on a critical hit, else 1
     float guardMod;         // share left after a Defense Link (or, for the Aegis, the share it takes)
     float perkMod;          // chassis perks: Charge (first attack a turn), strike after moving
+    float auraMod;          // ally damage auras on the target (Barrier Net, Directional Shields)
+    float decoyMod;         // Holo Decoy on the target, x hit chance
+    int shredBonus;         // extra Armor damage from Plate Stripper
     float critChance;       // chance this hit is critical (Targeting Link vs the mark)
     int linkAccuracy;       // Accuracy added by a link (already in accuracy)
     float raw;              // base x power x dmgMod
@@ -107,6 +110,8 @@ typedef struct {
     float critMod;          // CRIT_MULT when resolving a critical hit, else 1
     float guardMod;         // damage share this target takes: 1 - an Aegis's share; the Aegis's own share for it
     float perkMod;          // attacker's chassis damage perks that apply to this attack, 1 = none
+    float auraMod;          // damage the target takes after its side's auras, 1 = none
+    float decoyMod;         // x hit chance from a Holo Decoy on the target, 1 = none
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -179,6 +184,9 @@ typedef struct {
     int strikeReady;        // moved this turn and hasn't attacked since (CFX_REPOSITION_STRIKE)
     int hazard;             // a Sapper's hazard field: Integrity lost at the start of its next turn
     int slowed;             // Mobility lost until its next turn (CFX_SLOW)
+    int fresh;              // took the field and hasn't attacked since (stealth, ambush)
+    int everMoved;          // changed position since taking the field (Emplacement)
+    unsigned hitBy;         // other side's slots that hit it this round, as bits (Pack Hunter)
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
