@@ -44,7 +44,14 @@ float formulaScrambleResist(int stability, int strength) {
 }
 
 // Chips, trait and branches together
-static float fwEffect(const Mech* m, ChipEffect e) { return firmwareEffect(&m->fw, e); }
+static float fwEffect(const Mech* m, ChipEffect e) { return mechEffect(m, e); }   // chassis perk included
+
+// A weapon's pattern as this attacker fires it: Wide Band turns its
+// single-target scramblers into cones
+static int targetingOf(const Combatant* a, const Weapon* w) {
+    if (a && w->targeting == TARGET_SINGLE && w->scramble > 0 && fwEffect(a->mech, CFX_SCRAMBLE_ARC) > 0) return TARGET_CONE;
+    return w->targeting;
+}
 
 static int weaponHeat(const Mech* m, const Weapon* w) {
     float heat = (float)w->heat * (1.0f + fwEffect(m, CFX_HEAT_MULT));                   // Siege / Overclock Kernel
@@ -91,8 +98,9 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->guardMod = ctx->guardMod > 0 ? ctx->guardMod : 1.0f;
     out->critChance = ctx->critChance;
     out->linkAccuracy = ctx->linkAccuracy;
+    out->perkMod = ctx->perkMod > 0 ? ctx->perkMod : 1.0f;
     out->dmgMod = out->executeMod * out->overchargeMod * out->reductionMod * out->firstHitMod * out->adaptiveMod
-        * out->formatMod * out->splashMod * out->critMod * out->guardMod;
+        * out->formatMod * out->splashMod * out->critMod * out->guardMod * out->perkMod;
     out->raw = formulaRawDamage(w->baseDamage, out->power) * out->dmgMod;
     out->pen = w->armorPen + (int)fwEffect(attacker, CFX_PEN_BONUS);                     // Siege Kernel
     if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(fwEffect(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
@@ -142,6 +150,7 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     c.critChance = 0;
     c.critMod = 1.0f;
     c.guardMod = 1.0f;
+    c.perkMod = 1.0f;
     return c;
 }
 
@@ -261,6 +270,7 @@ int combatMobility(const Combatant* c) {
     int mob = c->mech->stats.mobility + c->evasiveBonus;
     if (integrityBelow(c, 0.25f)) mob += (int)fwEffect(c->mech, CFX_EMERGENCY_EVASION);
     if (c->flanking) mob -= FLANK_MOBILITY_PENALTY;   // exposed out on the flank
+    mob -= c->slowed;                                 // a Sapper's snare field
     return clampi(mob, 0, 100);
 }
 
@@ -292,7 +302,9 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     ctx.splashMod = 1.0f;
     ctx.armorIgnore = a->flanking ? FLANK_ARMOR_IGNORE : 0;
     ctx.linkAccuracy = (int)linkEffect(a, CFX_LINK_MARK_ACCURACY, d);   // on top of the 0-100 clamp
-    ctx.attackerAccuracy += ctx.linkAccuracy;
+    ctx.attackerAccuracy += ctx.linkAccuracy + (int)fwEffect(a->mech, CFX_TRUE_AIM);   // both may pass 100
+    ctx.perkMod = 1.0f + (a->actionsThisTurn == 0 ? fwEffect(a->mech, CFX_OPENER) : 0)
+        + (a->strikeReady ? fwEffect(a->mech, CFX_REPOSITION_STRIKE) : 0);
     ctx.critChance = linkEffect(a, CFX_LINK_MARK_CRIT, d);
     ctx.critMod = 1.0f;
     float share = 0;
@@ -308,6 +320,13 @@ static void say(Explanation* x, int warn, const char* fmt, ...) {
     vsnprintf(x->line[x->n], EXPLAIN_LEN, fmt, args);
     va_end(args);
     x->warn[x->n++] = warn;
+}
+
+// The name to show for an effect: the chassis perk when only the frame has it,
+// otherwise the chip / branch that usually grants it
+static const char* effectName(const Mech* m, ChipEffect e, const char* usual) {
+    const MechModel* mm = mechModel(m);
+    return (mm->perk == e || mm->perk2 == e) && firmwareEffect(&m->fw, e) == 0 ? mm->perkName : usual;
 }
 
 static const char* scrambleOutcome(int strength, int virus) {
@@ -329,10 +348,14 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     char accWhy[96] = "", mobWhy[96] = "";
     int precision = a->actionsThisTurn == 0 ? (int)fwEffect(a->mech, CFX_PRECISION_STRIKE) : 0;
     int recursive = a->missStacks * (int)fwEffect(a->mech, CFX_RECURSIVE_TARGETING);
-    if (precision) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Precision Strike +%d", precision);
+    if (precision) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", %s +%d",
+        effectName(a->mech, CFX_PRECISION_STRIKE, "Precision Strike"), precision);
     if (recursive) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Recursive Targeting +%d", recursive);
     if (a->accPenalty) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", scrambled -%d", a->accPenalty);
     if (p->linkAccuracy) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", link +%d", p->linkAccuracy);
+    int trueAim = (int)fwEffect(a->mech, CFX_TRUE_AIM);
+    if (trueAim) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", %s +%d", mechModel(a->mech)->perkName, trueAim);
+    if (d->slowed) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", slowed -%d", d->slowed);
     if (d->evasiveBonus) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", evading +%d", d->evasiveBonus);
     if (integrityBelow(d, 0.25f) && fwEffect(d->mech, CFX_EMERGENCY_EVASION) > 0)
         snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", Emergency Evasion +%d", (int)fwEffect(d->mech, CFX_EMERGENCY_EVASION));
@@ -341,7 +364,8 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         accWhy[0] ? TextFormat(" (%s)", accWhy + 2) : "");
     say(x, 0, "   x target evasion: Mobility %d%%%s dodges %d%% of shots", p->mobility,
         mobWhy[0] ? TextFormat(" (%s)", mobWhy + 2) : "", (int)roundf(p->mobility / 2.0f));
-    if (p->spoofMod < 1) say(x, 1, "   Targeting Spoof: first attack on target this round is x%.2f", p->spoofMod);
+    if (p->spoofMod < 1) say(x, 1, "   %s: first attack on target this round is x%.2f", effectName(d->mech, CFX_TARGETING_SPOOF, "Targeting Spoof"),
+        p->spoofMod);
     if (p->hitUnclamped * p->spoofMod > HIT_CHANCE_MAX) say(x, 0, "   (capped at 95%% - nothing is certain)");
     if (p->hitUnclamped * p->spoofMod < HIT_CHANCE_MIN) say(x, 1, "   (floored at 5%% - a lucky shot is still possible)");
 
@@ -349,19 +373,23 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     if (p->baseDamage > 0) {
         char mods[112] = "";
         if (p->power > as->power + 0.001f) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Aggressive Kernel +%.2f PWR", p->power - as->power);
-        if (p->executeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Hunter +%d%% (target under half)", (int)roundf((p->executeMod - 1) * 100));
+        if (p->executeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", %s +%d%% (target under half)",
+            effectName(a->mech, CFX_EXECUTE, "Hunter"), (int)roundf((p->executeMod - 1) * 100));
         if (p->overchargeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Overcharge +%d%%", (int)roundf((p->overchargeMod - 1) * 100));
-        if (p->reductionMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target Bastion -%d%%", (int)roundf((1 - p->reductionMod) * 100));
+        if (p->reductionMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target %s -%d%%",
+            effectName(d->mech, CFX_DAMAGE_REDUCTION, "Bastion"), (int)roundf((1 - p->reductionMod) * 100));
         if (p->firstHitMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", target Defensive Kernel -%d%%", (int)roundf((1 - p->firstHitMod) * 100));
         if (p->adaptiveMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", adapted to %s -%d%%", munitionNames[w->munition], (int)roundf((1 - p->adaptiveMod) * 100));
         if (p->formatMod != 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", team battle x%.2f", p->formatMod);
         if (p->critMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", CRITICAL x%.1f", p->critMod);
+        if (p->perkMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", %s +%d%%", mechModel(a->mech)->perkName,
+            (int)roundf((p->perkMod - 1) * 100));
         if (p->guardMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Defense Link x%.2f", p->guardMod);
         say(x, 0, "DAMAGE %.0f: %d base x %.2f Power%s", p->raw, p->baseDamage, p->power,
             p->dmgMod != 1 ? TextFormat(" x %.2f firmware", p->dmgMod) : "");
         if (mods[0]) say(x, 0, "   %s", mods + 2);
         if (p->splashMod < 1) say(x, 1, "   SPLASH: a secondary target of %s takes %d%% (-25%% per extra target)",
-            targetingNames[w->targeting], (int)roundf(p->splashMod * 100));
+            targetingNames[targetingOf(a, w)], (int)roundf(p->splashMod * 100));
         const Combatant* guard = p->guardMod < 1 ? guardOf(d, NULL) : NULL;
         if (guard) say(x, 1, "   DEFENSE LINK: %s takes %d%% of this hit through its own Armor", guard->mech->name,
             (int)roundf((1 - p->guardMod) * 100));
@@ -372,7 +400,8 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         int analysis = ds->armor > ARMORED_THRESHOLD ? (int)roundf(fwEffect(a->mech, CFX_PEN_VS_ARMORED) * 100) : 0;
         int siege = (int)fwEffect(a->mech, CFX_PEN_BONUS);
         const char* penWhy = analysis || siege || p->flankPen ? TextFormat(" (weapon %d%%%s%s%s)", w->armorPen,
-            analysis ? TextFormat(" + Armor Analysis %d", analysis) : "", siege ? TextFormat(" + Siege %d", siege) : "",
+            analysis ? TextFormat(" + %s %d", effectName(a->mech, CFX_PEN_VS_ARMORED, "Armor Analysis"), analysis) : "",
+            siege ? TextFormat(" + %s %d", effectName(a->mech, CFX_PEN_BONUS, "Siege"), siege) : "",
             p->flankPen ? TextFormat(" + flank %d", p->flankPen) : "") : "";
         if (p->armorBefore <= 0)
             say(x, 0, "ARMOR: none left - all %.0f goes into Integrity", p->raw);
@@ -381,7 +410,8 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
             if (p->split.spill > 0) say(x, 1, "   Armor %d can't hold it: %d spills through to Integrity", p->armorBefore, p->split.spill);
             else if (p->pen < 25 && p->split.toArmor > p->split.toIntegrity * 2)
                 say(x, 1, "   Mostly stopped by Armor - a higher-penetration weapon would hurt more");
-            if (p->breachBonus > 0) say(x, 0, "   Armor Breach Routine: +%d extra Armor damage", p->breachBonus);
+            if (p->breachBonus > 0) say(x, 0, "   %s: +%d extra Armor damage", effectName(a->mech, CFX_ARMOR_BREACH, "Armor Breach Routine"),
+                p->breachBonus);
             if (p->flankPen > 0) say(x, 0, "   FLANKING: ignores %d%% of their Armor (+%d%% penetration)",
                 (int)roundf(FLANK_ARMOR_IGNORE * 100), p->flankPen);
         }
@@ -579,13 +609,14 @@ int battleInterceptor(int side, int pos) {
 }
 
 // Single-target and line shots are stopped by cover; area and cone reach past it
-static int coverStops(const Weapon* w) { return w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE; }
+static int coverStops(const Combatant* a, const Weapon* w) { int t = targetingOf(a, w); return t == TARGET_SINGLE || t == TARGET_LINE; }
 
 // The field position a weapon aimed at `aim` actually hits first. A Spotter
 // Link lets the attacker reach its partner's mark past cover.
 static int aimedAt(const Combatant* a, const Weapon* w, int side, int aim) {
-    if (!w || !coverStops(w)) return aim;
+    if (!w || !coverStops(a, w)) return aim;
     if (a && linkEffect(a, CFX_LINK_MARK_REACH, battleField(side, aim)) > 0) return aim;
+    if (a && fwEffect(a->mech, CFX_IGNORE_COVER) > 0) return aim;   // Infiltration
     int g = battleInterceptor(side, aim);
     return g >= 0 ? g : aim;
 }
@@ -661,6 +692,8 @@ int battleLinks(int side, ActiveLink* out, int max) {
     return n;
 }
 
+float battleLinkScale(int side, int from) { return 1.0f + fwEffect(battle.side[side].slot[from].mech, CFX_LINK_BOOST); }
+
 int battleMarkPos(int side, int slot) {
     int m = battle.side[side].slot[slot].mark;
     return m >= 0 ? fieldPosOf(1 - side, m) : -1;
@@ -678,14 +711,14 @@ static float linkEffect(const Combatant* c, ChipEffect e, const Combatant* vs) {
         int m = battleMarkPos(side, from);
         if (!vs || m < 0 || battleField(1 - side, m) != vs) return 0;
     }
-    return (L->effect == e ? L->value : 0) + (L->effect2 == e ? L->value2 : 0);
+    return ((L->effect == e ? L->value : 0) + (L->effect2 == e ? L->value2 : 0)) * battleLinkScale(side, from);
 }
 
 // CFX_LINK_GUARD: the initiator guarding d, and the share of each hit it takes
 static Combatant* guardOf(const Combatant* d, float* share) {
     int side = sideOf(d), type, from = linkIn(side, slotOf(d), &type);
     if (from < 0 || linkDefs[type].effect != CFX_LINK_GUARD) return NULL;
-    if (share) *share = linkDefs[type].value;
+    if (share) *share = linkDefs[type].value * battleLinkScale(side, from);
     return &battle.side[side].slot[from];
 }
 
@@ -709,10 +742,11 @@ static int weaponTargets(const Combatant* a, const Weapon* w, int side, int prim
     primary = aimedAt(a, w, side, primary);
     pos[n] = primary;
     mod[n++] = 1.0f;
-    if (w->targeting != TARGET_AREA && w->targeting != TARGET_CONE) return n;
+    int pattern = targetingOf(a, w);
+    if (pattern != TARGET_AREA && pattern != TARGET_CONE) return n;
     float m = 1.0f;
     for (int d = 1; d < MAX_FIELD; d++) {
-        if (w->targeting == TARGET_CONE && d > 1) break;
+        if (pattern == TARGET_CONE && d > 1) break;
         for (int s = -1; s <= 1 && n < max; s += 2) {
             int p = primary + s * d;
             if (!battleField(side, p)) continue;
@@ -767,8 +801,9 @@ int battleExplainPlayer(int mount, Explanation* out) {
         say(out, 1, "COVERED: %s is in the Rear - %s in the Front takes single-target and line shots. Area and cone weapons reach it.",
             aim->mech->name, battleField(SIDE_ENEMY, pos[0])->mech->name);
     else if (battleInterceptor(SIDE_ENEMY, battle.playerTarget) >= 0)
-        say(out, 0, coverStops(w) ? "SPOTTED: your Spotter Link calls this shot past the Front guard."
-            : TextFormat("REACHES THE REAR: %s weapons ignore the Front guard.", targetingNames[w->targeting]));
+        say(out, 0, !coverStops(a, w) ? TextFormat("REACHES THE REAR: %s weapons ignore the Front guard.", targetingNames[targetingOf(a, w)])
+            : fwEffect(a->mech, CFX_IGNORE_COVER) > 0 ? "INFILTRATION: this mech's shots reach past the Front guard."
+            : "SPOTTED: your Spotter Link calls this shot past the Front guard.");
     for (int k = 1; k < n; k++)
         say(out, 0, "SPLASH -> %s: %d%% damage, %d%% to hit, ARM -%d INT -%d", battleField(SIDE_ENEMY, pos[k])->mech->name,
             (int)roundf(all[k].splashMod * 100), (int)roundf(all[k].hitChance * 100), all[k].armorDamage, all[k].integrityDamage);
@@ -809,7 +844,7 @@ int battleProvoker(int side) {
 }
 
 // Area and cone weapons reach past a provoker; everything else is single-target
-static int singleTarget(const Weapon* w) { return w->targeting != TARGET_AREA && w->targeting != TARGET_CONE; }
+static int singleTarget(const Combatant* a, const Weapon* w) { int t = targetingOf(a, w); return t != TARGET_AREA && t != TARGET_CONE; }
 
 // Best (weapon, target) for this attacker against the other side's field. Each
 // target's value is multiplied by its threat factor (1 + threat / 100); area and
@@ -876,7 +911,7 @@ static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResource
             const Weapon* w = mechWeapon(a->mech, i);
             if (!w) continue;
             if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
-            if (provoker >= 0 && t != provoker && singleTarget(w)) continue;
+            if (provoker >= 0 && t != provoker && singleTarget(a, w)) continue;
             // covered: same as aiming at its guard - unless the aim itself is worth something (a mark)
             if (aimedAt(a, w, targetSide, t) != t && !(linkKind == 1 && aimBonus[t] > 0)) continue;
             int pos[MAX_FIELD];
@@ -907,7 +942,7 @@ static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResource
             const Combatant* d = battleField(targetSide, bestPos);
             int runner = -1;
             for (int t = 0; t < MAX_FIELD; t++) if (t != bestPos && perTarget[t] >= 0 && (runner < 0 || perTarget[t] > perTarget[runner])) runner = t;
-            if (provoker >= 0 && bestPos == provoker && singleTarget(mechWeapon(a->mech, best)))
+            if (provoker >= 0 && bestPos == provoker && singleTarget(a, mechWeapon(a->mech, best)))
                 snprintf(why, whySize, "TARGET: %s is PROVOKING - single-target shots must aim at it", d->mech->name);
             else if (runner >= 0)
                 snprintf(why, whySize, "TARGET: %s, priority %.0f (value %.0f x threat %d = x%.2f) over %s %.0f (threat %d)",
@@ -927,6 +962,8 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     MechStats* s = &c->mech->stats;
     note[0] = 0;
     if (c->jammed > 0) c->jammed--;   // Signal Blackout: active through the jammed mech's next turn
+    c->slowed = 0;                    // a snare field lasts until its next turn
+    c->strikeReady = 0;
     firmwareCorruptionTick(&c->mech->fw);
     mechRefreshStats(c->mech);   // a stat chip may have come back online
     s->energy = s->maxEnergy - c->nextEnergyLoss + (int)fwEffect(c->mech, CFX_BONUS_ENERGY);
@@ -945,6 +982,7 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     c->attackedThisRound = 0;
     c->attackThreat = 0;
     if (!onField) {
+        c->hazard = 0;   // a hazard field doesn't follow a mech off the field
         c->accPenalty = c->skipTurn = c->energyTax = c->randomTargeting = c->switchLocked = 0;
         c->disabledWeapon = -1;
         return;
@@ -978,6 +1016,12 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
         s->heat = s->heat > vent ? s->heat - vent : 0;
         snprintf(note + strlen(note), size - strlen(note), " COOLANT DUMP -%d HEAT.", vent);
         battleAddThreat(c, THREAT_BUFF);
+    }
+    if (c->hazard > 0) {   // a Sapper's hazard field wears it down (never below 1 Integrity)
+        int dmg = c->hazard < s->integrity ? c->hazard : s->integrity - 1;
+        s->integrity -= dmg;
+        snprintf(note + strlen(note), size - strlen(note), " HAZARD -%d INT.", dmg);
+        c->hazard = 0;
     }
 }
 
@@ -1111,6 +1155,11 @@ static void autoLink(int side, int onlySlot) {
     }
 }
 
+int battleLinkCost(const Combatant* c) {
+    int k = LINK_ENERGY_COST - (int)fwEffect(c->mech, CFX_LINK_DISCOUNT);
+    return k > 0 ? k : 0;
+}
+
 // The partner the LINK action picks: the next eligible one after the current
 // partner, in field order
 static int nextLinkPartner(int side, int from) {
@@ -1125,17 +1174,18 @@ static int nextLinkPartner(int side, int from) {
 static const char* linkBlock(int side, const Combatant* c) {
     if (battleLinkInitiator(c) == LINK_NONE) return "ONLY CATCHER / AEGIS / SCOUT / DISRUPTOR";
     if (integrityBelow(c, LINK_BREAK_BELOW)) return "BELOW 25% INTEGRITY";
-    if (c->mech->stats.energy < LINK_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    if (c->mech->stats.energy < battleLinkCost(c)) return "INSUFFICIENT ENERGY";
     if (nextLinkPartner(side, slotOf(c)) < 0) return linkOut(side, slotOf(c), NULL) >= 0 ? "NO OTHER PARTNER" : "NO PARTNER ON THE FIELD";
     return NULL;
 }
 
 static void doLink(Combatant* c, int side) {
     int to = nextLinkPartner(side, slotOf(c));
-    c->mech->stats.energy -= LINK_ENERGY_COST;
+    int cost = battleLinkCost(c);
+    c->mech->stats.energy -= cost;
     c->actionsThisTurn++;
     LogEntry* e = setLink(side, slotOf(c), to);
-    say(&e->why, 0, "LINK action: %d EN.", LINK_ENERGY_COST);
+    say(&e->why, 0, "LINK action: %d EN.", cost);
     snprintf(battle.log, sizeof(battle.log), "%s", e->text);
     snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
     battle.animTimer = 0.6f;
@@ -1227,11 +1277,12 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     if (coveredName)
         snprintf(formation, sizeof(formation), "COVERED: %s is in the Rear, so %s in the Front took the %s shot",
             coveredName, battleField(dSide, pos[0])->mech->name, w->targeting == TARGET_LINE ? "line" : "single-target");
-    else if (battleInterceptor(dSide, primary) >= 0 && coverStops(w))
-        snprintf(formation, sizeof(formation), "SPOTTED: the Spotter Link calls this shot past the Front guard");
+    else if (battleInterceptor(dSide, primary) >= 0 && coverStops(a, w))
+        snprintf(formation, sizeof(formation), fwEffect(a->mech, CFX_IGNORE_COVER) > 0
+            ? "INFILTRATION: its shots reach past the Front guard" : "SPOTTED: the Spotter Link calls this shot past the Front guard");
     else if (battleInterceptor(dSide, primary) >= 0)
-        snprintf(formation, sizeof(formation), "REACHES THE REAR: %s weapons ignore the Front guard", targetingNames[w->targeting]);
-    else if (coverStops(w))
+        snprintf(formation, sizeof(formation), "REACHES THE REAR: %s weapons ignore the Front guard", targetingNames[targetingOf(a, w)]);
+    else if (coverStops(a, w))
         for (int t = 0; t < MAX_FIELD; t++)
             if (battleInterceptor(dSide, t) >= 0) {
                 snprintf(formation, sizeof(formation), "FORMATION: %s is covered in the Rear - only area and cone weapons reach it",
@@ -1308,6 +1359,16 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
                     }
                 }
             }
+            // Sapper fields: a hazard that bites at the start of its next turn, a snare that slows it now
+            int hazard = (int)fwEffect(a->mech, CFX_HAZARD), slow = (int)fwEffect(a->mech, CFX_SLOW), pattern = targetingOf(a, w);
+            if (hazard > d->hazard && (pattern == TARGET_AREA || pattern == TARGET_CONE) && ds->integrity > 0) {
+                d->hazard = hazard;
+                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " HAZARD: -%d INT next turn.", hazard);
+            }
+            if (slow > d->slowed && ds->integrity > 0) {
+                d->slowed = slow;
+                snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " SLOWED: -%d MOB.", slow);
+            }
             // Defense Link: the Aegis takes its share of the hit through its own Armor
             float share = 0;
             Combatant* g = w->baseDamage > 0 ? guardOf(d, &share) : NULL;
@@ -1377,8 +1438,9 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
         }
     }
     a->actionsThisTurn++;
+    a->strikeReady = 0;
     a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
-    int gain = n > 1 || !singleTarget(w) || w->energyCost >= 2 ? THREAT_HEAVY_ATTACK : THREAT_ATTACK;
+    int gain = n > 1 || !singleTarget(a, w) || w->energyCost >= 2 ? THREAT_HEAVY_ATTACK : THREAT_ATTACK;
     if (gain > a->attackThreat) { battleAddThreat(a, gain - a->attackThreat); a->attackThreat = gain; }   // once per turn
     targetWhy[0] = 0;
     linkUpkeep();   // a mech knocked below 25% loses its link
@@ -1589,17 +1651,29 @@ void battleSwitchTo(int slot) {
 }
 
 // ============ PROVOCATION ============
+int battleProvokeCost(const Combatant* c) {
+    int k = PROVOKE_ENERGY_COST - (int)fwEffect(c->mech, CFX_PROVOKE_DISCOUNT);
+    return k > 0 ? k : 0;
+}
+
+int battleTargetingOf(int mount) {
+    const Combatant* a = battleActing();
+    const Weapon* w = a ? mechWeapon(a->mech, mount) : NULL;
+    return w ? targetingOf(a, w) : TARGET_SINGLE;
+}
+
 static const char* provokeBlock(const Combatant* c) {
     if (fwEffect(c->mech, CFX_PROVOCATION) <= 0) return "NEEDS PROVOCATION PROTOCOL";
     if (c->provoking) return "ALREADY PROVOKING";
-    if (c->mech->stats.energy < PROVOKE_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    if (c->mech->stats.energy < battleProvokeCost(c)) return "INSUFFICIENT ENERGY";
     return NULL;
 }
 
 // A mech taunts the other side: +50 Threat, and their single-target attacks
 // must aim at it until its next turn
 static void doProvoke(Combatant* c, int side, int pos) {
-    c->mech->stats.energy -= PROVOKE_ENERGY_COST;
+    int cost = battleProvokeCost(c);
+    c->mech->stats.energy -= cost;
     c->provoking = 1;
     c->actionsThisTurn++;
     battleAddThreat(c, THREAT_PROVOKE);
@@ -1607,7 +1681,7 @@ static void doProvoke(Combatant* c, int side, int pos) {
     battle.animTimer = 0.9f;
     LogEntry* e = logPush(TextFormat("%s%s PROVOKES! %s single-target attacks must target it until its next turn.",
         side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name, side == SIDE_PLAYER ? "Enemy" : "Your"), side == SIDE_PLAYER, -1);
-    say(&e->why, 0, "PROVOCATION PROTOCOL: %d EN, Threat +%d (now %d).", PROVOKE_ENERGY_COST, THREAT_PROVOKE, c->threat);
+    say(&e->why, 0, "PROVOCATION PROTOCOL: %d EN, Threat +%d (now %d).", cost, THREAT_PROVOKE, c->threat);
     say(&e->why, 0, "Area and cone weapons are not single-target: they still hit everyone.");
     snprintf(battle.log, sizeof(battle.log), "%s", e->text);
     snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
@@ -1658,6 +1732,7 @@ static void doMove(Combatant* c, int side, int to) {
     int cost = battleMoveCost(c);
     c->mech->stats.energy -= cost;
     c->moved = 1;
+    c->strikeReady = 1;   // Strike and Fade: its next attack this turn
     const char* who = TextFormat("%s%s", side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name);
     const char* paid = cost ? TextFormat(" (%d EN)", cost) : "";
     LogEntry* e;
@@ -2205,7 +2280,7 @@ int battleCanFire(int mount, const char** reason) {
     }
     const Weapon* w = mechWeapon(battleActing()->mech, mount);
     int provoker = battleProvoker(SIDE_ENEMY);
-    if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(w)) {
+    if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(battleActing(), w)) {
         if (reason) *reason = TextFormat("PROVOKED - MUST TARGET %s", battleField(SIDE_ENEMY, provoker)->mech->name);
         return 0;
     }

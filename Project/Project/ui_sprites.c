@@ -80,6 +80,16 @@ void drawMechOverworld(int model, int x, int y, int facingDir, float t) {
         DrawCircle(x + 20, y - 5, 3, accent);
         DrawCircle(x + 20, y - 5, 1.5f, (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
         break;
+    case 10:  // hydraulic ram on the right arm
+        DrawRectangle(x + 32, y + 18, 3, 8, scaleColor(body, 3, 4));
+        DrawRectangle(x + 34, y + 20, 5, 4, accent);
+        DrawRectangle(x + 38, y + 18, 2, 8, accent);
+        break;
+    case 11:  // rotary barrel cluster on the right arm
+        DrawRectangle(x + 32, y + 20, 8, 5, scaleColor(body, 1, 2));
+        DrawLine(x + 34, y + 21, x + 40, y + 21, accent);
+        DrawLine(x + 34, y + 23, x + 40, y + 23, accent);
+        break;
     }
 
     // Chest core
@@ -195,6 +205,26 @@ void drawMechBattle(int model, int cx, int cy, int s, int isEnemy) {
         DrawLine(cx - P(14), cy - P(30), cx - P(24), cy - P(50), accent);
         DrawLine(cx + P(14), cy - P(30), cx + P(24), cy - P(50), accent);
         break;
+    case 10: {  // hydraulic ram: piston housing on the right arm, a striking plate at its end
+        DrawRectangle(cx + P(34), cy - P(2), P(26), P(12), scaleColor(body, 2, 3));
+        DrawRectangle(cx + P(58), cy + P(1), P(10), P(6), (Color) { 200, 200, 210, 255 });
+        DrawRectangle(cx + P(66), cy - P(8), P(8), P(24), accent);
+        DrawLine(cx + P(36), cy + P(4), cx + P(56), cy + P(4), (Color) { glow.r, glow.g, glow.b, (unsigned char)(150 + pulse * 100) });
+        DrawRectangle(cx - P(4), cy - P(38), P(8), P(10), accent);
+        break;
+    }
+    case 11: {  // rotary autocannon: a spinning barrel cluster on the right arm, ammo drum on the back
+        float spin = glowTimer * 12;
+        DrawRectangle(cx + P(34), cy - P(2), P(16), P(16), scaleColor(body, 1, 2));
+        for (int k = 0; k < 3; k++) {
+            float yo = sinf(spin + k * 2.1f) * 4;
+            DrawRectangle(cx + P(48), (int)(cy + P(4) + yo * sc / 10) - P(1), P(24), P(3), k == 0 ? accent : scaleColor(accent, 2, 3));
+        }
+        DrawCircle(cx - P(30), cy - P(14), F(9), scaleColor(body, 2, 3));
+        DrawCircleLines(cx - P(30), cy - P(14), F(9), accent);
+        DrawCircle(cx - P(30), cy - P(14), F(3), (Color) { glow.r, glow.g, glow.b, (unsigned char)(180 + pulse * 75) });
+        break;
+    }
     }
 
     if (m->look != 5)

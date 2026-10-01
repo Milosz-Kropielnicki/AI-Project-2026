@@ -1031,6 +1031,12 @@ static void drawLaneBadge(int rx, int y, int side, int pos, const Combatant* c) 
     tipText(r, c->flanking ? "FLANK" : c->lane == LANE_FRONT ? "FRONT" : guard >= 0 ? "REAR (COVERED)" : "REAR (EXPOSED)", body);
 }
 
+// "  PERK  NAME: what it does." for a tooltip, empty if the chassis has none
+static const char* perkLine(const Mech* m) {
+    const MechModel* mm = mechModel(m);
+    return mm->perkName && mm->perkName[0] ? TextFormat("  PERK  %s: %s", mm->perkName, mm->perkDesc) : "";
+}
+
 static void drawEmptySlot(Rectangle r, const char* label, const char* sub) {
     DrawRectangleRec(r, (Color) { 12, 16, 28, 200 });
     for (float x = r.x; x < r.x + r.width; x += 10) {
@@ -1096,8 +1102,8 @@ static void drawEnemySlot(int pos) {
         "A second pool on top of Integrity. Each hit splits: the weapon's penetration % goes straight to Integrity, "
         "the rest is soaked by Armor until it runs out, then spills over. Armor Analysis and Siege add penetration.");
     tipText((Rectangle) { (float)x, (float)y, 118, 18 }, TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)),
-        target && intercepted() ? TextFormat("Covered: this weapon would hit %s in the Front instead. Area and cone weapons "
-            "reach it.", previewVictim()->mech->name) : "Click (or Q / E) to target this machine.");
+        TextFormat("%s%s", target && intercepted() ? TextFormat("Covered: this weapon would hit %s in the Front instead. Area and cone "
+            "weapons reach it.", previewVictim()->mech->name) : "Click (or Q / E) to target this machine.", perkLine(m)));
 }
 
 // One of the player's field mechs: acting / done / locked state, pools and heat
@@ -1143,7 +1149,7 @@ static void drawPlayerSlot(int pos) {
         TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
         c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
     const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED"
-        : c->jammed > 0 ? "JAMMED" : pendingText(c);
+        : c->jammed > 0 ? "JAMMED" : c->hazard > 0 ? "HAZARD" : c->slowed > 0 ? "SLOWED" : pendingText(c);
     if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "
@@ -1154,8 +1160,8 @@ static void drawPlayerSlot(int pos) {
         TextFormat("Every shot adds heat. A weapon that would push heat past %d can't fire (THERMAL LIMIT). At the start of "
             "your phase %d heat vents. Above 75%% you are one or two shots from locking your big weapons.", s->maxHeat, s->cooling));
     tipText((Rectangle) { (float)x, (float)y, 118, 18 }, TextFormat("%s  FW %s", m->name, firmwareLabel(m->fw.revision)),
-        acting ? "The mech you are commanding. Its weapons are in the panel below."
-        : c->done ? "Already acted this phase (or arrived this round)." : "Click (or TAB) to command this mech.");
+        TextFormat("%s%s", acting ? "The mech you are commanding. Its weapons are in the panel below."
+        : c->done ? "Already acted this phase (or arrived this round)." : "Click (or TAB) to command this mech.", perkLine(m)));
 }
 
 // Enemy squad header and names: the player knows what can come in, just not when
@@ -1208,7 +1214,7 @@ static void drawReactor(void) {
         "Each field mech has its own reactor. Each weapon costs its pips; blinking pips are what the selected weapon would "
         "spend. Energy refills at the start of your phase.");
     DrawText(TextFormat("ROUND %d", battle.round), 552, 348, 14, (Color) { 150, 220, 255, 255 });
-    if (c->actionsThisTurn == 0 && firmwareEffect(&c->mech->fw, CFX_FIRST_ACTION_FREE) > 0)
+    if (c->actionsThisTurn == 0 && mechEffect(c->mech, CFX_FIRST_ACTION_FREE) > 0)
         DrawText("FIRST ACTION FREE", 640, 351, 10, (Color) { 120, 255, 180, 255 });
     const Firmware* fw = &c->mech->fw;
     int offline = 0, reversed = 0;
@@ -1351,16 +1357,17 @@ static void drawNoSignal(Rectangle r) {
 static const char* linkSummary(int side, const ActiveLink* l) {
     const Side* sd = &battle.side[side];
     const LinkDef* L = &linkDefs[l->type];
+    float k = battleLinkScale(side, l->from);   // Link Boost
     int mp = battleMarkPos(side, l->from);
     const char* mark = mp >= 0 ? battleField(1 - side, mp)->mech->name : NULL;
     switch (l->type) {
     case LINK_TARGETING:
-        return mark ? TextFormat("+%d ACC, %d%% CRIT vs %s", (int)L->value, (int)roundf(L->value2 * 100), mark)
+        return mark ? TextFormat("+%d ACC, %d%% CRIT vs %s", (int)(L->value * k), (int)roundf(L->value2 * k * 100), mark)
                     : "no mark yet - it marks what it shoots";
     case LINK_SPOTTER:
-        return mark ? TextFormat("+%d ACC, reaches %s past cover", (int)L->value, mark) : "no mark yet - it marks what it shoots";
+        return mark ? TextFormat("+%d ACC, reaches %s past cover", (int)(L->value * k), mark) : "no mark yet - it marks what it shoots";
     case LINK_DEFENSE:
-        return TextFormat("takes %d%% of every hit on %s", (int)roundf(L->value * 100), sd->mech[l->to].name);
+        return TextFormat("takes %d%% of every hit on %s", (int)roundf(L->value * k * 100), sd->mech[l->to].name);
     default: {
         int jammed = 0;
         for (int p = 0; p < MAX_FIELD; p++) {
@@ -1385,7 +1392,7 @@ static void drawLinkPanel(void) {
         int canLink = battleCanLink(&noLink), cand = battleLinkCandidate();
         drawButton(linkButtonRect(), "LINK [K]", 10, 0, canLink);
         tipText(linkButtonRect(), "LINK", canLink
-            ? TextFormat("%d EN, uses this mech's action: link to %s (%s). Replaces its current link.", LINK_ENERGY_COST,
+            ? TextFormat("%d EN, uses this mech's action: link to %s (%s). Replaces its current link.", battleLinkCost(battleActing()),
                 battle.side[SIDE_PLAYER].mech[cand].name, linkDefs[battleLinkInitiator(battleActing())].name)
             : TextFormat("Can't link: %s.", noLink ? noLink : "-"));
     }
@@ -1597,11 +1604,11 @@ static void drawPlainPreview(const AttackPreview* p, const Weapon* w, int x, int
     DrawText(TextFormat("Costs %d EN (%d left).", p->energyCost, p->energyBefore - p->energyCost), x, ly, 10, txt);
     int splash = 0;
     for (int q = 0; q < MAX_FIELD; q++) splash += framePreviewOk[q] && q != framePrimary;
-    if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[w->targeting], splash), x + 130, ly, 10,
+    if (splash) DrawText(TextFormat("%s: also hits %d more (-25%% each).", targetingNames[battleTargetingOf(weaponSel)], splash), x + 130, ly, 10,
         (Color) { 255, 170, 90, 255 });
     ly += 13;
     int spotted = !intercepted() && framePrimary >= 0 && battleInterceptor(SIDE_ENEMY, framePrimary) >= 0
-        && (w->targeting == TARGET_SINGLE || w->targeting == TARGET_LINE);
+        && (battleTargetingOf(weaponSel) == TARGET_SINGLE || battleTargetingOf(weaponSel) == TARGET_LINE);
     if (p->linkAccuracy > 0 || p->critChance > 0)
         DrawText(TextFormat("LINKED: +%d Accuracy vs the mark%s.", p->linkAccuracy,
             p->critChance > 0 ? TextFormat(", %d%% crit for x%.1f", (int)roundf(p->critChance * 100), CRIT_MULT)
@@ -1792,8 +1799,9 @@ void uiBattleDraw(void) {
         drawButton(provokeButtonRect(), "PROVOKE [P]", 12, 0, canProvoke);
         tipText(provokeButtonRect(), "PROVOKE", canProvoke
             ? TextFormat("%d EN: Threat +%d, and every enemy single-target attack must aim at this mech until its next turn. "
-                "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", PROVOKE_ENERGY_COST, THREAT_PROVOKE)
-            : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads).", noProvoke ? noProvoke : "-"));
+                "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", battleProvokeCost(battleActing()), THREAT_PROVOKE)
+            : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads; REDOUBT has it built in).",
+                noProvoke ? noProvoke : "-"));
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
         if (actor) {   // formation, under the reactor
             int toRear = actor->lane == LANE_FRONT;

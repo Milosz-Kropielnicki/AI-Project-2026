@@ -120,12 +120,26 @@ typedef struct {
     int weapons[MAX_WEAPONS];   // stock Weapon System, -1 = empty
     int refit[NUM_REFIT_SLOTS]; // stock Head / Body / Arms / Legs modules
     int rarity;                 // 1 common .. 3 rare, 0 = never wild
+    // Chassis perk: effects built into the frame, always on like an installed
+    // chip (mechEffect). perkName empty = none.
+    const char* perkName;
+    const char* perkDesc;       // one short line
+    ChipEffect perk; float perkValue;
+    ChipEffect perk2; float perkValue2;
 } MechModel;
 
 enum {
     MODEL_NOVA, MODEL_BULWARK, MODEL_WISP, MODEL_RAZOR, MODEL_HAVOC, MODEL_OBLIVION,
     MODEL_HOUND, MODEL_STATIC, MODEL_LONGBOW, MODEL_DUMMY, MODEL_RAMPART,
     MODEL_SNARE, MODEL_HALO, MODEL_VANTAGE,     // the link initiators: Catcher, Aegis, Scout
+    // Heavy Assault: Breacher, Dreadnought, Juggernaut, Ironclad
+    MODEL_WRECKER, MODEL_CINDER, MODEL_CITADEL, MODEL_FORTRESS, MODEL_RHINO, MODEL_BRUTE, MODEL_REDOUBT, MODEL_GRANITE,
+    // Artillery: Bombard, Ordnance, Arbalest, Battery
+    MODEL_CATAPULT, MODEL_TEMPEST, MODEL_LANCE, MODEL_REAPER, MODEL_BALLISTA, MODEL_NEEDLE, MODEL_VULCAN, MODEL_PELTER,
+    // Recon: Infiltrator, Skirmisher, Scout, Prowler
+    MODEL_WRAITH, MODEL_SHADE, MODEL_DART, MODEL_TALON, MODEL_PICKET, MODEL_PROBE, MODEL_STALKER, MODEL_PANTHER,
+    // Electronic Warfare: Catcher, Disruptor, Sapper, Aegis
+    MODEL_RELAY, MODEL_NEXUS, MODEL_SCREAMER, MODEL_JOLT, MODEL_BRAMBLE, MODEL_THORN, MODEL_PALLADIUM, MODEL_WARD,
     NUM_MODELS
 };
 extern const MechModel mechModels[NUM_MODELS];    // data_mechs.c
@@ -203,6 +217,7 @@ Mech mechCreateStock(int chassis, int level);   // chassis in its own role with 
 const MechModel* mechModel(const Mech* m);
 MechClass mechClass(const Mech* m);
 MechRole mechRole(const Mech* m);
+float mechEffect(const Mech* m, ChipEffect e);   // firmware (chips, trait, branches) + the chassis perk
 void mechStatBreakdown(const Mech* m, StatBreakdown* out);
 void mechRefreshStats(Mech* m);     // rebuild maximums/attributes after refit, firmware or chip changes
 void mechRepair(Mech* m);           // restore Integrity and Armor, vent Heat

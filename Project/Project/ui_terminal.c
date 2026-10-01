@@ -263,6 +263,10 @@ static void drawDetail(int x, int y, int w) {
         DrawText(TextFormat("PRICE %d CR   FW %s", e->price, firmwareLabel(e->level)), x, y + 220, 14, colCredit);
         DrawText(TextFormat("Team %d/%d", teamSize, MAX_TEAM), x, y + 242, 12, teamSize < MAX_TEAM ? colText : colBad);
         DrawText("Its parts join your inventory.", x, y + 260, 12, colDim);
+        if (mm->perkName && mm->perkName[0]) {
+            DrawText(TextFormat("PERK  %s", mm->perkName), x, y + 284, 12, mm->accent);
+            drawWrapped(mm->perkDesc, x, y + 300, w, 12, colText);
+        }
         DrawText("[Z] Buy", x, y + 380, 14, colHead);
         break;
     }

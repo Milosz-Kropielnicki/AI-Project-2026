@@ -85,6 +85,17 @@ typedef enum {
     CFX_LINK_MARK_REACH,    // vs the link initiator's mark: single-target and line shots reach past cover
     CFX_LINK_GUARD,         // the initiator takes value (fraction) of every hit on its partner
     CFX_LINK_BLACKOUT,      // mechs the initiator has jammed can't target its partner
+    // chassis perks (built into a model, see MechModel)
+    CFX_OPENER,             // first attack each turn: +value (fraction) damage
+    CFX_REPOSITION_STRIKE,  // first attack after changing position this turn: +value (fraction) damage
+    CFX_TRUE_AIM,           // +value Accuracy, even past 100
+    CFX_IGNORE_COVER,       // single-target and line shots reach past cover
+    CFX_PROVOKE_DISCOUNT,   // PROVOKE costs value less Energy
+    CFX_LINK_DISCOUNT,      // LINK costs value less Energy
+    CFX_LINK_BOOST,         // links this mech starts are value (fraction) stronger
+    CFX_SCRAMBLE_ARC,       // single-target scramble weapons hit like a cone
+    CFX_HAZARD,             // enemies its area / cone attacks hit take value damage at the start of their next turn
+    CFX_SLOW,               // targets it hits lose value Mobility until their next turn
     NUM_CHIP_EFFECTS
 } ChipEffect;
 

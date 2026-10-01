@@ -12,11 +12,14 @@ const Faction factions[NUM_FACTIONS] = {
 };
 
 // ============ MANUFACTURERS ============
-// One showroom per region: ATLAS in Alpha, KESTREL in Beta, HELIOS in Gamma.
+// One showroom per region: ATLAS in Alpha, KESTREL in Beta, HELIOS in Gamma,
+// VANGUARD in Delta (the wider role line-up), BLACKSITE in Omega (rare frames).
 const Company companies[NUM_COMPANIES] = {
     { "ATLAS HEAVY INDUSTRIES", "Frontline frames, built to take the hit.", { 255, 170, 90, 255 } },
     { "KESTREL DYNAMICS",       "Recon and electronic warfare, light and fast.", { 120, 230, 255, 255 } },
     { "HELIOS ORDNANCE",        "Long-range artillery platforms.", { 255, 120, 120, 255 } },
+    { "VANGUARD SYSTEMS",       "Specialist frames for every role.", { 170, 230, 140, 255 } },
+    { "BLACKSITE ARMORY",       "Prototype frames, no questions asked.", { 200, 120, 255, 255 } },
 };
 
 const CatalogEntry catalog[NUM_CATALOG] = {
@@ -33,6 +36,41 @@ const CatalogEntry catalog[NUM_CATALOG] = {
     { CO_KESTREL, MODEL_VANTAGE,  3,   650 },
     { CO_HELIOS,  MODEL_LONGBOW,  5,  1150 },
     { CO_HELIOS,  MODEL_HAVOC,    5,  1250 },
+    // the role line-up: the plain frames sell next to their class...
+    { CO_ATLAS,   MODEL_BRUTE,    1,   380 },
+    { CO_ATLAS,   MODEL_CITADEL,  1,   480 },
+    { CO_KESTREL, MODEL_DART,     3,   600 },
+    { CO_KESTREL, MODEL_PICKET,   3,   620 },
+    { CO_KESTREL, MODEL_JOLT,     3,   640 },
+    { CO_HELIOS,  MODEL_BALLISTA, 5,  1050 },
+    { CO_HELIOS,  MODEL_PELTER,   5,  1000 },
+    // ...the specialists in Delta...
+    { CO_VANGUARD, MODEL_WRECKER,   6, 1400 },
+    { CO_VANGUARD, MODEL_CINDER,    6, 1350 },
+    { CO_VANGUARD, MODEL_FORTRESS,  6, 1450 },
+    { CO_VANGUARD, MODEL_RHINO,     6, 1400 },
+    { CO_VANGUARD, MODEL_REDOUBT,   6, 1450 },
+    { CO_VANGUARD, MODEL_GRANITE,   6, 1400 },
+    { CO_VANGUARD, MODEL_CATAPULT,  6, 1400 },
+    { CO_VANGUARD, MODEL_TEMPEST,   6, 1500 },
+    { CO_VANGUARD, MODEL_VULCAN,    6, 1500 },
+    { CO_VANGUARD, MODEL_SHADE,     6, 1350 },
+    { CO_VANGUARD, MODEL_TALON,     6, 1350 },
+    { CO_VANGUARD, MODEL_PROBE,     6, 1350 },
+    { CO_VANGUARD, MODEL_STALKER,   6, 1350 },
+    { CO_VANGUARD, MODEL_PANTHER,   6, 1300 },
+    { CO_VANGUARD, MODEL_RELAY,     6, 1400 },
+    { CO_VANGUARD, MODEL_PALLADIUM, 6, 1450 },
+    { CO_VANGUARD, MODEL_WARD,      6, 1400 },
+    { CO_VANGUARD, MODEL_BRAMBLE,   6, 1450 },
+    { CO_VANGUARD, MODEL_THORN,     6, 1450 },
+    // ...and the rare ones in Omega
+    { CO_BLACKSITE, MODEL_LANCE,    8, 2200 },
+    { CO_BLACKSITE, MODEL_REAPER,   8, 2300 },
+    { CO_BLACKSITE, MODEL_NEEDLE,   8, 2200 },
+    { CO_BLACKSITE, MODEL_WRAITH,   8, 2100 },
+    { CO_BLACKSITE, MODEL_NEXUS,    8, 2100 },
+    { CO_BLACKSITE, MODEL_SCREAMER, 8, 2000 },
 };
 
 // ============ JOB BOARD ============

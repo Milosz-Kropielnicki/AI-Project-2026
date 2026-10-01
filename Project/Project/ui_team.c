@@ -519,6 +519,8 @@ static void drawLoadout(void) {
     drawHeader(TextFormat(">> LOADOUT  %s", m->name));
     DrawText(TextFormat("%s %s - %s", model->designation, model->name, roleName(mechRole(m))),
         SCREEN_W - 330, 24, 16, model->accent);
+    if (model->perkName && model->perkName[0])
+        DrawText(TextFormat("%s: %s", model->perkName, model->perkDesc), SCREEN_W - 330, 44, 10, (Color) { 200, 220, 160, 255 });
 
     int rows = loadoutRows(m);
     for (int i = 0; i < rows; i++) {

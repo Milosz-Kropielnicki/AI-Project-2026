@@ -46,6 +46,7 @@ typedef struct {
     float splashMod;        // area / cone falloff for a secondary target
     float critMod;          // CRIT_MULT on a critical hit, else 1
     float guardMod;         // share left after a Defense Link (or, for the Aegis, the share it takes)
+    float perkMod;          // chassis perks: Charge (first attack a turn), strike after moving
     float critChance;       // chance this hit is critical (Targeting Link vs the mark)
     int linkAccuracy;       // Accuracy added by a link (already in accuracy)
     float raw;              // base x power x dmgMod
@@ -105,6 +106,7 @@ typedef struct {
     float critChance;       // chance of a critical hit (x CRIT_MULT damage)
     float critMod;          // CRIT_MULT when resolving a critical hit, else 1
     float guardMod;         // damage share this target takes: 1 - an Aegis's share; the Aegis's own share for it
+    float perkMod;          // attacker's chassis damage perks that apply to this attack, 1 = none
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -174,6 +176,9 @@ typedef struct {
     int moved;              // changed position this turn (one move a turn)
     int mark;               // other side's slot this mech last aimed at (a link initiator's mark), -1 = none
     int jammed, jammedBy;   // Signal Blackout: turns left / other side's slot of the Disruptor that jammed it
+    int strikeReady;        // moved this turn and hasn't attacked since (CFX_REPOSITION_STRIKE)
+    int hazard;             // a Sapper's hazard field: Integrity lost at the start of its next turn
+    int slowed;             // Mobility lost until its next turn (CFX_SLOW)
     int archetype;          // enemy archetype it was built from, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
@@ -348,6 +353,10 @@ int battleCanLink(const char** reason);     // the commanded mech can LINK now
 int battleLinkCandidate(void);              // slot (player side) [K] would link to, -1
 void battleLink(void);
 int battleHidden(int pos);                  // Signal Blackout: the commanded mech can't target this enemy
+float battleLinkScale(int side, int from);  // strength of the link this slot starts (1 + Link Boost)
+int battleLinkCost(const Combatant* c);     // LINK Energy for this mech (Link Discount)
+int battleProvokeCost(const Combatant* c);  // PROVOKE Energy for this mech (Provoke Discount)
+int battleTargetingOf(int mount);           // the commanded mech's weapon pattern as it fires it (Wide Band)
 
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);

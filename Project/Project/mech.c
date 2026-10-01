@@ -81,6 +81,14 @@ const MechModel* mechModel(const Mech* m) { return &mechModels[m->model]; }
 MechClass mechClass(const Mech* m) { return m->cls; }
 MechRole mechRole(const Mech* m) { return m->role; }
 
+float mechEffect(const Mech* m, ChipEffect e) {
+    const MechModel* mm = mechModel(m);
+    float v = firmwareEffect(&m->fw, e);
+    if (mm->perk == e) v += mm->perkValue;
+    if (mm->perk2 == e) v += mm->perkValue2;
+    return v;
+}
+
 MechClass roleClass(MechRole role) { return (MechClass)(role / ROLES_PER_CLASS); }
 const char* roleName(MechRole role) { return role == ROLE_NONE ? "NONE" : roleNames[role]; }
 
