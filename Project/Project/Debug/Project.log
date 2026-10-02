@@ -1,15 +1,28 @@
-﻿  battle.c
+﻿  audio.c
+  battle.c
+  data_chips.c
   data_game.c
+  data_mechs.c
+  data_weapons.c
+  firmware.c
   game.c
   main.c
+  mech.c
   ui_battle.c
+  ui_debug.c
   ui_map.c
   ui_menu.c
+  ui_sprites.c
   ui_starter.c
-C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Project\ui_starter.c(176,27): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
+  ui_team.c
+C:\Users\gameuser\Documents\AI-Project-2026\Project\Project\ui_starter.c(176,27): warning C4244: 'function': conversion from 'int' to 'float', possible loss of data
   ui_terminal.c
   world.c
   Generating Code...
-raylib.lib(raudio.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(raudio.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-raylib.lib(rtextures.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtextures.obj)' or at 'C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\raylib.pdb'; linking object as if no debug info
-  Project.vcxproj -> C:\Users\gameuser\Documents\Gameplay Mobile Devices\Project 2\Project\Debug\Project.exe
+raylib.lib(raudio.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(raudio.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rcore.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rcore.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rglfw.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rglfw.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rshapes.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rshapes.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rtext.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtext.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+raylib.lib(rtextures.obj) : warning LNK4099: PDB 'raylib.pdb' was not found with 'raylib.lib(rtextures.obj)' or at 'C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\raylib.pdb'; linking object as if no debug info
+  Project.vcxproj -> C:\Users\gameuser\Documents\AI-Project-2026\Project\Debug\Project.exe

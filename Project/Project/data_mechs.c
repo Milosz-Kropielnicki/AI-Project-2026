@@ -294,7 +294,7 @@ const MechModel mechModels[NUM_MODELS] = {
       { { 35, 0.35f, 30, 0, 0, 0, 0, 0, 0 } },
       { W_MACHINE_GUN, W_ARC_EMITTER, W_PULSE_LASER, -1 },
       { REFIT_EW_SUITE, REFIT_STANDARD_FRAME, REFIT_STABILIZED_MOUNTS, REFIT_HOVER_SYSTEM }, 3,
-      "LINK HUB", "The link it starts is 50% stronger.", CFX_LINK_BOOST, 0.50f },
+      "LINK HUB", "The link it starts is 50% stronger.", CFX_LINK_HUB, 0.50f },
     // ---- Electronic Warfare / Disruptor
     { "EW-D-06", "SCREAMER", ROLE_DISRUPTOR, "Jamming platform; widest scramble arc.", 0,
       {90,50,90,255}, {255,120,220,255}, {255,170,240,255},
@@ -331,7 +331,7 @@ const MechModel mechModels[NUM_MODELS] = {
       { { 25, 0.25f, 20, 0, 0, 0, 0, 0, 0 } },
       { W_MACHINE_GUN, W_ARC_EMITTER, W_CORROSIVE_SPRAY, -1 },
       { REFIT_EW_SUITE, REFIT_HEAVY_PLATING, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM }, 2,
-      "STRONG LINK", "Its Defense Link takes 30% of each hit, not 20%.", CFX_LINK_BOOST, 0.50f },
+      "STRONG LINK", "Its Defense Link takes 30% of each hit, not 20%.", CFX_LINK_HUB, 0.50f },
     // ================= ROLE LINE-UP, WAVE 2: every role at five =================
 
     // ---- Heavy Assault / Breacher
@@ -475,7 +475,7 @@ const MechModel mechModels[NUM_MODELS] = {
       {90,110,60,255}, {200,240,110,255}, {225,255,160,255},
       { { 15, 0.15f, 10, 0, 0, 0, 0, 0, 0 } },
       { W_MACHINE_GUN, W_PULSE_LASER, W_ARC_EMITTER, -1 }, STOCK_REFIT, 1,
-      "PATHFINDER", "Its Spotter Link is 50% stronger.", CFX_LINK_BOOST, 0.50f },
+      "PATHFINDER", "Its Spotter Link is 50% stronger.", CFX_LINK_HUB, 0.50f },
     { "R-SC-34", "HORIZON", ROLE_SCOUT, "Long-view platform; reaches past cover.", 9,
       {80,90,120,255}, {160,190,255,255}, {200,220,255,255},
       { { 15, 0.15f, 10, 0, 0, 0, 0, 0, 0 } },
@@ -500,7 +500,7 @@ const MechModel mechModels[NUM_MODELS] = {
       { { 40, 0.15f, 30, 0, 0, 0, 0, 0, 0 } },
       { W_MACHINE_GUN, W_ARC_EMITTER, W_PULSE_LASER, -1 },
       { REFIT_TARGETING_ARRAY, REFIT_STANDARD_FRAME, REFIT_STANDARD_MOUNTS, REFIT_HOVER_SYSTEM }, 2,
-      "BRIGHT PAINT", "The link it starts is twice as strong.", CFX_LINK_BOOST, 1.0f },
+      "BRIGHT PAINT", "The link it starts is twice as strong.", CFX_LINK_HUB, 1.0f },
     { "EW-C-35", "ORACLE", ROLE_CATCHER, "Foresight frame; boosts ally accuracy passively.", 9,
       {60,50,90,255}, {200,160,255,255}, {225,200,255,255},
       { { 35, 0.30f, 30, 0, 0, 0, 0, 0, 0 } },
@@ -647,7 +647,7 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       CLASS_RECON, ROLE_PROWLER, MODEL_HOUND,
       { { W_SHOTGUN, W_PLASMA_BLADE, W_CORROSIVE_SPRAY, -1 },
         { REFIT_STANDARD_OPTICS, REFIT_LIGHT_PLATING, REFIT_STANDARD_MOUNTS, REFIT_JUMP_JETS } },
-      { CHIP_PRECISION_STRIKE, CHIP_EMERGENCY_EVASION }, 2,
+      { CHIP_PRECISION_STRIKE, CHIP_PROWLER_AMBUSH }, 2,
       TRAIT_AGGRESSIVE, { BRANCH_HUNTER }, 1,
       { 1.2f, 0.5f, 0.0f, 0.3f, 2.5f, 1.0f }, 0 },
     // Limited-ammo salvos: empties its missiles and mortars, then falls back to the MG.
@@ -659,12 +659,12 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       TRAIT_DEFENSIVE, { BRANCH_SIEGE }, 1,
       { 1.0f, 0.7f, 0.0f, 0.6f, 1.2f, 1.0f }, 0 },
     // Ironclad anchor: provokes your single-target fire onto its tower shield
-    // so the rest of the squad can work, and repairs itself when low.
+    // so the rest of the squad can work (or intercepts for a hurt one), and repairs itself when low.
     { "GUARDIAN", "Ironclad bulwark. Provokes your fire so its squad can work.",
       CLASS_HEAVY_ASSAULT, ROLE_IRONCLAD, MODEL_RAMPART,
       { { W_MACHINE_GUN, W_SHOTGUN, W_GRENADE_LAUNCHER, -1 },
         { REFIT_STANDARD_OPTICS, REFIT_HEAVY_PLATING, REFIT_SHIELD_ARM, REFIT_TREADS } },
-      { CHIP_PROVOCATION, CHIP_EMERGENCY_REPAIR, CHIP_HARDENED_KERNEL }, 3,
+      { CHIP_PROVOCATION, CHIP_EMERGENCY_REPAIR, CHIP_INTERCEPT_PROTOCOL }, 3,
       TRAIT_DEFENSIVE, { BRANCH_BASTION }, 1,
       { 0.9f, 0.8f, 0.0f, 0.3f, 1.0f, 1.0f }, 0 },
     // Catcher: paints targets with cheap accurate fire; with a Sniper or Bombard
@@ -673,7 +673,7 @@ const EnemyArchetype archetypes[NUM_ARCHETYPES] = {
       CLASS_EW, ROLE_CATCHER, MODEL_SNARE,
       { { W_MACHINE_GUN, W_ARC_EMITTER, W_PULSE_LASER, -1 },
         { REFIT_TARGETING_ARRAY, REFIT_STANDARD_FRAME, REFIT_STABILIZED_MOUNTS, REFIT_HOVER_SYSTEM } },
-      { CHIP_PRECISION_STRIKE, CHIP_PREDICTIVE_TARGETING }, 2,
+      { CHIP_PRECISION_STRIKE, CHIP_LINK_AMPLIFIER }, 2,
       TRAIT_EFFICIENT, { BRANCH_SIGNAL }, 1,
       { 1.0f, 0.6f, 0.6f, 0.5f, 1.0f, 1.0f }, 0 },
     // Aegis: shields a Heavy Assault through its Defense Link.

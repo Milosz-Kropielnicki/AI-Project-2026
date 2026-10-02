@@ -39,7 +39,8 @@ typedef struct {
     float accMod, evasionMod, hitUnclamped, spoofMod, hitChance;
     // damage
     int baseDamage;
-    float power;            // attacker Power + Aggressive Kernel bonus
+    float power;            // attacker Power + Aggressive Kernel bonus + powerBonus
+    float powerBonus;       // Power from battle state (Prowler Ambush)
     float dmgMod;           // product of the firmware damage modifiers below
     float executeMod, overchargeMod, reductionMod, firstHitMod, adaptiveMod;
     float formatMod;        // team-battle damage pass (TEAM_DAMAGE_SCALE)
@@ -49,6 +50,8 @@ typedef struct {
     float perkMod;          // chassis perks: Charge (first attack a turn), strike after moving
     float auraMod;          // ally damage auras on the target (Barrier Net, Directional Shields)
     float decoyMod;         // Holo Decoy on the target, x hit chance
+    float cmdMod;           // Defensive Line on the target's side, 1 = none
+    int cmdAccuracy;        // Accuracy from Focus Fire (already in accuracy)
     int shredBonus;         // extra Armor damage from Plate Stripper
     float critChance;       // chance this hit is critical (Targeting Link vs the mark)
     int linkAccuracy;       // Accuracy added by a link (already in accuracy)
@@ -112,6 +115,9 @@ typedef struct {
     float perkMod;          // attacker's chassis damage perks that apply to this attack, 1 = none
     float auraMod;          // damage the target takes after its side's auras, 1 = none
     float decoyMod;         // x hit chance from a Holo Decoy on the target, 1 = none
+    int cmdAccuracy;        // Focus Fire on this target (included in attackerAccuracy, may pass 100)
+    float cmdMod;           // damage the target takes under its side's Defensive Line, 1 = none
+    float powerBonus;       // attacker Power from battle state (Prowler Ambush), 0 = none
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
@@ -187,7 +193,15 @@ typedef struct {
     int fresh;              // took the field and hasn't attacked since (stealth, ambush)
     int everMoved;          // changed position since taking the field (Emplacement)
     unsigned hitBy;         // other side's slots that hit it this round, as bits (Pack Hunter)
+    int overwatch;          // holding an Overwatch shot: 1 waiting, 2 queued to fire
     int archetype;          // enemy archetype it was built from, -1 = none
+    // swap and team chips
+    int deployed;           // swapped / deployed in mid-battle and hasn't attacked since (Prowler Ambush)
+    int relayAccuracy;      // Accuracy from an outgoing ally's Catcher Relay...
+    int relayTurns;         // ...own turn starts left until it lapses (active while > 0)
+    int freeSwitchUsed;     // Emergency Redeploy spent
+    int displaceUsed;       // Displacement Routine already forced a swap this turn
+    int interceptPos;       // own side's field position it intercepts for until its next turn, -1 = none
     int out;                // scrapped or reprogrammed: no longer part of the fight
 } Combatant;
 
@@ -220,6 +234,17 @@ typedef struct {
 } BattleEvent;
 #define MAX_BATTLE_EVENTS 8
 
+// A shot waiting its turn: a Coordinated Strike, an Overwatch reaction, or the
+// player's own shot that an enemy Overwatch interrupted
+#define MAX_QUEUED_SHOTS 8
+#define SHOT_OWN -1                     // kind: the player's interrupted shot (else a CommandType)
+typedef struct {
+    int side, slot;                     // who fires
+    int aim;                            // other side's slot it aims at
+    int kind;
+    int mount;                          // SHOT_OWN only; free shots pick their weapon when they fire
+} QueuedShot;
+
 typedef struct {
     BattlePhase phase;
     BattleDialogue dialogue;
@@ -243,6 +268,16 @@ typedef struct {
     BattleResult result;
     BattleEvent events[MAX_BATTLE_EVENTS];
     int numEvents;
+    // Command Points (per side) and what they bought this round
+    int commandPoints[2];
+    int focusTarget[2];     // other side's slot under this side's Focus Fire, -1 = none
+    int defensiveLine[2];   // this side takes less damage until its next phase
+    QueuedShot queue[MAX_QUEUED_SHOTS];   // shots that resolve one at a time, each with its animation
+    int numQueued;
+    // Link Amplifier: a side's links are linkBoost stronger while linkBoostTurns > 0
+    float linkBoost[2];
+    int linkBoostTurns[2];  // the side's own phase starts left until it lapses
+    int forcedSide, forcedSlot;   // a Force Swap waiting for its hit's animation, forcedSlot -1 = none
 } Battle;
 
 extern Battle battle;
@@ -325,6 +360,18 @@ int battleCanMove(int to, const char** reason);   // the commanded mech can move
 void battleMove(int to);
 int battleInterceptor(int side, int pos);   // Front ally that takes single-target / line shots aimed at pos, -1 if pos isn't covered
 
+// ============ INTERCEPT ============
+// Intercept Protocol's action: the mech declares an ally's field position and,
+// until its next turn, single-target and line shots aimed there hit it instead
+// (whoever stands there - swap a fragile reserve in behind it). It beats cover
+// tricks (Spotter reach, Infiltration) but not area or cone weapons. It lapses
+// if the interceptor leaves the field.
+#define INTERCEPT_ENERGY_COST 1
+int battleDeclaredInterceptor(int side, int pos);   // field position intercepting for pos, -1 if none
+int battleCanIntercept(const char** reason);  // the commanded mech can INTERCEPT now
+int battleInterceptCandidate(void);         // player field position [B] would guard, -1
+void battleIntercept(void);
+
 // ============ COMBAT LINKS ============
 // A link pairs two allies on the field: an initiator (by role) and a partner (by
 // class). Each mech has at most one outgoing and one incoming link. Links form
@@ -366,6 +413,41 @@ int battleLinkCost(const Combatant* c);     // LINK Energy for this mech (Link D
 int battleProvokeCost(const Combatant* c);  // PROVOKE Energy for this mech (Provoke Discount)
 int battleTargetingOf(int mount);           // the commanded mech's weapon pattern as it fires it (Wide Band)
 
+// ============ COMMAND POINTS ============
+// A team-level pool (cap 6) any field mech can spend in its side's phase.
+// Income at the start of each side's phase: +1 while at least one Catcher is on
+// the field, and +1 more for every Catcher there; +1 whenever an enemy field
+// mech is scrapped. Each side pays from its own cost table (commandDefs[].cost,
+// indexed by side). Free shots (Coordinated Strike, Overwatch) cost no Energy
+// or Heat; a single-target shot at a covered mech still hits its guard.
+//   FOCUS FIRE            this side's attacks on the target: +10 Accuracy (past 100) until its next phase
+//   EMERGENCY DEPLOYMENT  the commanded mech swaps with a reserve: no Energy, even locked in; the new mech isn't locked in
+//   COORDINATED STRIKE    the commanded mech, then the best-placed ally, each fire a free shot at the target
+//   DEFENSIVE LINE        this side takes 25% less damage until its next phase
+//   OVERWATCH             ends the phase; every field mech holds a free shot for the first enemy that fires,
+//                         moves or takes the field (a shot is fired before the enemy's own)
+#define CP_MAX 6
+#define CP_BASE_INCOME 1            // a round, while any Catcher is on the field
+#define CP_CATCHER_INCOME 1         // a round, for each Catcher on the field
+#define CP_KILL_BONUS 1
+#define FOCUS_FIRE_ACCURACY 10
+#define DEFENSIVE_LINE_CUT 0.25f
+typedef enum { CMD_FOCUS_FIRE, CMD_EMERGENCY_DEPLOY, CMD_COORDINATED_STRIKE, CMD_DEFENSIVE_LINE, CMD_OVERWATCH, NUM_COMMANDS } CommandType;
+typedef struct {
+    const char* name;
+    const char* tag;                    // short label for buttons and effects
+    int cost[2];                        // by side: SIDE_ENEMY's table, SIDE_PLAYER's table
+    Color color;
+    const char* rule;                   // plain language, for tooltips and the log
+} CommandDef;
+extern const CommandDef commandDefs[NUM_COMMANDS];
+int battleCommandIncome(int side, int* catchers);   // CP the side gains at its next phase start
+int battleCanCommand(int cmd, const char** reason); // the player can issue it now
+void battleCommand(int cmd);                // Emergency Deployment brings in the healthiest reserve
+void battleEmergencyDeploy(int slot);       // the commanded mech swaps with this reserve
+int battleCoordinatedPartner(void);         // field position of the ally a Coordinated Strike would bring, -1
+int battleAICommandForPlayer(void);         // the enemy AI's command pick for the player's side (tests / autoplay); 1 if it issued one
+
 void battleStartWild(void);
 void battleStartTrainer(int trainerIdx);
 void battleStartTestRange(void);
@@ -388,10 +470,24 @@ int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the 
 // Armor, Heat and queued scrambles stay with each mech. A disabled mech leaves
 // its position empty; a reserve can deploy there for free on the next phase.
 // The battle is lost when no mech is left standing.
+//
+// Swap chips turn this into strategy (entry / exit effects):
+//   PROWLER AMBUSH      arriving mid-battle: +0.30 Power on its first attack
+//   CATCHER RELAY       leaving: the mech replacing it gets +10 Accuracy through its first turn
+//   EMERGENCY REDEPLOY  once a battle: a switch-out for 0 Energy, even locked in; the newcomer isn't locked in
+//   LINK AMPLIFIER      arriving (or opening the battle): its side's links +50% until the end of its first turn
+//   FORCE SWAP          a Shock Ram hit, or Displacement Routine's first hit each turn: the target is pulled
+//                       for a random standing reserve. A locked-in mech (just switched in, or hit by a
+//                       Lockdown Routine) holds its ground.
+//   LOCKDOWN ROUTINE    its hits lock the target in for its next turn
+//   INTERCEPT PROTOCOL  INTERCEPT action: guards an ally's field position (not the mech) until its next turn
 #define SWITCH_ENERGY_COST 1
 #define AI_SWITCH_BELOW 0.25f       // enemy pulls a machine out below 25% Integrity...
 #define HEALTHY_RESERVE 0.50f       // ...if a reserve with 50%+ Integrity can come in
 int battleCanSwitch(const char** reason);   // player can switch right now
+int battleSwitchFree(const Combatant* c);   // Emergency Redeploy is ready: the next switch-out is free and ignores lock-in
+int battleSwitchCost(const Combatant* c);   // Energy a switch needs (0 with Emergency Redeploy ready)
+int battleAnchored(const Combatant* c);     // locked in now or on its next turn: can't be forced out
 int battleSwitchList(int* out, int max);    // player slots that can come in (standing reserves)
 void battleSwitchTo(int slot);
 void battleDeploy(int slot);                // free: reserve into an empty field position (it acts next round)

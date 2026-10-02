@@ -66,6 +66,31 @@ const ChipDef chipDefs[NUM_CHIPS] = {
       "Action, 1 EN: +50 Threat; enemy single-target attacks must target this mech until its next turn.",
       "Unlocks PROVOKE [P]. For 1 Energy, every enemy single-target shot has to aim at this mech until its next turn, "
       "keeping fire off your damaged mechs. Area and cone weapons still hit everyone. Built for a tough Ironclad." },
+    // ---- swap and team chips: entry / exit effects ----
+    { "PROWLER AMBUSH",                 CAT_TRIGGERED, RARITY_ADVANCED,     2, CFX_DEPLOY_BUFF,         STAT_POWER,      0.30f,
+      "First attack after it swaps or deploys in: +0.30 Power.",
+      "Hold it in reserve, then bring it in for a hard opening hit. Only arrivals in mid-battle count, not the opening line-up." },
+    { "CATCHER RELAY",                  CAT_TRIGGERED, RARITY_STANDARD,     2, CFX_WITHDRAW_BUFF,       STAT_ACCURACY,   10,
+      "When it switches out, the incoming ally gets +10 Accuracy through its first turn.",
+      "A hand-off: pull this mech out and the one replacing it arrives with its sensors already locked on." },
+    { "EMERGENCY REDEPLOY",             CAT_MOBILITY,  RARITY_ADVANCED,     2, CFX_SWITCH_FREE,         STAT_ENERGY,     1,
+      "Once per battle: switching it out costs 0 Energy, works while locked in, and the newcomer isn't locked in.",
+      "One free escape. Get a cornered mech out even when it's out of Energy or just arrived." },
+    { "INTERCEPT PROTOCOL",             CAT_DEFENSIVE, RARITY_ADVANCED,     2, CFX_INTERCEPT,           STAT_ARMOR,      1,
+      "Action, 1 EN: until its next turn, single-target and line shots at an ally's position hit this mech instead.",
+      "Unlocks INTERCEPT [B]. It guards a position, not a mech: declare it, then swap a fragile reserve into that spot and "
+      "the shots meant for it land on your Ironclad. Area and cone weapons still reach everyone." },
+    { "LINK AMPLIFIER",                 CAT_EW,        RARITY_EXPERIMENTAL, 3, CFX_LINK_BOOST,          STAT_ACCURACY,   0.50f,
+      "Taking the field: your side's links are 50% stronger until the end of its first turn.",
+      "Swap it in to spike every active Combat Link for a round - more Accuracy and crits vs the mark, a stronger Defense Link." },
+    { "DISPLACEMENT ROUTINE",           CAT_OFFENSIVE, RARITY_EXPERIMENTAL, 3, CFX_FORCE_SWAP,          STAT_STABILITY,  1,
+      "Once a turn, a hit forces the target to swap with a random reserve (not if it's locked in).",
+      "Knocks the enemy's formation apart: the mech you hit is yanked off the field, its links break, and a random reserve "
+      "takes its place. Does nothing if they have no reserves." },
+    { "LOCKDOWN ROUTINE",               CAT_EW,        RARITY_ADVANCED,     2, CFX_SWITCH_LOCK,         STAT_STABILITY,  1,
+      "Mechs it hits are locked in: they can't switch out on their next turn.",
+      "Stops a dying enemy from escaping to its reserves. Locked-in mechs also can't be forced out by Displacement or a "
+      "Shock Ram - the same lock-in every mech gets after a normal switch." },
 };
 
 // ============ FIRMWARE BRANCHES (doc 7.16) ============

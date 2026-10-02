@@ -88,6 +88,8 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->baseDamage = w->baseDamage;
     out->power = atk->power;
     if (atk->integrity < atk->maxIntegrity * 0.5f) out->power += fwEffect(attacker, CFX_POWER_WHEN_DAMAGED);   // Aggressive Kernel
+    out->powerBonus = ctx->powerBonus;   // Prowler Ambush
+    out->power += out->powerBonus;
     out->executeMod = def->integrity < def->maxIntegrity * 0.5f ? 1.0f + fwEffect(attacker, CFX_EXECUTE) : 1.0f;
     out->overchargeMod = w->munition == MUN_ENERGY ? 1.0f + fwEffect(attacker, CFX_OVERCHARGE) : 1.0f;
     out->reductionMod = 1.0f - fwEffect(target, CFX_DAMAGE_REDUCTION);
@@ -101,8 +103,10 @@ void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
     out->linkAccuracy = ctx->linkAccuracy;
     out->perkMod = ctx->perkMod > 0 ? ctx->perkMod : 1.0f;
     out->auraMod = ctx->auraMod > 0 ? ctx->auraMod : 1.0f;
+    out->cmdMod = ctx->cmdMod > 0 ? ctx->cmdMod : 1.0f;
+    out->cmdAccuracy = ctx->cmdAccuracy;
     out->dmgMod = out->executeMod * out->overchargeMod * out->reductionMod * out->firstHitMod * out->adaptiveMod
-        * out->formatMod * out->splashMod * out->critMod * out->guardMod * out->perkMod * out->auraMod;
+        * out->formatMod * out->splashMod * out->critMod * out->guardMod * out->perkMod * out->auraMod * out->cmdMod;
     out->raw = formulaRawDamage(w->baseDamage, out->power) * out->dmgMod;
     out->pen = w->armorPen + (int)fwEffect(attacker, CFX_PEN_BONUS);                     // Siege Kernel
     if (def->armor > ARMORED_THRESHOLD) out->pen += (int)roundf(fwEffect(attacker, CFX_PEN_VS_ARMORED) * 100);   // Armor Analysis
@@ -160,6 +164,9 @@ AttackContext attackContextBaseline(const Mech* attacker, const Mech* target) {
     c.perkMod = 1.0f;
     c.auraMod = 1.0f;
     c.decoyMod = 1.0f;
+    c.cmdAccuracy = 0;
+    c.cmdMod = 1.0f;
+    c.powerBonus = 0;
     return c;
 }
 
@@ -272,6 +279,7 @@ int combatAccuracy(const Combatant* c) {
     int acc = c->mech->stats.accuracy - c->accPenalty;
     if (c->actionsThisTurn == 0) acc += (int)fwEffect(c->mech, CFX_PRECISION_STRIKE);
     acc += c->missStacks * (int)fwEffect(c->mech, CFX_RECURSIVE_TARGETING);
+    if (c->relayTurns > 0) acc += c->relayAccuracy;   // an outgoing ally's Catcher Relay
     return clampi(acc, 0, 100);
 }
 
@@ -292,10 +300,13 @@ static int pendingScrambles(const Combatant* c) {
 }
 
 static float linkEffect(const Combatant* c, ChipEffect e, const Combatant* vs);
+static int sideReserves(int side, int* out, int max);
 static Combatant* guardOf(const Combatant* d, float* share);
 static int sideOf(const Combatant* c);
 static int slotOf(const Combatant* c);
 static float sideAura(int side, ChipEffect e, const Combatant* except);
+
+static LogEntry* logNote(const char* text, int side);
 
 static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     AttackContext ctx;
@@ -333,6 +344,12 @@ static AttackContext liveContext(const Combatant* a, const Combatant* d) {
     ctx.critMod = 1.0f;
     float share = 0;
     ctx.guardMod = guardOf(d, &share) ? 1.0f - share : 1.0f;
+    // Command Points: the attacker's side focusing this target, the target's side holding the line
+    int as = sideOf(a), ds = sideOf(d);
+    ctx.cmdAccuracy = as != ds && battle.focusTarget[as] == slotOf(d) ? FOCUS_FIRE_ACCURACY : 0;
+    ctx.attackerAccuracy += ctx.cmdAccuracy;
+    ctx.cmdMod = as != ds && battle.defensiveLine[ds] ? 1.0f - DEFENSIVE_LINE_CUT : 1.0f;
+    ctx.powerBonus = a->deployed ? fwEffect(a->mech, CFX_DEPLOY_BUFF) : 0;   // Prowler Ambush
     return ctx;
 }
 
@@ -344,6 +361,22 @@ static void say(Explanation* x, int warn, const char* fmt, ...) {
     vsnprintf(x->line[x->n], EXPLAIN_LEN, fmt, args);
     va_end(args);
     x->warn[x->n++] = warn;
+}
+
+// A long sentence over as many lines as it needs, broken between words
+static void sayWrapped(Explanation* x, int warn, const char* text) {
+    const int width = EXPLAIN_LEN - 12;
+    while (*text) {
+        int n = (int)strlen(text);
+        if (n > width) {
+            n = width;
+            while (n > 0 && text[n] != ' ') n--;
+            if (n == 0) n = width;
+        }
+        say(x, warn, "%.*s", n, text);
+        text += n;
+        while (*text == ' ') text++;
+    }
 }
 
 // The name to show for an effect: the chassis perk when only the frame has it,
@@ -376,6 +409,8 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         effectName(a->mech, CFX_PRECISION_STRIKE, "Precision Strike"), precision);
     if (recursive) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Recursive Targeting +%d", recursive);
     if (a->accPenalty) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", scrambled -%d", a->accPenalty);
+    if (a->relayTurns > 0 && a->relayAccuracy)
+        snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Catcher Relay +%d", a->relayAccuracy);
     if (p->linkAccuracy) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", link +%d", p->linkAccuracy);
     int trueAim = (int)fwEffect(a->mech, CFX_TRUE_AIM);
     if (trueAim) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", %s +%d", mechModel(a->mech)->perkName, trueAim);
@@ -386,6 +421,7 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     if (ownMark && fwEffect(a->mech, CFX_SELF_MARK) > 0)
         snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", %s +%d", mechModel(a->mech)->perkName, (int)fwEffect(a->mech, CFX_SELF_MARK));
     if (auraAcc) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", ally Foresight +%d", auraAcc);
+    if (p->cmdAccuracy) snprintf(accWhy + strlen(accWhy), sizeof(accWhy) - strlen(accWhy), ", Focus Fire +%d", p->cmdAccuracy);
     if (d->evasiveBonus) snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", evading +%d", d->evasiveBonus);
     if (integrityBelow(d, 0.25f) && fwEffect(d->mech, CFX_EMERGENCY_EVASION) > 0)
         snprintf(mobWhy + strlen(mobWhy), sizeof(mobWhy) - strlen(mobWhy), ", Emergency Evasion +%d", (int)fwEffect(d->mech, CFX_EMERGENCY_EVASION));
@@ -403,7 +439,10 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
     // ---- damage ----
     if (p->baseDamage > 0) {
         char mods[112] = "";
-        if (p->power > as->power + 0.001f) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Aggressive Kernel +%.2f PWR", p->power - as->power);
+        if (p->power > as->power + p->powerBonus + 0.001f)
+            snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Aggressive Kernel +%.2f PWR", p->power - as->power - p->powerBonus);
+        if (p->powerBonus > 0) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", %s +%.2f PWR",
+            effectName(a->mech, CFX_DEPLOY_BUFF, "Prowler Ambush"), p->powerBonus);
         if (p->executeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", %s +%d%% (target under half)",
             effectName(a->mech, CFX_EXECUTE, "Hunter"), (int)roundf((p->executeMod - 1) * 100));
         if (p->overchargeMod > 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Overcharge +%d%%", (int)roundf((p->overchargeMod - 1) * 100));
@@ -417,6 +456,7 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
             (int)roundf((p->perkMod - 1) * 100));
         if (p->auraMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", ally shields -%d%%", (int)roundf((1 - p->auraMod) * 100));
         if (p->guardMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Defense Link x%.2f", p->guardMod);
+        if (p->cmdMod < 1) snprintf(mods + strlen(mods), sizeof(mods) - strlen(mods), ", Defensive Line -%d%%", (int)roundf((1 - p->cmdMod) * 100));
         say(x, 0, "DAMAGE %.0f: %d base x %.2f Power%s", p->raw, p->baseDamage, p->power,
             p->dmgMod != 1 ? TextFormat(" x %.2f firmware", p->dmgMod) : "");
         if (mods[0]) say(x, 0, "   %s", mods + 2);
@@ -459,6 +499,16 @@ static void explainAttack(const Combatant* a, const Combatant* d, const Weapon* 
         say(x, 0, "SCRAMBLE %d vs target Stability %d: %d%% chance it lands, then it %s", p->scramble, stab,
             (int)roundf((1 - p->resist) * 100), scrambleOutcome(p->scramble, w->virus));
     }
+
+    // ---- swap effects (Force Swap hits only the primary target) ----
+    int res[MAX_TEAM];
+    if (p->splashMod >= 1 && (w->forceSwap || (!a->displaceUsed && fwEffect(a->mech, CFX_FORCE_SWAP) > 0))
+        && sideReserves(sideOf(d), res, MAX_TEAM) > 0)
+        say(x, 0, battleAnchored(d) ? "FORCE SWAP (%s): %s is locked in - it holds its ground"
+            : "FORCE SWAP (%s): on hit, %s is pulled out for a random reserve", w->forceSwap ? w->name
+            : effectName(a->mech, CFX_FORCE_SWAP, "Displacement Routine"), d->mech->name);
+    if (fwEffect(a->mech, CFX_SWITCH_LOCK) > 0 && !battleAnchored(d))
+        say(x, 0, "LOCKDOWN: on hit, %s can't switch out (or be forced out) on its next turn", d->mech->name);
 
     // ---- energy and heat ----
     const char* costWhy = p->energyCost == 0 ? " (first action free)" : a->energyTax ? TextFormat(" (+%d corruption)", a->energyTax) : "";
@@ -506,6 +556,7 @@ static void initCombatant(Combatant* c, Mech* m) {
     c->ai = &aiDefault;
     c->mark = -1;
     c->jammedBy = -1;
+    c->interceptPos = -1;
 }
 
 // A mech entering the battle: clean firmware, cold, fully loaded
@@ -593,6 +644,18 @@ static int sideReserves(int side, int* out, int max) {
     return n;
 }
 
+// The side's healthiest standing reserve above `atLeast` (Integrity share), -1 if none
+static int healthiestReserve(int side, float atLeast) {
+    int res[MAX_TEAM], n = sideReserves(side, res, MAX_TEAM), best = -1;
+    float bestFrac = atLeast;
+    for (int i = 0; i < n; i++) {
+        const MechStats* s = &battle.side[side].mech[res[i]].stats;
+        float frac = s->maxIntegrity > 0 ? (float)s->integrity / s->maxIntegrity : 0;
+        if (frac > bestFrac) { bestFrac = frac; best = res[i]; }
+    }
+    return best;
+}
+
 static int emptyFieldPos(int side) {
     for (int p = 0; p < battle.side[side].numField; p++) if (battle.side[side].field[p] < 0) return p;
     return -1;
@@ -650,6 +713,15 @@ int battleInterceptor(int side, int pos) {
     return best;
 }
 
+int battleDeclaredInterceptor(int side, int pos) {
+    if (!battleField(side, pos)) return -1;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* g = battleField(side, p);
+        if (g && p != pos && g->interceptPos == pos && g->mech->stats.integrity > 0) return p;
+    }
+    return -1;
+}
+
 // Single-target and line shots are stopped by cover; area and cone reach past it
 static int coverStops(const Combatant* a, const Weapon* w) { int t = targetingOf(a, w); return t == TARGET_SINGLE || t == TARGET_LINE; }
 
@@ -657,6 +729,8 @@ static int coverStops(const Combatant* a, const Weapon* w) { int t = targetingOf
 // Link lets the attacker reach its partner's mark past cover.
 static int aimedAt(const Combatant* a, const Weapon* w, int side, int aim) {
     if (!w || !coverStops(a, w)) return aim;
+    int ic = battleDeclaredInterceptor(side, aim);   // Intercept Protocol: declared, so no reach trick gets past it
+    if (ic >= 0) return ic;
     if (a && linkEffect(a, CFX_LINK_MARK_REACH, battleField(side, aim)) > 0) return aim;
     if (a && fwEffect(a->mech, CFX_IGNORE_COVER) > 0) return aim;   // Infiltration
     Combatant* d = battleField(side, aim);
@@ -750,7 +824,10 @@ int battleLinks(int side, ActiveLink* out, int max) {
     return n;
 }
 
-float battleLinkScale(int side, int from) { return 1.0f + fwEffect(battle.side[side].slot[from].mech, CFX_LINK_BOOST); }
+float battleLinkScale(int side, int from) {
+    return 1.0f + fwEffect(battle.side[side].slot[from].mech, CFX_LINK_HUB)
+        + (battle.linkBoostTurns[side] > 0 ? battle.linkBoost[side] : 0);   // Link Amplifier
+}
 
 int battleMarkPos(int side, int slot) {
     int m = battle.side[side].slot[slot].mark;
@@ -865,7 +942,10 @@ int battleExplainPlayer(int mount, Explanation* out) {
     if (n < 1) return 0;
     const Weapon* w = mechWeapon(a->mech, mount);
     explainAttack(a, battleField(SIDE_ENEMY, pos[0]), w, &all[0], out);
-    if (pos[0] != battle.playerTarget)
+    if (pos[0] != battle.playerTarget && battleDeclaredInterceptor(SIDE_ENEMY, battle.playerTarget) == pos[0])
+        say(out, 1, "INTERCEPTED: %s guards %s's position - single-target and line shots hit it instead. Area and cone weapons reach past.",
+            battleField(SIDE_ENEMY, pos[0])->mech->name, aim->mech->name);
+    else if (pos[0] != battle.playerTarget)
         say(out, 1, "COVERED: %s is in the Rear - %s in the Front takes single-target and line shots. Area and cone weapons reach it.",
             aim->mech->name, battleField(SIDE_ENEMY, pos[0])->mech->name);
     else if (battleInterceptor(SIDE_ENEMY, battle.playerTarget) >= 0)
@@ -967,28 +1047,35 @@ static int linkAimBonus(const Combatant* a, int targetSide, float* bonus) {
     return kind;
 }
 
-static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
-                          char* why, int whySize) {
+// onlyPos >= 0: that target only, and a covered aim still counts (the shot hits
+// its guard). ignoreResources 2: a free shot - weapons are weighed as if they
+// cost no Energy, and a scrambled mount still can't fire.
+static int aiChooseActionAt(const Combatant* a, int targetSide, int onlyPos, int ignoreResources, int* targetPos,
+                            float* bestScore, char* why, int whySize) {
     int best = -1, bestPos = -1, provoker = battleProvoker(targetSide);
     float bestValue = -1, perTarget[MAX_FIELD], rawOf[MAX_FIELD], aimBonus[MAX_FIELD];
     int linkKind = linkAimBonus(a, targetSide, aimBonus);
     for (int t = 0; t < MAX_FIELD; t++) perTarget[t] = rawOf[t] = -1;
     for (int t = 0; t < MAX_FIELD; t++) {
+        if (onlyPos >= 0 && t != onlyPos) continue;
         if (!battleField(targetSide, t) || hiddenFrom(a, battleField(targetSide, t))) continue;   // Signal Blackout
         for (int i = 0; i < MAX_WEAPONS; i++) {
             const Weapon* w = mechWeapon(a->mech, i);
             if (!w) continue;
             if (ignoreResources ? (w->ammo > 0 && a->mech->weapons[i].ammo <= 0) : !canFire(a, i, NULL)) continue;
+            if (ignoreResources == 2 && i == a->disabledWeapon) continue;
             if (provoker >= 0 && t != provoker && singleTarget(a, w)) continue;
             // covered: same as aiming at its guard - unless the aim itself is worth something (a mark)
-            if (aimedAt(a, w, targetSide, t) != t && !(linkKind == 1 && aimBonus[t] > 0)) continue;
+            if (onlyPos < 0 && aimedAt(a, w, targetSide, t) != t && !(linkKind == 1 && aimBonus[t] > 0)) continue;
+            float free = 1;   // a free shot: undo the per-Energy weighting
+            if (ignoreResources == 2) { int k = weaponCost(a->mech, w, a->actionsThisTurn == 0) + a->energyTax; free = k > 0 ? (float)k : 0.5f; }
             int pos[MAX_FIELD];
             float mod[MAX_FIELD], v = 0, raw = 0;
             int n = weaponTargets(a, w, targetSide, t, pos, mod, MAX_FIELD);
             for (int k = 0; k < n; k++) {
                 const Combatant* d = battleField(targetSide, pos[k]);
                 AttackContext ctx = splashContext(a, d, mod[k], k > 0);
-                float s = aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai);
+                float s = aiScoreAttack(a->mech, w, d->mech, &ctx, a->ai) * free;
                 raw += s;
                 v += s * battleThreatFactor(d);
                 if (k == 0 && linkKind == 2 && w->scramble > 0 && aimBonus[pos[0]] > 0) {   // jam it before it shoots the Recon
@@ -1021,6 +1108,10 @@ static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResource
     }
     return best;
 }
+static int aiChooseAction(const Combatant* a, int targetSide, int ignoreResources, int* targetPos, float* bestScore,
+                          char* why, int whySize) {
+    return aiChooseActionAt(a, targetSide, -1, ignoreResources, targetPos, bestScore, why, whySize);
+}
 
 // Start of this mech's turn: tick corruption, refill Energy, cool Heat, then
 // (on the field only) apply queued scrambles and run Emergency and Behavioral
@@ -1032,6 +1123,9 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     if (c->jammed > 0) c->jammed--;   // Signal Blackout: active through the jammed mech's next turn
     c->slowed = 0;                    // a snare field lasts until its next turn
     c->strikeReady = 0;
+    c->displaceUsed = 0;
+    c->interceptPos = -1;             // an intercept lasts until its next turn
+    if (c->relayTurns > 0) c->relayTurns--;   // Catcher Relay: through the newcomer's first turn
     firmwareCorruptionTick(&c->mech->fw);
     mechRefreshStats(c->mech);   // a stat chip may have come back online
     s->energy = s->maxEnergy - c->nextEnergyLoss + (int)fwEffect(c->mech, CFX_BONUS_ENERGY);
@@ -1050,6 +1144,7 @@ static void turnStart(Combatant* c, int onField, char* note, int size) {
     c->attackedThisRound = 0;
     c->hitBy = 0;
     c->attackThreat = 0;
+    c->overwatch = 0;   // an Overwatch nobody triggered lapses at its own side's next phase
     if (!onField) {
         c->hazard = 0;   // a hazard field doesn't follow a mech off the field
         c->accPenalty = c->skipTurn = c->energyTax = c->randomTargeting = c->switchLocked = 0;
@@ -1108,6 +1203,8 @@ static const char* sideTurnStart(int side) {
     char note[64];
     Side* sd = &battle.side[side];
     notes[0] = 0;
+    if (battle.linkBoostTurns[side] > 0 && --battle.linkBoostTurns[side] == 0)
+        logNote(TextFormat("%sLINK AMPLIFIER fades: links back to normal strength.", side == SIDE_PLAYER ? "" : "Enemy "), side == SIDE_PLAYER);
     for (int i = 0; i < sd->count; i++) {
         if (sd->slot[i].out) continue;
         int onField = slotOnField(sd, i);
@@ -1141,6 +1238,7 @@ static float fxDuration(int fx) {
     case FX_SWITCH: return 0.8f;
     case FX_GUARD: return 0.5f;
     case FX_LINK: return 0.7f;
+    case FX_COMMAND: return 0.6f;
     default: return 0.55f;
     }
 }
@@ -1185,7 +1283,7 @@ static LogEntry* setLink(int side, int from, int to) {
     const LinkDef* L = &linkDefs[type];
     LogEntry* e = logNote(TextFormat("%s%s: %s > %s.", side == SIDE_PLAYER ? "" : "Enemy ", L->name, sd->mech[from].name,
         sd->mech[to].name), side == SIDE_PLAYER);
-    say(&e->why, 0, "%s", L->rule);
+    sayWrapped(&e->why, 0, L->rule);
     say(&e->why, 0, "It breaks if either mech drops below 25%% Integrity, is switched out or is disabled.");
     pushEvent(FX_LINK, side == SIDE_PLAYER, fieldPosOf(side, from), fieldPosOf(side, to), 0, 1, L->color);
     return e;
@@ -1298,6 +1396,8 @@ static int aiConsiderLink(int side, int pos) {
 
 // ============ ACTIONS ============
 static char targetWhy[160];   // why the AI picked its target; goes into that attack's log entry
+static int overwatchTrigger(int side, int slot);
+static const char* fireBlock(int mount);
 
 // Firmware Corruption (design doc 7.19), one of four at random. The chip ones
 // need an active chip and fall through to the others when there is none.
@@ -1350,7 +1450,10 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     // Formation, as it stood when the shot was fired
     const char* coveredName = pos[0] != primary ? battleField(dSide, primary)->mech->name : NULL;
     char formation[EXPLAIN_LEN] = "";
-    if (coveredName)
+    if (coveredName && battleDeclaredInterceptor(dSide, primary) == pos[0])
+        snprintf(formation, sizeof(formation), "INTERCEPTED: %s stepped in front of %s and took the %s shot",
+            battleField(dSide, pos[0])->mech->name, coveredName, w->targeting == TARGET_LINE ? "line" : "single-target");
+    else if (coveredName)
         snprintf(formation, sizeof(formation), "COVERED: %s is covered, so %s took the %s shot",
             coveredName, battleField(dSide, pos[0])->mech->name, w->targeting == TARGET_LINE ? "line" : "single-target");
     else if (battleInterceptor(dSide, primary) >= 0 && coverStops(a, w))
@@ -1446,6 +1549,22 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
                 d->slowed = slow;
                 snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " SLOWED: -%d MOB.", slow);
             }
+            // Force Swap (a forceSwap weapon, or Displacement Routine once a turn) on the primary target, else Lockdown
+            if (ds->integrity > 0) {
+                int pull = k == 0 && (w->forceSwap || (!a->displaceUsed && fwEffect(a->mech, CFX_FORCE_SWAP) > 0)), res[MAX_TEAM];
+                if (pull && battleAnchored(d))
+                    snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " HOLDS: locked in, it can't be forced out.");
+                else if (pull && sideReserves(dSide, res, MAX_TEAM) > 0) {
+                    battle.forcedSide = dSide;   // swapped once the hit's animation ends
+                    battle.forcedSlot = slotOf(d);
+                    if (!w->forceSwap) a->displaceUsed = 1;
+                    snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " FORCED OUT!");
+                }
+                else if (fwEffect(a->mech, CFX_SWITCH_LOCK) > 0 && !battleAnchored(d)) {
+                    d->switchLock = 1;
+                    snprintf(extra + strlen(extra), sizeof(extra) - strlen(extra), " LOCKED DOWN.");
+                }
+            }
             // Defense Link: the Aegis takes its share of the hit through its own Armor
             float share = 0;
             Combatant* g = w->baseDamage > 0 ? guardOf(d, &share) : NULL;
@@ -1504,7 +1623,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
         }
         if (guardLine[0]) {
             LogEntry* ge = logPush(guardLine, isPlayer, w->munition);
-            say(&ge->why, 0, "%s", linkDefs[LINK_DEFENSE].rule);
+            sayWrapped(&ge->why, 0, linkDefs[LINK_DEFENSE].rule);
             BattleEvent* gev = pushEvent(FX_GUARD, dSide == SIDE_PLAYER, pos[k], guardPos, guardTotal, 1, linkDefs[LINK_DEFENSE].color);
             if (gev) {
                 gev->munition = w->munition;
@@ -1517,6 +1636,7 @@ static void doAttack(Combatant* a, int aSide, int aPos, int dSide, int primary, 
     a->actionsThisTurn++;
     a->strikeReady = 0;
     a->fresh = 0;   // out of stealth
+    a->deployed = 0;   // Prowler Ambush spent
     a->evasiveBonus = (int)fwEffect(a->mech, CFX_EVASIVE_MANEUVER);
     int gain = n > 1 || !singleTarget(a, w) || w->energyCost >= 2 ? THREAT_HEAVY_ATTACK : THREAT_ATTACK;
     if (gain > a->attackThreat) { battleAddThreat(a, gain - a->attackThreat); a->attackThreat = gain; }   // once per turn
@@ -1603,12 +1723,15 @@ void battleCycleTarget(int dir) {
 
 static void enemyFillField(void);
 
+static void commandRoundStart(int side);
+
 static void beginEnemyTurn(void) {
     const char* note = sideTurnStart(SIDE_ENEMY);
     battle.phase = BP_ENEMY_TURN;
     battle.enemyActing = 0;
     if (note[0]) logLine("Enemy:%s", note);
     enemyFillField();
+    commandRoundStart(SIDE_ENEMY);
     for (int p = 0; p < MAX_FIELD; p++) {
         Combatant* c = battleField(SIDE_ENEMY, p);
         if (!c || !c->skipTurn) continue;
@@ -1642,6 +1765,7 @@ static void beginPlayerTurn(void) {
     battle.phase = BP_PLAYER_TURN;
     battle.phaseActed = 0;
     logLine("ROUND %d. Reactors recharged, heat vented.%s", battle.round, note);
+    commandRoundStart(SIDE_PLAYER);
     for (int p = 0; p < MAX_FIELD; p++) {
         Combatant* c = battleField(SIDE_PLAYER, p);
         if (!c || !c->skipTurn) continue;
@@ -1661,11 +1785,16 @@ static void beginPlayerTurn(void) {
 }
 
 // ============ SWITCHING ============
-// Why this field mech can't be switched out this turn, NULL if it can
+int battleSwitchFree(const Combatant* c) { return !c->freeSwitchUsed && fwEffect(c->mech, CFX_SWITCH_FREE) > 0; }
+int battleSwitchCost(const Combatant* c) { return battleSwitchFree(c) ? 0 : SWITCH_ENERGY_COST; }
+int battleAnchored(const Combatant* c) { return c->switchLocked || c->switchLock > 0; }
+
+// Why this field mech can't be switched out this turn, NULL if it can.
+// Emergency Redeploy (once a battle) gets it out at 0 Energy, even locked in.
 static const char* switchBlock(const Combatant* c) {
-    if (c->switchLocked) return "LOCKED IN (just deployed)";
+    if (c->switchLocked && !battleSwitchFree(c)) return "LOCKED IN";
     if (c->skipTurn) return "SYSTEMS SCRAMBLED";
-    if (c->mech->stats.energy < SWITCH_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    if (c->mech->stats.energy < battleSwitchCost(c)) return "INSUFFICIENT ENERGY";
     return NULL;
 }
 
@@ -1676,6 +1805,16 @@ static void onEnterField(int side, int slot) {
     c->fresh = 1;
     c->everMoved = 0;
     c->hitBy = 0;
+    c->interceptPos = -1;
+    float amp = fwEffect(c->mech, CFX_LINK_BOOST);   // Link Amplifier: through the end of its first turn
+    if (amp > 0) {
+        if (battle.linkBoostTurns[side] <= 0 || amp > battle.linkBoost[side]) battle.linkBoost[side] = amp;
+        battle.linkBoostTurns[side] = 2;   // ticks at the side's phase starts: this one (if any) and its first turn
+        LogEntry* e = logNote(TextFormat("%sLINK AMPLIFIER: %s takes the field - %s links are %d%% stronger until the end of its "
+            "first turn.", side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name, side == SIDE_PLAYER ? "your" : "their",
+            (int)roundf(battle.linkBoost[side] * 100)), side == SIDE_PLAYER);
+        say(&e->why, 0, "Every link on that side: more Accuracy and crit chance vs the mark, a bigger Defense Link share.");
+    }
     int jam = (int)fwEffect(c->mech, CFX_ENTRY_JAM);
     if (jam <= 0) return;
     int n = 0;
@@ -1687,10 +1826,12 @@ static void onEnterField(int side, int slot) {
         c->mech->name, n, n > 1 ? "s" : "", jam), side == SIDE_PLAYER);
 }
 
-// Puts reserve `slot` on the side's field position. A paid switch drains the
-// outgoing mech's Energy and clears its turn state, and the incoming mech is
-// locked in for its next turn; a free deploy fills an empty position with no
-// lockout. Either way the new mech doesn't act the round it arrives.
+// Puts reserve `slot` on the side's field position. A paid switch (paid 1)
+// drains the outgoing mech's Energy and clears its turn state, and the incoming
+// mech is locked in for its next turn; an Emergency Deployment (paid 2) clears
+// the outgoing mech the same way but locks nobody in; a free deploy fills an
+// empty position with no lockout. Either way the new mech doesn't act the round
+// it arrives.
 static void putOnField(int side, int pos, int slot, int paid) {
     Side* sd = &battle.side[side];
     Combatant* out = battleField(side, pos);
@@ -1702,13 +1843,22 @@ static void putOnField(int side, int pos, int slot, int paid) {
         out->disabledWeapon = -1;
         out->done = 0;
         out->threat = out->provoking = 0;   // out of sight
-        out->flanking = out->moved = 0;
+        out->flanking = out->moved = out->overwatch = 0;
+        out->interceptPos = -1;
+        int relay = (int)fwEffect(out->mech, CFX_WITHDRAW_BUFF);   // Catcher Relay: hands its lock-on over
+        if (relay > 0 && out->mech->stats.integrity > 0) {
+            in->relayAccuracy = relay;
+            in->relayTurns = 2;   // ticks at its turn starts: active through its first turn
+            logNote(TextFormat("%sCATCHER RELAY: %s hands its lock-on to %s - +%d Accuracy through its first turn.",
+                side == SIDE_PLAYER ? "" : "Enemy ", out->mech->name, in->mech->name, relay), side == SIDE_PLAYER);
+        }
     }
     sd->field[pos] = slot;
+    in->deployed = 1;       // a mid-battle arrival (Prowler Ambush)
     onEnterField(side, slot);
     in->flanking = in->moved = 0;
     in->lane = defaultLane(side, in);
-    in->switchLock = paid ? 1 : 0;
+    in->switchLock = paid == 1 ? 1 : 0;
     in->switchLocked = 0;
     in->actionsThisTurn = 0;
     in->done = 1;
@@ -1717,6 +1867,7 @@ static void putOnField(int side, int pos, int slot, int paid) {
     battle.animTimer = fxDuration(FX_SWITCH);
     linkUpkeep();           // the outgoing mech's links break...
     autoLink(side, slot);   // ...and the incoming one links up with whoever fits
+    overwatchTrigger(side, slot);   // stepping onto the field under the other side's Overwatch
 }
 
 int battleCanSwitch(const char** reason) {
@@ -1737,12 +1888,24 @@ static int isReserve(int side, int slot) {
     return battleSlotStanding(side, slot) && !slotOnField(&battle.side[side], slot);
 }
 
+// A field mech's switch-out for reserve `slot`. Emergency Redeploy, if ready,
+// is spent: no Energy, and the newcomer isn't locked in. 1 if it was free.
+static int switchOut(int side, int pos, int slot) {
+    Combatant* c = battleField(side, pos);
+    int free = battleSwitchFree(c);
+    if (free) c->freeSwitchUsed = 1;
+    putOnField(side, pos, slot, free ? 2 : 1);
+    return free;
+}
+
 void battleSwitchTo(int slot) {
     if (!battleCanSwitch(NULL) || !isReserve(SIDE_PLAYER, slot)) return;
     const char* from = battleActing()->mech->name;
-    logLine("%s withdraws (%d EN). %s takes its place next round - it can't switch out next turn.",
-        from, SWITCH_ENERGY_COST, battle.side[SIDE_PLAYER].mech[slot].name);
-    putOnField(SIDE_PLAYER, battle.actingSlot, slot, 1);
+    const char* in = battle.side[SIDE_PLAYER].mech[slot].name;
+    if (battleSwitchFree(battleActing()))
+        logLine("EMERGENCY REDEPLOY: %s withdraws (0 EN). %s takes its place next round - not locked in.", from, in);
+    else logLine("%s withdraws (%d EN). %s takes its place next round - it can't switch out next turn.", from, SWITCH_ENERGY_COST, in);
+    switchOut(SIDE_PLAYER, battle.actingSlot, slot);
     battle.phaseActed = 1;
     fixActor();
 }
@@ -1815,6 +1978,86 @@ static int enemyConsiderProvoke(int pos) {
     return 1;
 }
 
+// ============ INTERCEPT ============
+// The ally position INTERCEPT guards: the most hurt ally (by Integrity share)
+// that it isn't guarding already, -1 if none
+static int interceptCandidate(int side, const Combatant* c) {
+    int self = fieldPosOf(side, slotOf(c)), best = -1;
+    float bestFrac = 2;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* o = battleField(side, p);
+        if (!o || p == self || p == c->interceptPos) continue;
+        float frac = (float)o->mech->stats.integrity / (o->mech->stats.maxIntegrity > 0 ? o->mech->stats.maxIntegrity : 1);
+        if (frac < bestFrac) { bestFrac = frac; best = p; }
+    }
+    return best;
+}
+
+static const char* interceptBlock(int side, const Combatant* c) {
+    if (fwEffect(c->mech, CFX_INTERCEPT) <= 0) return "NEEDS INTERCEPT PROTOCOL";
+    if (c->mech->stats.energy < INTERCEPT_ENERGY_COST) return "INSUFFICIENT ENERGY";
+    if (interceptCandidate(side, c) < 0) return c->interceptPos >= 0 ? "NO OTHER ALLY TO GUARD" : "NO ALLY TO GUARD";
+    return NULL;
+}
+
+// The mech declares an ally's position: until its next turn, single-target and
+// line shots aimed there hit it instead. It's an action, like PROVOKE.
+static void doIntercept(Combatant* c, int side, int to) {
+    int pos = fieldPosOf(side, slotOf(c));
+    c->mech->stats.energy -= INTERCEPT_ENERGY_COST;
+    c->interceptPos = to;
+    c->actionsThisTurn++;
+    battleAddThreat(c, THREAT_BUFF);
+    pushEvent(FX_LINK, side == SIDE_PLAYER, pos, to, 0, 1, linkDefs[LINK_DEFENSE].color);
+    battle.animTimer = 0.6f;
+    LogEntry* e = logPush(TextFormat("%s%s INTERCEPTS for %s's position until its next turn.", side == SIDE_PLAYER ? "" : "Enemy ",
+        c->mech->name, battleField(side, to)->mech->name), side == SIDE_PLAYER, -1);
+    say(&e->why, 0, "INTERCEPT PROTOCOL: %d EN, Threat +%d.", INTERCEPT_ENERGY_COST, THREAT_BUFF);
+    sayWrapped(&e->why, 0, "Single-target and line shots aimed at that position hit the interceptor instead - whoever stands there, "
+        "so a reserve swapped in behind it is guarded too. Spotter reach and Infiltration don't get past it; area and cone weapons do.");
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+}
+
+int battleCanIntercept(const char** reason) {
+    const char* r = NULL;
+    Combatant* a = battleActing();
+    if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
+    else if (!a) r = "NO MECH TO COMMAND";
+    else r = interceptBlock(SIDE_PLAYER, a);
+    if (reason) *reason = r;
+    return r == NULL;
+}
+
+int battleInterceptCandidate(void) {
+    const Combatant* a = battleActing();
+    return a && fwEffect(a->mech, CFX_INTERCEPT) > 0 ? interceptCandidate(SIDE_PLAYER, a) : -1;
+}
+
+void battleIntercept(void) {
+    if (!battleCanIntercept(NULL)) return;
+    doIntercept(battleActing(), SIDE_PLAYER, battleInterceptCandidate());
+    battle.phaseActed = 1;
+}
+
+// AI: a healthy interceptor guards the most hurt ally that is hurt or louder
+// than itself and not already covered in the Rear
+static int aiConsiderIntercept(int side, int pos) {
+    Combatant* c = battleField(side, pos);
+    if (!c || c->actionsThisTurn > 0 || c->provoking || interceptBlock(side, c) || integrityBelow(c, 0.40f)) return 0;
+    int best = -1;
+    float bestFrac = 2;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* o = battleField(side, p);
+        if (!o || o == c || battleInterceptor(side, p) >= 0 || !(integrityBelow(o, 0.5f) || o->threat > c->threat)) continue;
+        float frac = (float)o->mech->stats.integrity / (o->mech->stats.maxIntegrity > 0 ? o->mech->stats.maxIntegrity : 1);
+        if (frac < bestFrac) { bestFrac = frac; best = p; }
+    }
+    if (best < 0) return 0;
+    doIntercept(c, side, best);
+    return 1;
+}
+
 // ============ FORMATION MOVES ============
 static const char* moveBlock(const Combatant* c, int to) {
     if (c->moved) return c->flanking ? "FLANKING UNTIL NEXT TURN" : "ALREADY MOVED THIS TURN";
@@ -1865,6 +2108,7 @@ static void doMove(Combatant* c, int side, int to) {
     snprintf(battle.log, sizeof(battle.log), "%s", e->text);
     snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
     battle.animTimer = 0.35f;   // let the sprite slide over before anything else happens
+    overwatchTrigger(side, slotOf(c));   // caught moving
 }
 
 int battleCanMove(int to, const char** reason) {
@@ -1910,6 +2154,397 @@ static int aiConsiderMove(int side, int pos) {
     return 1;
 }
 
+// ============ COMMAND POINTS ============
+const CommandDef commandDefs[NUM_COMMANDS] = {
+    //                         tag       cost (enemy, player)
+    { "FOCUS FIRE",           "FOCUS",  { 2, 2 }, { 255, 120, 90, 255 },
+      "Your attacks on the target get +10 Accuracy (even past 100) until your next phase." },
+    { "EMERGENCY DEPLOYMENT", "DEPLOY", { 2, 2 }, { 120, 200, 255, 255 },
+      "The commanded mech swaps with a reserve for 0 Energy, even when locked in. The new mech isn't locked in, "
+      "but like any arrival it acts next round." },
+    { "COORDINATED STRIKE",   "STRIKE", { 3, 3 }, { 255, 200, 90, 255 },
+      "The commanded mech and the best-placed ally each fire a free shot (no Energy or Heat) at the target, in sequence. "
+      "If the first scraps it, the second picks a new one." },
+    { "DEFENSIVE LINE",       "DEFEND", { 3, 3 }, { 130, 230, 255, 255 },
+      "Every mech on your side takes 25% less damage until your next phase." },
+    { "OVERWATCH",            "WATCH",  { 4, 4 }, { 180, 255, 140, 255 },
+      "Ends your phase now. Every field mech holds one free shot for the first enemy that fires, moves or takes the "
+      "field - fired before the enemy's own shot. Unused, it lapses at your next phase." },
+};
+
+static int catchersOnField(int side) {
+    int n = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* c = battleField(side, p);
+        if (c && mechRole(c->mech) == ROLE_CATCHER) n++;
+    }
+    return n;
+}
+
+int battleCommandIncome(int side, int* catchers) {
+    int n = catchersOnField(side);
+    if (catchers) *catchers = n;
+    return n > 0 ? CP_BASE_INCOME + n * CP_CATCHER_INCOME : 0;
+}
+
+static void gainCommand(int side, int amount, const char* why) {
+#ifdef NO_COMMANDS_TEST   // test builds only: nobody earns Command Points, for comparison
+    return;
+#endif
+    int before = battle.commandPoints[side];
+    battle.commandPoints[side] = clampi(before + amount, 0, CP_MAX);
+    LogEntry* e = logNote(TextFormat("%sCOMMAND +%d (%s): %d/%d CP.", side == SIDE_PLAYER ? "" : "Enemy ", amount, why,
+        battle.commandPoints[side], CP_MAX), side == SIDE_PLAYER);
+    if (before + amount > CP_MAX) say(&e->why, 1, "Capped at %d: %d went to waste.", CP_MAX, before + amount - CP_MAX);
+    sayWrapped(&e->why, 0, TextFormat("Income at the start of each phase: +%d while a Catcher is on the field, +%d more for every Catcher "
+        "there. +%d whenever an enemy field mech is scrapped.", CP_BASE_INCOME, CP_CATCHER_INCOME, CP_KILL_BONUS));
+}
+
+// A side's phase begins: last round's Focus Fire and Defensive Line end, and
+// its Catchers bring in Command Points
+static void commandRoundStart(int side) {
+    battle.focusTarget[side] = -1;
+    battle.defensiveLine[side] = 0;
+    int catchers, gain = battleCommandIncome(side, &catchers);
+    if (gain > 0) gainCommand(side, gain, TextFormat("%d Catcher%s on the field", catchers, catchers > 1 ? "s" : ""));
+}
+
+static int queueShot(int side, int slot, int aim, int kind, int mount) {
+    if (battle.numQueued >= MAX_QUEUED_SHOTS) return 0;
+    battle.queue[battle.numQueued++] = (QueuedShot){ side, slot, aim, kind, mount };
+    return 1;
+}
+
+// A free shot (Coordinated Strike, Overwatch) from c at the other side's slot
+// `aimSlot`: its best weapon there, no Energy or Heat. A strike whose target
+// already fell picks a new one. 1 if it fired.
+static int freeShot(Combatant* c, int side, int aimSlot, int kind) {
+    int other = 1 - side, pos = fieldPosOf(side, slotOf(c)), at = fieldPosOf(other, aimSlot), target;
+    if (pos < 0 || c->mech->stats.integrity <= 0 || (at < 0 && kind != CMD_COORDINATED_STRIKE)) return 0;
+    int mount = aiChooseActionAt(c, other, at, 2, &target, NULL, NULL, 0);
+    if (mount < 0) return 0;
+    snprintf(targetWhy, sizeof(targetWhy), "%s: a free shot (no Energy or Heat), paid for with Command Points%s.",
+        commandDefs[kind].name, at < 0 ? " - its target already fell, so it picked another" : "");
+    MechStats* s = &c->mech->stats;
+    int energy = s->energy, heat = s->heat;
+    doAttack(c, side, pos, other, target, mount, kind == CMD_OVERWATCH ? "OVERWATCH! " : "COORDINATED STRIKE! ");
+    s->energy = energy;
+    s->heat = heat;
+    return 1;
+}
+
+// The ally that joins c's Coordinated Strike on the other side's position aimPos:
+// the field mech (not scrambled out of its turn) with the best free shot there, -1
+static int coordinatedPartner(int side, const Combatant* c, int aimPos) {
+    int best = -1;
+    float bestScore = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* o = battleField(side, p);
+        float score;
+        if (!o || o == c || o->skipTurn || o->mech->stats.integrity <= 0) continue;
+        if (aiChooseActionAt(o, 1 - side, aimPos, 2, NULL, &score, NULL, 0) < 0) continue;
+        if (best < 0 || score > bestScore) { best = p; bestScore = score; }
+    }
+    return best;
+}
+
+static int canWatch(const Combatant* c) {
+    if (!c || c->skipTurn || c->mech->stats.integrity <= 0) return 0;
+    for (int i = 0; i < MAX_WEAPONS; i++) {
+        const Weapon* w = mechWeapon(c->mech, i);
+        if (w && i != c->disabledWeapon && (w->ammo <= 0 || c->mech->weapons[i].ammo > 0)) return 1;
+    }
+    return 0;
+}
+
+// Why `side` can't issue cmd now with mech c (its commanded mech) aiming at the
+// other side's position aimPos, NULL if it can
+static const char* commandBlock(int side, int cmd, const Combatant* c, int aimPos) {
+    int other = 1 - side, res[MAX_TEAM];
+    if (battle.commandPoints[side] < commandDefs[cmd].cost[side]) return TextFormat("NEEDS %d CP", commandDefs[cmd].cost[side]);
+    const Combatant* d = battleField(other, aimPos);
+    switch (cmd) {
+    case CMD_FOCUS_FIRE:
+        if (!d) return "NO TARGET";
+        return battle.focusTarget[side] == slotOf(d) ? "ALREADY FOCUSED ON IT" : NULL;
+    case CMD_EMERGENCY_DEPLOY:
+        if (!c) return "NO MECH TO COMMAND";
+        return sideReserves(side, res, MAX_TEAM) == 0 ? "NO RESERVES" : NULL;
+    case CMD_COORDINATED_STRIKE:
+        if (!c || !d) return "NO TARGET";
+        if (aiChooseActionAt(c, other, aimPos, 2, NULL, NULL, NULL, 0) < 0) return "NO SHOT AT THAT TARGET";
+        return coordinatedPartner(side, c, aimPos) < 0 ? "NO ALLY CAN JOIN" : NULL;
+    case CMD_DEFENSIVE_LINE:
+        return battle.defensiveLine[side] ? "LINE ALREADY HELD" : NULL;
+    default:
+        for (int p = 0; p < MAX_FIELD; p++) if (canWatch(battleField(side, p))) return NULL;
+        return "NO MECH CAN WATCH";
+    }
+}
+
+// The command's log entry: what happened, then the cost and the rule
+static void commandLog(int side, int cmd, const char* text) {
+    LogEntry* e = logPush(text, side == SIDE_PLAYER, -1);
+    say(&e->why, 0, "%s: %d CP (%d/%d left).", commandDefs[cmd].name, commandDefs[cmd].cost[side], battle.commandPoints[side], CP_MAX);
+    sayWrapped(&e->why, 0, commandDefs[cmd].rule);
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+}
+
+// Spends the Command Points and carries the command out. pos: the commanded
+// mech's field position; aimPos: the other side's position it aims at;
+// reserve: the slot an Emergency Deployment brings in.
+static void doCommand(int side, int cmd, int pos, int aimPos, int reserve) {
+    Combatant* c = battleField(side, pos);
+    Combatant* d = battleField(1 - side, aimPos);
+    const Side* sd = &battle.side[side];
+    const char* who = side == SIDE_PLAYER ? "" : "ENEMY ";
+    Color col = commandDefs[cmd].color;
+    battle.commandPoints[side] -= commandDefs[cmd].cost[side];
+    battle.animTimer = fxDuration(FX_COMMAND);
+    switch (cmd) {
+    case CMD_FOCUS_FIRE:
+        battle.focusTarget[side] = slotOf(d);
+        commandLog(side, cmd, TextFormat("%sFOCUS FIRE on %s: +%d Accuracy against it until %s next phase.", who, d->mech->name,
+            FOCUS_FIRE_ACCURACY, side == SIDE_PLAYER ? "your" : "their"));
+        pushEvent(FX_COMMAND, side == SIDE_PLAYER, pos, aimPos, cmd, 1, col);
+        break;
+    case CMD_EMERGENCY_DEPLOY:
+        commandLog(side, cmd, TextFormat("%sEMERGENCY DEPLOYMENT: %s pulls out, %s takes its place (0 EN, not locked in).", who,
+            c->mech->name, sd->mech[reserve].name));
+        putOnField(side, pos, reserve, 2);
+        break;
+    case CMD_COORDINATED_STRIKE: {
+        Combatant* o = battleField(side, coordinatedPartner(side, c, aimPos));
+        commandLog(side, cmd, TextFormat("%sCOORDINATED STRIKE on %s: %s and %s fire in sequence.", who, d->mech->name,
+            c->mech->name, o->mech->name));
+        pushEvent(FX_COMMAND, side == SIDE_PLAYER, pos, aimPos, cmd, 1, col);
+        queueShot(side, slotOf(c), slotOf(d), cmd, -1);
+        queueShot(side, slotOf(o), slotOf(d), cmd, -1);
+        break;
+    }
+    case CMD_DEFENSIVE_LINE:
+        battle.defensiveLine[side] = 1;
+        commandLog(side, cmd, TextFormat("%sDEFENSIVE LINE: %s take %d%% less damage until %s next phase.", who,
+            side == SIDE_PLAYER ? "your mechs" : "their mechs", (int)roundf(DEFENSIVE_LINE_CUT * 100), side == SIDE_PLAYER ? "your" : "their"));
+        for (int p = 0; p < MAX_FIELD; p++) if (battleField(side, p)) pushEvent(FX_COMMAND, side == SIDE_PLAYER, p, p, cmd, 0, col);
+        break;
+    default: {   // Overwatch: everyone who can holds a shot, and the phase is over
+        int n = 0;
+        for (int p = 0; p < MAX_FIELD; p++) {
+            Combatant* o = battleField(side, p);
+            if (!o) continue;
+            if (canWatch(o)) { o->overwatch = 1; n++; pushEvent(FX_COMMAND, side == SIDE_PLAYER, p, p, cmd, 0, col); }
+            o->done = 1;
+        }
+        commandLog(side, cmd, TextFormat("%sOVERWATCH: %d mech%s hold%s fire for the first %s that fires, moves or takes the field. Phase over.",
+            who, n, n > 1 ? "s" : "", n > 1 ? "" : "s", side == SIDE_PLAYER ? "enemy" : "of your mechs"));
+        break;
+    }
+    }
+}
+
+// An opposing mech steps into the open (opens fire, moves, takes the field):
+// every mech of the other side holding Overwatch that can reach it queues its
+// free shot. 1 if any did.
+static int overwatchTrigger(int side, int slot) {
+    int other = 1 - side, at = fieldPosOf(side, slot), n = 0;
+    if (at < 0) return 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        Combatant* o = battleField(other, p);
+        if (!o || o->overwatch != 1 || o->mech->stats.integrity <= 0) continue;
+        if (aiChooseActionAt(o, side, at, 2, NULL, NULL, NULL, 0) < 0) continue;   // can't reach it: keeps waiting
+        if (queueShot(other, slotOf(o), slot, CMD_OVERWATCH, -1)) { o->overwatch = 2; n++; }
+    }
+    if (n) logNote(TextFormat("%s%s steps into the open - OVERWATCH: %d shot%s incoming!", side == SIDE_PLAYER ? "" : "Enemy ",
+        battle.side[side].mech[slot].name, n, n > 1 ? "s" : ""), other == SIDE_PLAYER);
+    return n;
+}
+
+// Resolves the next queued shot (one per update, so each gets its animation)
+static void runQueued(void) {
+    QueuedShot q = battle.queue[0];
+    memmove(battle.queue, battle.queue + 1, sizeof(QueuedShot) * (--battle.numQueued));
+    Combatant* c = &battle.side[q.side].slot[q.slot];
+    if (q.kind == SHOT_OWN) {   // the player's shot, after the enemy Overwatch it walked into
+        int pos = fieldPosOf(SIDE_PLAYER, q.slot), at = fieldPosOf(SIDE_ENEMY, q.aim);
+        if (battle.phase != BP_PLAYER_TURN || pos < 0 || at < 0 || c->done) {
+            logLine("%s's shot is called off.", c->mech->name);
+            return;
+        }
+        battle.actingSlot = pos;
+        battle.playerTarget = at;
+        const char* r = fireBlock(q.mount);
+        if (r) { logLine("%s holds fire: %s.", c->mech->name, r); return; }
+        int fired = corruptedMount(c, q.mount);
+        doAttack(c, SIDE_PLAYER, pos, SIDE_ENEMY, at, fired, fired != q.mount ? "TARGETING CORRUPTED! " : NULL);
+        return;
+    }
+    if (q.kind == CMD_OVERWATCH) c->overwatch = 0;   // spent, fired or not
+    if (!freeShot(c, q.side, q.aim, q.kind) && fieldPosOf(q.side, q.slot) >= 0)
+        logLine("%s%s can't take its %s shot.", q.side == SIDE_PLAYER ? "" : "Enemy ", c->mech->name,
+            q.kind == CMD_OVERWATCH ? "Overwatch" : "Coordinated Strike");
+}
+
+int battleCanCommand(int cmd, const char** reason) {
+    const char* r = NULL;
+    if (cmd < 0 || cmd >= NUM_COMMANDS) r = "-";
+    else if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
+    else if (!battleActing()) r = "NO MECH TO COMMAND";
+    else r = commandBlock(SIDE_PLAYER, cmd, battleActing(), battle.playerTarget);
+    if (reason) *reason = r;
+    return r == NULL;
+}
+
+int battleCoordinatedPartner(void) {
+    const Combatant* a = battleActing();
+    return a ? coordinatedPartner(SIDE_PLAYER, a, battle.playerTarget) : -1;
+}
+
+static void playerCommand(int cmd, int reserve) {
+    doCommand(SIDE_PLAYER, cmd, battle.actingSlot, battle.playerTarget, reserve);
+    battle.phaseActed = 1;
+    if (cmd == CMD_OVERWATCH) beginEnemyTurn();
+    else fixActor();
+}
+
+void battleCommand(int cmd) {
+    if (!battleCanCommand(cmd, NULL)) return;
+    playerCommand(cmd, cmd == CMD_EMERGENCY_DEPLOY ? healthiestReserve(SIDE_PLAYER, -1) : -1);
+}
+
+void battleEmergencyDeploy(int slot) {
+    if (!battleCanCommand(CMD_EMERGENCY_DEPLOY, NULL) || !isReserve(SIDE_PLAYER, slot)) return;
+    playerCommand(CMD_EMERGENCY_DEPLOY, slot);
+}
+
+static int actorsLeft(int side) {
+    int n = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* c = battleField(side, p);
+        n += c && !c->done;
+    }
+    return n;
+}
+
+// Expected Integrity damage of c's free shot at the other side's position pos
+// (0 if a guard would take it instead)
+static float freeShotDamage(const Combatant* c, int side, int pos) {
+    int at, mount = c ? aiChooseActionAt(c, side, pos, 2, &at, NULL, NULL, 0) : -1;
+    if (mount < 0) return 0;
+    const Weapon* w = mechWeapon(c->mech, mount);
+    if (aimedAt(c, w, side, pos) != pos) return 0;
+    const Combatant* d = battleField(side, pos);
+    AttackContext ctx = liveContext(c, d);
+    AttackPreview p;
+    attackPreview(c->mech, w, d->mech, &ctx, &p);
+    return p.hitChance * p.integrityDamage * (1.0f + p.critChance * (CRIT_MULT - 1.0f));
+}
+
+// What the AI expects from an Overwatch: each watcher's free shot at an average
+// mech of the other side (whoever acts first), minus the rest of the last
+// mech's own turn
+static float overwatchValue(int side, const Combatant* last) {
+    float v = 0, own = 0;
+    for (int p = 0; p < MAX_FIELD; p++) {
+        const Combatant* o = battleField(side, p);
+        if (!canWatch(o)) continue;
+        float sum = 0;
+        int n = 0;
+        for (int t = 0; t < MAX_FIELD; t++) {
+            float sc;
+            if (!battleField(1 - side, t)) continue;
+            n++;
+            if (aiChooseActionAt(o, 1 - side, t, 2, NULL, &sc, NULL, 0) >= 0) sum += sc;
+        }
+        if (n) v += sum / n;
+    }
+    float best;
+    if (aiChooseAction(last, 1 - side, 2, NULL, &best, NULL, 0) >= 0) own = best * (last->actionsThisTurn == 0 ? 1.5f : 0.5f);
+    return v - own;
+}
+
+// ...and from a Defensive Line: a quarter of what the other side's field mechs
+// would do to it next phase (about two shots each)
+static float defensiveLineValue(int side) {
+    float v = 0;
+    for (int t = 0; t < MAX_FIELD; t++) {
+        const Combatant* e = battleField(1 - side, t);
+        float sc;
+        if (e && aiChooseAction(e, side, 2, NULL, &sc, NULL, 0) >= 0) v += 2 * sc;
+    }
+    return v * DEFENSIVE_LINE_CUT;
+}
+
+// The AI's Command Point spending, before its field mech `pos` acts. Its own
+// priorities, in order: pull a dying mech out, finish a target with a
+// Coordinated Strike, focus the squad's fire while there's CP to spare, and
+// with only the last mech left to act and a hurt squad or CP to spare, a
+// Defensive Line or an Overwatch, whichever it expects to be worth more. Near
+// the cap it strikes rather than waste income. Returns the command issued + 1, 0 if none.
+static int aiConsiderCommand(int side, int pos) {
+    Combatant* c = battleField(side, pos);
+    int other = 1 - side, cp = battle.commandPoints[side];
+    if (!c || c->done || cp <= 0) return 0;
+    int cost[NUM_COMMANDS];
+    for (int k = 0; k < NUM_COMMANDS; k++) cost[k] = commandDefs[k].cost[side];
+    // 1. a dying mech that can't switch out on its own (or CP to burn) is swapped for a healthy reserve
+    if (integrityBelow(c, AI_SWITCH_BELOW) && c->actionsThisTurn == 0 && !commandBlock(side, CMD_EMERGENCY_DEPLOY, c, -1)) {
+        int in = healthiestReserve(side, HEALTHY_RESERVE - 0.0001f);
+        if (in >= 0 && (switchBlock(c) || cp >= CP_MAX - 1)) { doCommand(side, CMD_EMERGENCY_DEPLOY, pos, -1, in); return CMD_EMERGENCY_DEPLOY + 1; }
+    }
+    // 2. two free shots that should scrap a target: the most hurt one
+    int kill = -1;
+    for (int t = 0; cp >= cost[CMD_COORDINATED_STRIKE] && t < MAX_FIELD; t++) {
+        const Combatant* d = battleField(other, t);
+        if (!d || commandBlock(side, CMD_COORDINATED_STRIKE, c, t)) continue;
+        float dmg = freeShotDamage(c, other, t) + freeShotDamage(battleField(side, coordinatedPartner(side, c, t)), other, t);
+        if (dmg >= d->mech->stats.integrity && (kill < 0 || d->mech->stats.integrity < battleField(other, kill)->mech->stats.integrity)) kill = t;
+    }
+    if (kill >= 0) { doCommand(side, CMD_COORDINATED_STRIKE, pos, kill, -1); return CMD_COORDINATED_STRIKE + 1; }
+    int target;
+    float score;
+    int mount = aiChooseAction(c, other, 0, &target, &score, NULL, 0);
+    // 3. focus the squad on what this mech is about to shoot, keeping a strike in hand
+    if (mount >= 0 && battle.focusTarget[side] < 0 && actorsLeft(side) >= 2
+        && cp >= cost[CMD_FOCUS_FIRE] + cost[CMD_COORDINATED_STRIKE] && !commandBlock(side, CMD_FOCUS_FIRE, c, target)) {
+        doCommand(side, CMD_FOCUS_FIRE, pos, target, -1);
+        return CMD_FOCUS_FIRE + 1;
+    }
+    // 4. the last to act, with a hurt squad or CP to spare: whichever is worth more for the other
+    // side's phase - a Defensive Line, or trading its own turn for the squad's Overwatch
+    if (actorsLeft(side) == 1) {
+        int hurt = 0, watchers = 0;
+        for (int p = 0; p < MAX_FIELD; p++) {
+            const Combatant* o = battleField(side, p);
+            hurt |= o && integrityBelow(o, 0.5f);
+            watchers += canWatch(o);
+        }
+        if (hurt || cp >= CP_MAX - 1) {
+            float line = commandBlock(side, CMD_DEFENSIVE_LINE, c, -1) ? -1 : defensiveLineValue(side) * (hurt ? 1.5f : 1.0f);
+            float watch = watchers < 2 || commandBlock(side, CMD_OVERWATCH, c, -1) ? -1 : overwatchValue(side, c);
+            if (watch > 0 && watch > line) { doCommand(side, CMD_OVERWATCH, pos, -1, -1); return CMD_OVERWATCH + 1; }
+            if (line > 0) { doCommand(side, CMD_DEFENSIVE_LINE, pos, -1, -1); return CMD_DEFENSIVE_LINE + 1; }
+        }
+    }
+    // 6. income is about to overflow: strike with what's there
+    if (cp >= CP_MAX - 1 && mount >= 0 && !commandBlock(side, CMD_COORDINATED_STRIKE, c, target)) {
+        doCommand(side, CMD_COORDINATED_STRIKE, pos, target, -1);
+        return CMD_COORDINATED_STRIKE + 1;
+    }
+    return 0;
+}
+
+int battleAICommandForPlayer(void) {
+    if (battle.phase != BP_PLAYER_TURN || battleBusy() || !battleActing()) return 0;
+    int cmd = aiConsiderCommand(SIDE_PLAYER, battle.actingSlot) - 1;
+    if (cmd < 0) return 0;
+    battle.phaseActed = 1;
+    if (cmd == CMD_OVERWATCH) beginEnemyTurn();
+    else fixActor();
+    return 1;
+}
+
 int battleCanDeploy(void) {
     int res[MAX_TEAM];
     return (battle.phase == BP_PLAYER_TURN || battle.phase == BP_DEPLOY) && !battleBusy()
@@ -1934,16 +2569,7 @@ void battleYield(void) {
 }
 
 // The squad's healthiest standing reserve, -1 if none
-static int nextEnemy(float atLeast) {
-    int res[MAX_TEAM], n = sideReserves(SIDE_ENEMY, res, MAX_TEAM), best = -1;
-    float bestFrac = atLeast;
-    for (int i = 0; i < n; i++) {
-        const MechStats* s = &battle.side[SIDE_ENEMY].mech[res[i]].stats;
-        float frac = s->maxIntegrity > 0 ? (float)s->integrity / s->maxIntegrity : 0;
-        if (frac > bestFrac) { bestFrac = frac; best = res[i]; }
-    }
-    return best;
-}
+static int nextEnemy(float atLeast) { return healthiestReserve(SIDE_ENEMY, atLeast); }
 
 static const char* enemyCommander(void) {
     return battle.trainer >= 0 ? trainers[battle.trainer].name : "The pack";
@@ -1966,8 +2592,9 @@ static int enemyConsiderSwitch(int pos) {
     if (!c || c->actionsThisTurn > 0 || switchBlock(c) || !integrityBelow(c, AI_SWITCH_BELOW)) return 0;
     int best = nextEnemy(HEALTHY_RESERVE - 0.0001f);
     if (best < 0) return 0;
-    logLine("Enemy %s pulls back! %s moves up.", c->mech->name, battle.side[SIDE_ENEMY].mech[best].name);
-    putOnField(SIDE_ENEMY, pos, best, 1);
+    logLine("Enemy %s pulls back%s! %s moves up.", c->mech->name, battleSwitchFree(c) ? " (EMERGENCY REDEPLOY)" : "",
+        battle.side[SIDE_ENEMY].mech[best].name);
+    switchOut(SIDE_ENEMY, pos, best);
     return 1;
 }
 
@@ -2044,6 +2671,13 @@ static void beginBattle(void) {
     battle.numEvents = 0;
     battle.actingSlot = 0;
     battle.playerTarget = 0;
+    battle.commandPoints[SIDE_ENEMY] = battle.commandPoints[SIDE_PLAYER] = 0;
+    battle.focusTarget[SIDE_ENEMY] = battle.focusTarget[SIDE_PLAYER] = -1;
+    battle.defensiveLine[SIDE_ENEMY] = battle.defensiveLine[SIDE_PLAYER] = 0;
+    battle.numQueued = 0;
+    battle.linkBoost[SIDE_ENEMY] = battle.linkBoost[SIDE_PLAYER] = 0;
+    battle.linkBoostTurns[SIDE_ENEMY] = battle.linkBoostTurns[SIDE_PLAYER] = 0;
+    battle.forcedSlot = -1;
     logClear();
     setupPlayerSide();
     int order[MAX_TEAM];
@@ -2205,6 +2839,8 @@ static void enemyDown(int pos) {
 
 static void victory(void) {
     battle.phase = BP_VICTORY;
+    battle.numQueued = 0;
+    battle.forcedSlot = -1;
     if (battle.trainer >= 0) {
         Trainer* t = &trainers[battle.trainer];
         t->defeated = 1;
@@ -2223,6 +2859,8 @@ static void victory(void) {
 static void playerDefeated(void) {
     if (!battle.testRange) awardData(revisionDataForParticipation(anyEnemyMech()));
     battle.phase = BP_DEFEAT;
+    battle.numQueued = 0;
+    battle.forcedSlot = -1;
     logLine("ALL MECHS DISABLED!");
 }
 
@@ -2271,6 +2909,7 @@ static int resolveDowns(void) {
         Combatant* c = battleField(SIDE_ENEMY, p);
         if (!c || c->mech->stats.integrity > 0) continue;
         changed = 1;
+        gainCommand(SIDE_PLAYER, CP_KILL_BONUS, "enemy scrapped");
         if (battle.testRange) {
             battle.dummyKills++;
             battleResetDummy();
@@ -2280,7 +2919,7 @@ static int resolveDowns(void) {
     }
     for (int p = 0; p < MAX_FIELD; p++) {
         Combatant* c = battleField(SIDE_PLAYER, p);
-        if (c && c->mech->stats.integrity <= 0) { changed = 1; playerDown(p); }
+        if (c && c->mech->stats.integrity <= 0) { changed = 1; gainCommand(SIDE_ENEMY, CP_KILL_BONUS, "your mech disabled"); playerDown(p); }
     }
     if (!changed) return 0;
     if (battleSideStanding(SIDE_PLAYER) == 0) { playerDefeated(); return 1; }
@@ -2292,6 +2931,27 @@ static int resolveDowns(void) {
         logLine("No mechs on the field - deploy a reserve.");
     }
     return 1;
+}
+
+// A Force Swap, once its hit's animation is over: the target is pulled for a
+// random standing reserve, if it's still on the field and not locked in
+static void resolveForcedSwap(void) {
+    int side = battle.forcedSide, slot = battle.forcedSlot, pos = fieldPosOf(side, slot), res[MAX_TEAM];
+    battle.forcedSlot = -1;
+    Combatant* c = &battle.side[side].slot[slot];
+    int n = sideReserves(side, res, MAX_TEAM);
+    if (pos < 0 || !battleSlotStanding(side, slot) || n == 0 || battleAnchored(c)) return;
+    int in = res[rand() % n];
+    LogEntry* e = logPush(TextFormat("%s%s is FORCED OUT! %s is shoved onto the field in its place.", side == SIDE_PLAYER ? "" : "Enemy ",
+        c->mech->name, battle.side[side].mech[in].name), side != SIDE_PLAYER, -1);
+    sayWrapped(&e->why, 0, "FORCE SWAP: a random standing reserve takes its position. Its links break and its turn state is cleared; "
+        "the newcomer isn't locked in and acts from its side's next phase.");
+    say(&e->why, 0, "A locked-in mech (just switched in, or hit by a Lockdown Routine) can't be forced out.");
+    snprintf(battle.log, sizeof(battle.log), "%s", e->text);
+    snprintf(lastLogged, sizeof(lastLogged), "%s", e->text);
+    putOnField(side, pos, in, 2);
+    fixTarget();
+    fixActor();
 }
 
 // Leaving a battle: disabled mechs are recovered and repaired, the rest are
@@ -2326,7 +2986,9 @@ static void finish(void) {
 }
 
 // ============ UPDATE / INPUT ============
-int battleBusy(void) { return battle.dialogue != DLG_NONE || battle.animTimer > 0; }
+int battleBusy(void) {
+    return battle.dialogue != DLG_NONE || battle.animTimer > 0 || battle.numQueued > 0 || battle.forcedSlot >= 0;
+}
 
 // One enemy action per call: each field machine in turn switches out, provokes
 // or changes position, then attacks until it holds or runs dry, then the next
@@ -2335,8 +2997,10 @@ static void enemyStep(void) {
     for (; battle.enemyActing < MAX_FIELD; battle.enemyActing++) {
         Combatant* c = battleField(SIDE_ENEMY, battle.enemyActing);
         if (!c || c->done) continue;
+        if (aiConsiderCommand(SIDE_ENEMY, battle.enemyActing)) return;
         if (enemyConsiderSwitch(battle.enemyActing)) return;
         if (enemyConsiderProvoke(battle.enemyActing)) return;
+        if (aiConsiderIntercept(SIDE_ENEMY, battle.enemyActing)) return;
         if (aiConsiderLink(SIDE_ENEMY, battle.enemyActing)) return;
         if (aiConsiderMove(SIDE_ENEMY, battle.enemyActing)) return;
         float score;
@@ -2344,6 +3008,7 @@ static void enemyStep(void) {
         int mount = aiChooseAction(c, SIDE_PLAYER, 0, &target, &score, targetWhy, sizeof(targetWhy));
         if (mount >= 0 && c->actionsThisTurn > 0 && score < AI_HOLD_SCORE) mount = -1;   // hold fire
         if (mount < 0) { c->done = 1; continue; }
+        if (overwatchTrigger(SIDE_ENEMY, slotOf(c))) return;   // your Overwatch fires first
         int fired = corruptedMount(c, mount);
         doAttack(c, SIDE_ENEMY, battle.enemyActing, SIDE_PLAYER, target, fired, fired != mount ? "TARGETING CORRUPTED! " : NULL);
         return;
@@ -2364,6 +3029,16 @@ static void battleUpdateInner(float dt) {
         if (battle.animTimer > 0) return;
     }
     if (battle.outcomePending && resolveDowns()) return;
+    if (battle.forcedSlot >= 0) {   // a Force Swap, after its hit
+        if (battle.phase == BP_PLAYER_TURN || battle.phase == BP_ENEMY_TURN || battle.phase == BP_DEPLOY) resolveForcedSwap();
+        else battle.forcedSlot = -1;
+        return;
+    }
+    if (battle.numQueued > 0) {   // Coordinated Strikes and Overwatch shots, one at a time
+        if (battle.phase == BP_PLAYER_TURN || battle.phase == BP_ENEMY_TURN || battle.phase == BP_DEPLOY) runQueued();
+        else battle.numQueued = 0;
+        return;
+    }
 
     if (battle.phase == BP_PLAYER_TURN) {
         Combatant* a = battleActing();
@@ -2377,35 +3052,39 @@ static void battleUpdateInner(float dt) {
     else if (battle.phase == BP_ENEMY_TURN) enemyStep();
 }
 
-int battleCanFire(int mount, const char** reason) {
-    const char* r = NULL;
-    if (battle.phase != BP_PLAYER_TURN || battleBusy()) r = "STANDBY";
-    else if (!battleActing()) r = "NO MECH TO COMMAND";
-    else if (!battleTarget()) r = "NO TARGET";
-    if (r) {
-        if (reason) *reason = r;
-        return 0;
-    }
+// Why the commanded mech can't fire this mount at the current target, NULL if it can
+static const char* fireBlock(int mount) {
+    if (!battleActing()) return "NO MECH TO COMMAND";
+    if (!battleTarget()) return "NO TARGET";
     if (battleHidden(battle.playerTarget)) {
         const Combatant* d = battleTarget();
-        if (reason) *reason = TextFormat(d->fresh && fwEffect(d->mech, CFX_STEALTH) > 0 ? "UNSEEN - CAN'T TARGET %s" : "BLACKOUT - CAN'T SEE %s",
+        return TextFormat(d->fresh && fwEffect(d->mech, CFX_STEALTH) > 0 ? "UNSEEN - CAN'T TARGET %s" : "BLACKOUT - CAN'T SEE %s",
             d->mech->name);
-        return 0;
     }
     const Weapon* w = mechWeapon(battleActing()->mech, mount);
     int provoker = battleProvoker(SIDE_ENEMY);
-    if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(battleActing(), w)) {
-        if (reason) *reason = TextFormat("PROVOKED - MUST TARGET %s", battleField(SIDE_ENEMY, provoker)->mech->name);
-        return 0;
-    }
-    return canFire(battleActing(), mount, reason);
+    if (w && provoker >= 0 && provoker != battle.playerTarget && singleTarget(battleActing(), w))
+        return TextFormat("PROVOKED - MUST TARGET %s", battleField(SIDE_ENEMY, provoker)->mech->name);
+    const char* r = NULL;
+    canFire(battleActing(), mount, &r);
+    return r;
+}
+
+int battleCanFire(int mount, const char** reason) {
+    const char* r = battle.phase != BP_PLAYER_TURN || battleBusy() ? "STANDBY" : fireBlock(mount);
+    if (reason) *reason = r;
+    return r == NULL;
 }
 
 void battleFire(int mount) {
     if (!battleCanFire(mount, NULL)) return;
     Combatant* a = battleActing();
-    int fired = corruptedMount(a, mount);
     battle.phaseActed = 1;
+    if (overwatchTrigger(SIDE_PLAYER, slotOf(a))) {   // the enemy's Overwatch fires first; the shot follows if it can
+        queueShot(SIDE_PLAYER, slotOf(a), battle.side[SIDE_ENEMY].field[battle.playerTarget], SHOT_OWN, mount);
+        return;
+    }
+    int fired = corruptedMount(a, mount);
     doAttack(a, SIDE_PLAYER, battle.actingSlot, SIDE_ENEMY, battle.playerTarget, fired, fired != mount ? "TARGETING CORRUPTED! " : NULL);
     syncLog();
 }
@@ -2413,7 +3092,8 @@ void battleFire(int mount) {
 // Autoplay for tests: the enemy AI's link / formation move for the commanded mech
 int battleAIMoveForPlayer(void) {
     if (battle.phase != BP_PLAYER_TURN || battleBusy() || !battleActing()) return 0;
-    if (!aiConsiderLink(SIDE_PLAYER, battle.actingSlot) && !aiConsiderMove(SIDE_PLAYER, battle.actingSlot)) return 0;
+    if (!aiConsiderIntercept(SIDE_PLAYER, battle.actingSlot) && !aiConsiderLink(SIDE_PLAYER, battle.actingSlot)
+        && !aiConsiderMove(SIDE_PLAYER, battle.actingSlot)) return 0;
     battle.phaseActed = 1;
     return 1;
 }
