@@ -26,6 +26,11 @@ static void enterState(GameState to, GameState from) {
     case STATE_OVERWORLD:
         // back from a fight: starter evolution and bonus starters
         if (from == STATE_BATTLE || from == STATE_REVISION) {
+            // Hold trainer sight checks until the player moves. Without this,
+            // losing a trainer battle drops the player back onto the tile the
+            // trainer is watching and the encounter re-triggers instantly -
+            // they need a chance to walk out of the detection area first.
+            worldHoldDetection();
             worldTryStarterEvolution();
             worldOfferAlternateStarters();
         }

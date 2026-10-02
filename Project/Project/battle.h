@@ -115,14 +115,14 @@ typedef struct {
 } AttackContext;
 
 void attackPreview(const Mech* attacker, const Weapon* w, const Mech* target,
-                   const AttackContext* ctx, AttackPreview* out);
+    const AttackContext* ctx, AttackPreview* out);
 AttackContext attackContextBaseline(const Mech* attacker, const Mech* target);   // fresh round, first action
 
 // Enemy AI: expected value of one attack, weighed by the archetype's profile.
 // Covers Energy cost, Heat headroom, Armor vs penetration, target Mobility (via
 // hit chance) and Stability (via scramble resistance).
 float aiScoreAttack(const Mech* attacker, const Weapon* w, const Mech* target,
-                    const AttackContext* ctx, const AIProfile* ai);
+    const AttackContext* ctx, const AIProfile* ai);
 #define AI_HOLD_SCORE 2.0f      // after its first action the AI stops rather than fire below this
 // Hacking (capture) is a scramble attack on the target's Stability:
 // chance = Strength / (Strength + Stability), clamped 5-95%. Strength comes from
@@ -231,6 +231,7 @@ typedef struct {
     int enemyActing;        // enemy field position acting in the enemy phase
     int phaseActed;         // the player did something this phase (auto-ends once all are spent)
     int trainer;            // -1 = wild
+    int boss;               // this trainer fight is a zone boss (bigger squad, no hacking)
     int testRange;          // player vs a passive, self-rebuilding dummy
     int dummyKills;
     int round;
@@ -380,7 +381,7 @@ int battleAIChooseForPlayer(void);
 int battleAIMoveForPlayer(void);            // the enemy AI's link / formation move for the commanded mech (tests / autoplay); 1 if it acted
 int battleExplainPlayer(int mount, Explanation* out);   // why the selected weapon would do what it does; 0 if empty
 // Weapons that would be blocked by the Thermal Limit next turn if this mount fires now
-int battleHeatBlocksNextTurn(int mount, int* blocked, int max);          // the enemy AI's pick for the player's side (tests / autoplay)
+int battleHeatBlocksNextTurn(int mount, int* blocked, int max);
 // ============ SWITCHING ============
 // A switch is a field mech's action: it needs 1 Energy, the outgoing mech's
 // remaining Energy is lost and the incoming mech takes its position but doesn't
@@ -409,5 +410,9 @@ int battlePopEvent(BattleEvent* out);
 int battlePreviewPlayer(int mount, AttackPreview* out);   // live numbers for a player weapon, 0 if empty
 int combatMobility(const Combatant* c);     // effective values used for attacks
 int combatAccuracy(const Combatant* c);
+
+// Zone bosses: bigger squad, unique dialogue, and never hackable even when
+// their faction is rogue AI. The battle screen reads this to flag the fight.
+int battleIsBossFight(void);
 
 #endif

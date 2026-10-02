@@ -75,9 +75,10 @@ typedef struct {
     int numMechs;
     int numDefeated;
     int sightRange;                 // tiles ahead it watches (0 = none)
+    int boss;                       // one per zone: big squad, tougher AI, flagged in the HUD
 } Trainer;
 
-#define NUM_TRAINERS 17                // hubs and routes, plus the Omega boss
+#define NUM_TRAINERS 22                // 5 zone bosses + the 17 regional and route trainers
 extern Trainer trainers[NUM_TRAINERS];
 
 void worldInit(void);
@@ -94,6 +95,11 @@ int worldFindTrainer(const char* name);
 int worldTryStarterEvolution(void);
 void worldOfferAlternateStarters(void);
 int worldStarterSlot(void);
+
+// After a battle the player is standing where the encounter triggered. Hold
+// trainer sight checks until the player moves, so a loss doesn't immediately
+// re-engage them on the same tile and they get a chance to walk away.
+void worldHoldDetection(void);
 
 // ============ MAP SCREEN ============
 void worldDrawMinimap(int x, int y, int w, int h);

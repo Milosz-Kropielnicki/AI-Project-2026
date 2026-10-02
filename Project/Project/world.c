@@ -76,6 +76,9 @@ static float moveT = 0;
 static float moveFromX, moveFromY;
 static int lastDir = -1;
 static int justEnteredZone = 0;
+// Set after a battle: trainer sight is held until the player takes a step, so
+// a loss doesn't instantly re-engage on the same watched tile.
+static int detectionHeld = 0;
 
 static char message[256] = { 0 };
 static float messageTimer = 0;
@@ -249,6 +252,36 @@ static void decorateHub(int region) {
     }
 }
 
+// ============ MAP QUERIES ============
+// These are used by the movement / sight / encounter code further down, so
+// they must be defined (or prototyped) before any caller.
+
+// Terrain the player cannot walk onto
+static int isSolid(int x, int y) {
+    int t = getTile(x, y);
+    return (t == T_BLOCK || t == T_PLASMA || t == T_BUNKER || t == T_TERMINAL);
+}
+
+// Terrain that can roll a wild encounter when the player steps onto it
+static int isEncounterTile(int x, int y) {
+    int t = getTile(x, y);
+    return (t == T_GRASS || t == T_RUINS);
+}
+
+// Terrain outside a hub that counts as a route (used for the HUD banner)
+static int isRouteTile(int x, int y) {
+    if (worldRegionAt(x, y) >= 0) return 0;
+    int t = getTile(x, y);
+    return (t == T_GRASS || t == T_PAD || t == T_RUINS);
+}
+
+// A tile a trainer can stand on: any walkable floor. Trainers are drawn on
+// top of the tile, so T_TERMINAL is fine, but solid terrain is not.
+static int isWalkableTile(int x, int y) {
+    int t = getTile(x, y);
+    return t == T_GRID || t == T_GRASS || t == T_PAD || t == T_RUINS || t == T_TERMINAL;
+}
+
 // ============ MAP GEN ============
 static void genWorld(void) {
     // Base fill: solid impassable wilderness everywhere
@@ -326,25 +359,51 @@ static void genWorld(void) {
     scatterRouteRuins();
 }
 
-static int isSolid(int x, int y) {
-    int t = getTile(x, y);
-    return (t == T_BLOCK || t == T_PLASMA || t == T_BUNKER || t == T_TERMINAL);
-}
-
-static int isEncounterTile(int x, int y) {
-    int t = getTile(x, y);
-    return (t == T_GRASS || t == T_RUINS);
-}
-
-static int isRouteTile(int x, int y) {
-    if (worldRegionAt(x, y) >= 0) return 0;
-    int t = getTile(x, y);
-    return (t == T_GRASS || t == T_PAD || t == T_RUINS);
+// Snap every trainer onto a walkable tile. decorateHub and scatterRouteRuins
+// place terrain after the base fill, so a hard-coded position can land inside a
+// wall, a bunker, a plasma pool or the terminal. When that happens, search a
+// small diamond outward and take the nearest walkable tile. Also de-overlaps
+// trainers so two don't stack on one tile.
+static void worldPlaceTrainers(void) {
+    for (int i = 0; i < NUM_TRAINERS; i++) {
+        Trainer* t = &trainers[i];
+        for (int radius = 0; radius < 8; radius++) {
+            int bestX = -1, bestY = -1, bestDist = 1 << 30;
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dx = -radius; dx <= radius; dx++) {
+                    if (abs(dx) + abs(dy) != radius) continue;   // only the ring
+                    int cx = t->x + dx, cy = t->y + dy;
+                    if (cx < 1 || cy < 1 || cx >= MAP_W - 1 || cy >= MAP_H - 1) continue;
+                    if (!isWalkableTile(cx, cy)) continue;
+                    int occupied = 0;
+                    for (int k = 0; k < i; k++)
+                        if (trainers[k].x == cx && trainers[k].y == cy) { occupied = 1; break; }
+                    if (occupied) continue;
+                    int d = abs(dx) + abs(dy);
+                    if (d < bestDist) { bestDist = d; bestX = cx; bestY = cy; }
+                }
+                if (bestX >= 0) break;   // first ring with a hit wins
+            }
+            if (bestX >= 0) {
+                t->x = bestX;
+                t->y = bestY;
+                break;
+            }
+        }
+    }
 }
 
 // ============ TRAINERS ============
 // The final field of each initializer is sightRange: how many tiles ahead the
 // trainer watches. Stepping into a watched tile starts the intro sequence.
+// The field after that is boss: zone bosses get a bigger squad, a unique
+// chassis mix and a HUD flag, and can never be hacked even if their faction
+// is rogue AI.
+//
+// Positions are only a hint: genWorld -> worldPlaceTrainers snaps every trainer
+// onto a walkable tile (the nearest one, if the exact square ended up inside
+// terrain placed by decorateHub or scatterRouteRuins), so a trainer never
+// spawns in a wall.
 static void initTrainers(void) {
     // --- Alpha hub ---
     trainers[0] = (Trainer){
@@ -352,21 +411,21 @@ static void initTrainers(void) {
         "Hey rookie! Let's see what you've got!",
         "You're stronger than you look...",
         "Head east or south when you're ready.",
-        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0, 1
+        0, 0, { ARCH_SKIRMISHER }, { 1 }, 1, 0, 1, 0
     };
     trainers[1] = (Trainer){
         "SCOUT DANE", FAC_IRON_LEGION, 20, 8, 0, { 255, 200, 100, 255 },
         "Fast mechs win wars, rookie!",
         "Speed wasn't enough...",
         "Route 1 is at the top of the map.",
-        0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0, 2
+        0, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 1, 1 }, 2, 0, 2, 0
     };
     trainers[2] = (Trainer){
         "MECHANIC VOSS", FAC_CHROME_SYNDICATE, 8, 22, 0, { 120, 220, 255, 255 },
         "Nice frame. Let's see if it holds.",
         "Hmph. Not bad at all.",
         "Delta is south, past the west route.",
-        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 1
+        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 1, 0
     };
 
     // --- Route 1 (Alpha -> Beta) ---
@@ -375,7 +434,7 @@ static void initTrainers(void) {
         "No one passes this road without a fight.",
         "Fine... you've earned the crossing.",
         "Beta is straight ahead.",
-        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 2
+        1, 0, { ARCH_BRAWLER }, { 2 }, 1, 0, 2, 0
     };
 
     // --- Beta hub ---
@@ -384,21 +443,21 @@ static void initTrainers(void) {
         "You dare challenge the Iron Legion?",
         "IMPOSSIBLE! My mechs... destroyed!",
         "Gamma lies east. Watch the ruins.",
-        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0, 1
+        2, 0, { ARCH_BRAWLER, ARCH_BERSERKER, ARCH_SKIRMISHER }, { 3, 3, 3 }, 3, 0, 1, 0
     };
     trainers[5] = (Trainer){
         "ENGINEER KESS", FAC_CHROME_SYNDICATE, 70, 20, 0, { 120, 220, 160, 255 },
         "My machines never break. Yours will.",
         "Fascinating... your tactics are... effective.",
         "The wasteland is further east still.",
-        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0, 1
+        2, 0, { ARCH_JAMMER, ARCH_SNIPER, ARCH_BERSERKER, ARCH_BOMBARD }, { 4, 4, 4, 4 }, 4, 0, 1, 0
     };
     trainers[6] = (Trainer){
         "FOREMAN GRELL", FAC_IRON_LEGION, 54, 20, 0, { 200, 180, 100, 255 },
         "This rubble is ours. Move along.",
         "You move well for a freelancer.",
         "Two entrances, don't get lost.",
-        1, 0, { ARCH_ORDNANCE }, { 3 }, 1, 0, 1
+        1, 0, { ARCH_ORDNANCE }, { 3 }, 1, 0, 1, 0
     };
 
     // --- Route 2 (Beta -> Gamma) ---
@@ -407,7 +466,7 @@ static void initTrainers(void) {
         "Transmission intercepted. Terminating.",
         "Transmission... lost.",
         "Gamma's just past me.",
-        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 4, 4 }, 2, 0, 2
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 4, 4 }, 2, 0, 2, 0
     };
 
     // --- Gamma hub ---
@@ -416,14 +475,14 @@ static void initTrainers(void) {
         "You cannot hit what you cannot see.",
         "Even my stealth... failed.",
         "Delta is south. Omega is further.",
-        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0, 2
+        2, 0, { ARCH_SKIRMISHER, ARCH_BERSERKER, ARCH_BOMBARD, ARCH_JAMMER }, { 5, 6, 6, 6 }, 4, 0, 2, 0
     };
     trainers[9] = (Trainer){
         "IRON SENTINEL", FAC_IRON_LEGION, 110, 20, 0, { 220, 220, 100, 255 },
         "Perimeter breach. Terminating.",
         "Perimeter... lost.",
         "The long loop is down the east side.",
-        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5 }, 2, 0, 2
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER }, { 5, 5 }, 2, 0, 2, 0
     };
 
     // --- Route 4 (Delta -> Gamma, east leg) ---
@@ -432,7 +491,7 @@ static void initTrainers(void) {
         "HALT. The wasteland is off-limits.",
         "AUTHORIZATION... REVOKED. Proceed.",
         "Gamma's just north.",
-        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0, 2
+        2, 0, { ARCH_GUARDIAN, ARCH_BOMBARD }, { 5, 5 }, 2, 0, 2, 0
     };
 
     // --- Route 3 (Alpha -> Delta) ---
@@ -441,7 +500,7 @@ static void initTrainers(void) {
         "Halt. State your business.",
         "Business concluded. Move on.",
         "Delta's to the east from here.",
-        1, 0, { ARCH_SKIRMISHER, ARCH_BRAWLER }, { 4, 4 }, 2, 0, 2
+        1, 0, { ARCH_SKIRMISHER, ARCH_BRAWLER }, { 4, 4 }, 2, 0, 2, 0
     };
 
     // --- Delta hub ---
@@ -450,14 +509,14 @@ static void initTrainers(void) {
         "This foundry forges war. Care to test?",
         "The forge... dims.",
         "Two ways out: east and west.",
-        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER, ARCH_BOMBARD }, { 6, 6, 6 }, 3, 0, 1
+        2, 0, { ARCH_ORDNANCE, ARCH_BRAWLER, ARCH_BOMBARD }, { 6, 6, 6 }, 3, 0, 1, 0
     };
     trainers[13] = (Trainer){
         "ICE RUNNER", FAC_CHROME_SYNDICATE, 70, 42, 0, { 180, 220, 255, 255 },
         "Cold steel cuts deepest.",
         "Frozen solid...",
         "Omega lies east.",
-        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 5, 5 }, 2, 0, 1
+        2, 0, { ARCH_PROWLER, ARCH_SKIRMISHER }, { 5, 5 }, 2, 0, 1, 0
     };
 
     // --- Route 5 (Delta -> Omega) ---
@@ -466,7 +525,7 @@ static void initTrainers(void) {
         "That chassis is Legion issue. Drop it.",
         "Legion's really slipping...",
         "Omega is due east.",
-        2, 0, { ARCH_JAMMER, ARCH_ORDNANCE }, { 6, 6 }, 2, 0, 1
+        2, 0, { ARCH_JAMMER, ARCH_ORDNANCE }, { 6, 6 }, 2, 0, 1, 0
     };
 
     // --- Omega hub ---
@@ -475,7 +534,7 @@ static void initTrainers(void) {
         "Only the strongest reach me. Prepare to be crushed.",
         "...You ARE the apex. Well fought.",
         "The wasteland is yours. Go.",
-        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0, 2
+        3, 0, { ARCH_BOMBARD, ARCH_GUARDIAN, ARCH_ORDNANCE, ARCH_BRAWLER }, { 7, 7, 9, 7 }, 4, 0, 2, 0
     };
 
     // --- Omega, far corner: the boss, the machine itself, flanked by escorts.
@@ -485,18 +544,74 @@ static void initTrainers(void) {
         "INTRUDER DETECTED. EXECUTING RECURSIVE TARGETING.",
         "CORE FAILURE... DEAD-MAN PROTOCOL... COMPLETE.",
         "...the Overseer's chassis sits silent.",
-        3, 0, { ARCH_SNIPER, ARCH_OVERSEER, ARCH_BOMBARD, ARCH_JAMMER }, { 10, 12, 10, 9 }, 4, 0, 2
+        3, 0, { ARCH_SNIPER, ARCH_OVERSEER, ARCH_BOMBARD, ARCH_JAMMER }, { 10, 12, 10, 9 }, 4, 0, 2, 0
+    };
+
+    // ============ ZONE BOSSES ============
+    // One per region. Bigger squads, higher revisions, boss=1. They can't be
+    // hacked (piloted) and the HUD/dialogue flag them. They sit deeper in the
+    // hub than the regular trainers and watch a wider arc of the floor, so the
+    // player meets them on the way to the terminal or the next route.
+    //
+    // worldPlaceTrainers runs after this and will snap any of them off a wall,
+    // so the coordinates below only need to be roughly right.
+
+    // --- SECTOR ALPHA: WARDEN KESSLER, Iron Legion garrison commander.
+    trainers[17] = (Trainer){
+        "WARDEN KESSLER", FAC_IRON_LEGION, 20, 22, 2, { 255, 140, 60, 255 },
+        "You've made a name for yourself, rookie. The Legion doesn't like new names.",
+        "The Warden's line breaks. The Legion will remember this.",
+        "Kessler's patrols will think twice before challenging you again.",
+        1, 0, { ARCH_GUARDIAN, ARCH_SKIRMISHER }, { 3, 3 }, 2, 0, 2, 1
+    };
+
+    // --- SECTOR BETA: OVERSEER MALIK, Chrome Syndicate foreman.
+    trainers[18] = (Trainer){
+        "OVERSEER MALIK", FAC_CHROME_SYNDICATE, 72, 8, 1, { 120, 200, 255, 255 },
+        "You broke Volk's line. Impressive. Now try a real Syndicate workshop.",
+        "The workshop falls. Malik's telemetry is already on its way to Gamma.",
+        "Malik's defeat is a message the Syndicate will not forget.",
+        2, 0, { ARCH_MARKER, ARCH_SNIPER, ARCH_BOMBARD }, { 5, 5, 5 }, 3, 0, 2, 1
+    };
+
+    // --- SECTOR GAMMA: THE ARCHITECT, rogue AI platform.
+    trainers[19] = (Trainer){
+        "THE ARCHITECT", FAC_BLACK_BOX, 90, 8, 0, { 200, 120, 255, 255 },
+        "GHOST ECHO'S TELEMETRY RECEIVED. NEW BLUEPRINTS PRINTED. YOU WILL BE RECYCLED.",
+        "ARCHITECTURE UNSTABLE. DEAD-MAN SUBSYSTEMS FIRING. THIS CHANGES NOTHING.",
+        "The Architect's core is silent. Gamma's ruins are yours.",
+        3, 0, { ARCH_OVERSEER, ARCH_JAMMER, ARCH_SKIRMISHER, ARCH_SNIPER }, { 8, 8, 8, 8 }, 4, 0, 2, 1
+    };
+
+    // --- SECTOR DELTA: FORGE TYRANT, Iron Legion production line.
+    trainers[20] = (Trainer){
+        "FORGE TYRANT", FAC_IRON_LEGION, 60, 46, 0, { 255, 80, 80, 255 },
+        "This foundry has produced a thousand Legion mechs. It will produce one more after you are scrap.",
+        "The forge goes cold. The Tyrant's line is broken.",
+        "Delta's forges answer to no one now.",
+        3, 0, { ARCH_GUARDIAN, ARCH_BRAWLER, ARCH_BOMBARD, ARCH_SHIELDER }, { 9, 9, 9, 9 }, 4, 0, 2, 1
+    };
+
+    // --- SECTOR OMEGA: APEX PRIME, Black Box apex platform.
+    trainers[21] = (Trainer){
+        "APEX PRIME", FAC_BLACK_BOX, 100, 46, 3, { 255, 60, 200, 255 },
+        "YOU HAVE ELIMINATED THE OVERSEER'S FIELD UNITS. I AM THE NEXT ITERATION. I AM THE APEX.",
+        "APEX PROTOCOL TERMINATED. THE DEAD ZONE HAS A NEW OWNER.",
+        "Apex Prime is down. The Factory Overseer is all that remains.",
+        4, 0, { ARCH_OVERSEER, ARCH_GUARDIAN, ARCH_SPOTTER, ARCH_BOMBARD }, { 11, 11, 11, 11 }, 4, 0, 3, 1
     };
 }
 
 void worldInit(void) {
     genWorld();
     initTrainers();
+    worldPlaceTrainers();
     currentZone = REGION_ALPHA;
     px = 10; py = 15; facing = 3;
     pxF = (float)(px * TILE_SIZE);
     pyF = (float)(py * TILE_SIZE);
     justEnteredZone = 1;
+    detectionHeld = 0;
     spotKind = 0;
     spottedTrainer = -1;
     spotTimer = 0;
@@ -623,6 +738,7 @@ void worldSetPlayer(int zone, int x, int y) {
     pyF = (float)(py * TILE_SIZE);
     moving = 0;
     justEnteredZone = 1;
+    detectionHeld = 0;
 }
 
 int worldFindTrainer(const char* name) {
@@ -634,6 +750,13 @@ void showMessage(const char* msg, float dur) {
     strncpy(message, msg, sizeof(message) - 1);
     message[sizeof(message) - 1] = 0;
     messageTimer = dur;
+}
+
+// After a battle the player is standing where the encounter triggered. Hold
+// trainer sight checks until they move, so a loss doesn't immediately
+// re-engage them on the same tile.
+void worldHoldDetection(void) {
+    detectionHeld = 1;
 }
 
 // ============ BATTLE TRIGGER ============
@@ -736,8 +859,10 @@ void worldUpdate(float dt, GameState* state) {
 
     // ---- Trainer line of sight ----
     // A trainer watches the tile(s) it faces. Stepping into one starts the
-    // intro: the trainer speaks, then the wipe plays.
-    if (!moving) {
+    // intro: the trainer speaks, then the wipe plays. After a battle the check
+    // is held until the player moves, so a loss doesn't re-trigger on the same
+    // tile and the player can walk out of the watched area.
+    if (!moving && !detectionHeld) {
         for (int i = 0; i < NUM_TRAINERS; i++) {
             Trainer* t = &trainers[i];
             if (t->defeated || t->sightRange <= 0) continue;
@@ -824,6 +949,7 @@ void worldUpdate(float dt, GameState* state) {
     moveFromY = (float)(py * TILE_SIZE);
     px = nx; py = ny;
     moving = 1;
+    detectionHeld = 0;   // the player is moving: normal detection resumes
     moveT = carry;
     pxF = moveFromX + (px * TILE_SIZE - moveFromX) * moveT;
     pyF = moveFromY + (py * TILE_SIZE - moveFromY) * moveT;
@@ -852,7 +978,17 @@ static void drawTrainer(Trainer* t, int screenX, int screenY) {
     DrawRectangle(screenX + 14, screenY + 8, 12, 3, (Color) { 255, 255, 220, 255 });
     if (!t->defeated) {
         float bounce = sinf(glowTimer * 4) * 3;
-        DrawText("!", screenX + 16, (int)(screenY - 14 + bounce), 22, (Color) { 255, 220, 80, 255 });
+        if (t->boss) {
+            // Bosses get a crown pip and a bigger, pulsing marker so they read
+            // as a wall, not another route trainer.
+            float bp = 0.5f + 0.5f * sinf(glowTimer * 6);
+            DrawText("!", screenX + 14, (int)(screenY - 20 + bounce), 30, (Color) { 255, 240, 120, 255 });
+            DrawCircleLines(screenX + 20, screenY + 20, 22 + bp * 4, (Color) { 255, 220, 90, (unsigned char)(150 + 105 * bp) });
+            DrawText("BOSS", screenX + 2, (int)(screenY - 34 + bounce), 14, (Color) { 255, 220, 90, 255 });
+        }
+        else {
+            DrawText("!", screenX + 16, (int)(screenY - 14 + bounce), 22, (Color) { 255, 220, 80, 255 });
+        }
         if ((int)(glowTimer * 3) % 2 == 0)
             DrawCircle(screenX + 20, screenY - 4, 3, (Color) { 255, 80, 80, 255 });
 
@@ -992,7 +1128,14 @@ void worldDrawMinimap(int mx, int my, int mw, int mh) {
         if (trainers[i].defeated) continue;
         int dx = mx + (int)(trainers[i].x * sx);
         int dy = my + (int)(trainers[i].y * sy);
-        DrawRectangle(dx - 1, dy - 1, 3, 3, trainers[i].color);
+        if (trainers[i].boss) {
+            // A wider, brighter pip so bosses stand out from route trainers.
+            DrawRectangle(dx - 2, dy - 2, 5, 5, trainers[i].color);
+            DrawRectangleLines(dx - 3, dy - 3, 7, 7, (Color) { 255, 240, 120, 255 });
+        }
+        else {
+            DrawRectangle(dx - 1, dy - 1, 3, 3, trainers[i].color);
+        }
     }
     int bl = (int)(glowTimer * 4) % 2;
     int plx = mx + (int)(px * sx);
