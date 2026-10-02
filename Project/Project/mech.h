@@ -54,7 +54,7 @@ typedef enum {
 typedef enum { TARGET_SINGLE, TARGET_AREA, TARGET_CONE, TARGET_LINE } Targeting;
 
 // Battle visual used when a weapon fires
-enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE, FX_SWITCH, FX_PROVOKE, FX_GUARD, FX_LINK };
+enum { FX_NONE = 0, FX_PULSE, FX_BEAM, FX_SCAN, FX_NOVA, FX_ARC, FX_BLADE, FX_JAM, FX_MISSILE, FX_SWITCH, FX_PROVOKE, FX_GUARD, FX_LINK, FX_COMMAND };
 
 typedef struct {
     char name[32];
@@ -72,12 +72,13 @@ typedef struct {
     int ammo;           // uses per battle, 0 = unlimited
     int fx;             // battle visual
     int virus;          // 1 = a scramble that lands always becomes Firmware Corruption
+    int forceSwap;      // 1 = on hit, the target must swap with a random reserve (unless locked in)
 } Weapon;
 
 enum {
     W_MACHINE_GUN, W_SHOTGUN, W_RAILGUN, W_AA_MISSILE, W_ROCKET_POD, W_PULSE_LASER, W_FLAMER,
     W_PLASMA_BLADE, W_GRENADE_LAUNCHER, W_SIEGE_MORTAR, W_ARC_EMITTER, W_JAMMER, W_CORROSIVE_SPRAY,
-    W_VIRUS_UPLINK,
+    W_VIRUS_UPLINK, W_SHOCK_RAM,
     NUM_WEAPONS
 };
 extern const Weapon weaponTable[NUM_WEAPONS];   // data_weapons.c

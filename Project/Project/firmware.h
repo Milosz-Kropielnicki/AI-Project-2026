@@ -92,7 +92,7 @@ typedef enum {
     CFX_IGNORE_COVER,       // single-target and line shots reach past cover
     CFX_PROVOKE_DISCOUNT,   // PROVOKE costs value less Energy
     CFX_LINK_DISCOUNT,      // LINK costs value less Energy
-    CFX_LINK_BOOST,         // links this mech starts are value (fraction) stronger
+    CFX_LINK_HUB,           // links this mech starts are value (fraction) stronger
     CFX_SCRAMBLE_ARC,       // single-target scramble weapons hit like a cone
     CFX_HAZARD,             // enemies its area / cone attacks hit take value damage at the start of their next turn
     CFX_SLOW,               // targets it hits lose value Mobility until their next turn
@@ -117,6 +117,14 @@ typedef enum {
     CFX_FRONT_AURA,         // its side's Front-lane mechs take value (fraction) less damage
     CFX_BARRIER_AURA,       // its side's field mechs take value (fraction) less damage
     CFX_EMERGENCY_COVER,    // single-target / line shots aimed at an ally below 30% Integrity hit it instead
+    // swap and team chips (entry / exit effects, see battle.h SWITCHING)
+    CFX_DEPLOY_BUFF,        // its first attack after it swaps or deploys in mid-battle: +value Power
+    CFX_WITHDRAW_BUFF,      // switched out: the incoming ally gets +value Accuracy through its first turn
+    CFX_SWITCH_FREE,        // once per battle: switching it out costs 0 Energy, ignores lock-in, the newcomer isn't locked in
+    CFX_FORCE_SWAP,         // the first hit it lands each turn forces the target to swap with a random reserve
+    CFX_SWITCH_LOCK,        // mechs it hits are locked in: they can't switch out (or be forced out) on their next turn
+    CFX_INTERCEPT,          // unlocks INTERCEPT: single-target / line shots at an ally's position hit it instead, until its next turn
+    CFX_LINK_BOOST,         // taking the field: its side's links are value (fraction) stronger until the end of its first turn
     NUM_CHIP_EFFECTS
 } ChipEffect;
 
@@ -138,6 +146,9 @@ enum {
     CHIP_EVASIVE_MANEUVER, CHIP_EMERGENCY_POWER, CHIP_COUNTER_INTRUSION, CHIP_TARGETING_SPOOF,
     CHIP_SYSTEM_RECOVERY, CHIP_LAST_STAND, CHIP_EMERGENCY_REPAIR, CHIP_COOLANT_DUMP, CHIP_OVERCHARGE,
     CHIP_RECURSIVE_TARGETING, CHIP_DEAD_MAN, CHIP_PROVOCATION,
+    // swap and team chips
+    CHIP_PROWLER_AMBUSH, CHIP_CATCHER_RELAY, CHIP_EMERGENCY_REDEPLOY, CHIP_INTERCEPT_PROTOCOL, CHIP_LINK_AMPLIFIER,
+    CHIP_DISPLACEMENT, CHIP_LOCKDOWN,
     NUM_CHIPS
 };
 extern const ChipDef chipDefs[NUM_CHIPS];     // data_chips.c

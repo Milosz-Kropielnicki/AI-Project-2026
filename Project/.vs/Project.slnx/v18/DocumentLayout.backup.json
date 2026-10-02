@@ -1,8 +1,9 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\",
+  "WorkspaceRootPath": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\",
   "Documents": [
     {
+<<<<<<< HEAD
       "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\world.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     },
@@ -69,6 +70,10 @@
     {
       "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\firmware.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\firmware.h||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+=======
+      "AbsoluteMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "RelativeMoniker": "D:0:0:{D2D2C13D-1E92-4406-99DE-6D95712E1F98}|Project\\Project.vcxproj|solutionrelative:Project\\main.c||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
+>>>>>>> 00503e3725b1c32aec5290fa62ea57d25025e98c
     }
   ],
   "DocumentGroupContainers": [
@@ -82,6 +87,7 @@
           "Children": [
             {
               "$type": "Document",
+<<<<<<< HEAD
               "DocumentIndex": 2,
               "Title": "battle.h",
               "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\Gameplay Mobile Devices\\Project 2\\Project\\Project\\battle.h",
@@ -287,6 +293,18 @@
               "ViewState": "AgIAAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000680|",
               "WhenOpened": "2026-09-24T08:39:27.153Z"
+=======
+              "DocumentIndex": 0,
+              "Title": "main.c",
+              "DocumentMoniker": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "RelativeDocumentMoniker": "Project\\main.c",
+              "ToolTip": "C:\\Users\\gameuser\\Documents\\AI-Project-2026\\Project\\Project\\main.c",
+              "RelativeToolTip": "Project\\main.c",
+              "ViewState": "AgIAAAAAAAAAAAAAAAAAABYAAAAyAAAAAAAAAA==",
+              "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000423|",
+              "WhenOpened": "2026-10-01T09:49:20.3Z",
+              "EditorCaption": ""
+>>>>>>> 00503e3725b1c32aec5290fa62ea57d25025e98c
             }
           ]
         }

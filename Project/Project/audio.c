@@ -126,6 +126,7 @@ static Sound makeSfx(Sfx s) {
     case SFX_PROVOKE:        begin(0.60f); tone(110, 90, 0.45f, 2, 1); tone(220, 180, 0.2f, 2, 1); break;   // war horn
     case SFX_LINK:           begin(0.35f); tone(520, 520, 0.25f, 4, 0); tone(780, 1040, 0.2f, 3, 0); wobble(20, 0.3f); break;   // uplink chirp
     case SFX_CRIT:           begin(0.30f); tone(1600, 1500, 0.35f, 10, 0); tone(240, 120, 0.5f, 8, 0); break;   // sharp crack
+    case SFX_COMMAND:        begin(0.40f); tone(392, 392, 0.3f, 3, 0); tone(523, 523, 0.25f, 3, 0); tone(784, 760, 0.2f, 5, 0); break;   // command chime
     case SFX_VICTORY:        begin(0.60f); for (int k = 0; k < 3; k++) { float f = 523.0f * powf(1.26f, (float)k);
                                  float phase = 0; for (int i = len * k / 3; i < len; i++) { phase += 2 * PI * f / RATE;
                                  buf[i] += sinf(phase) * 0.2f * expf(-4.0f * (i - len * k / 3) / (float)len); } } break;

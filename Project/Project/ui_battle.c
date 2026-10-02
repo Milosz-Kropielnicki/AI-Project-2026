@@ -62,6 +62,7 @@ static float effectDuration(int kind) {
     case FX_PROVOKE: return 0.9f;
     case FX_GUARD: return 0.5f;
     case FX_LINK: return 0.7f;
+    case FX_COMMAND: return 0.6f;
     default: return 0.55f;
     }
 }
@@ -241,6 +242,10 @@ static void updateEffects(float dt) {
             if (p < 0.6f && GetRandomValue(0, 100) < 80) spawnParticleG(cur, (Vector2) { 0, -20 }, 0.3f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.6f) { e->damageShown = 1; impact(e, 10, 40, 120, 0.4f, 2, 0.15f, 0); }
             break;
+        case FX_COMMAND:   // a command lands: sparks rise around the mech
+            if (p < 0.5f && GetRandomValue(0, 100) < 60)
+                spawnParticleG((Vector2) { e->to.x + frandRange(-30, 30), e->to.y + 30 }, (Vector2) { 0, -frandRange(60, 140) }, 0.4f, 2, e->color, 0);
+            break;
         case FX_LINK:    // uplink: motes run from the initiator to the partner
             if (p < 0.9f) spawnParticleG(cur, (Vector2) { 0, 0 }, 0.35f, 3, e->color, 0);
             if (!e->damageShown && p >= 0.9f) { e->damageShown = 1; spawnBurst(e->to, 18, e->color, 30, 110, 0.5f); }
@@ -340,6 +345,15 @@ static void drawEffects(void) {
             DrawCircleV(tip, 5, (Color) { 255, 255, 255, a });
             const char* txt = "LINKED";
             DrawText(txt, (int)(e->to.x - MeasureText(txt, 12) / 2), (int)(e->to.y - 62), 12, (Color) { e->color.r, e->color.g, e->color.b, a });
+            break;
+        }
+        case FX_COMMAND: {   // a squared ring closing in on the mech, and the command's name
+            float a = p < 0.7f ? 1 : (1 - p) / 0.3f, r = 54 - 20 * p;
+            DrawRectangleLinesEx((Rectangle) { e->to.x - r, e->to.y - r, 2 * r, 2 * r }, 2, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(200 * a) });
+            DrawCircleLines((int)e->to.x, (int)e->to.y, r * 0.8f, (Color) { 255, 255, 255, (unsigned char)(90 * a) });
+            const char* txt = e->damage >= 0 && e->damage < NUM_COMMANDS ? commandDefs[e->damage].name : "COMMAND";
+            int ty = (int)e->to.y - 84 > 4 ? (int)e->to.y - 84 : 4;   // above the field marks
+            DrawText(txt, (int)(e->to.x - MeasureText(txt, 12) / 2), ty, 12, (Color) { e->color.r, e->color.g, e->color.b, (unsigned char)(255 * a) });
             break;
         }
         case FX_SWITCH: {
@@ -556,7 +570,7 @@ static int reselectAfterShot = 0;
 static int formulaView = 0;     // [V] preview panel: plain summary / full formula
 static int infoOpen = 0;        // [I] full breakdown of the selected weapon
 static int logOpen = 0, logSel = 0;
-static int pickerOpen = 0, pickerSel = 0, pickerDeploy = 0;   // [S] switch / [D] deploy picker
+static int pickerOpen = 0, pickerSel = 0, pickerDeploy = 0;   // [S] switch (0) / [D] deploy (1) / [2] Emergency Deployment (2) picker
 static int autoDeployRound = -1;   // the deploy picker opens by itself once per round
 static int lastPhase = -1, heatWasCritical = 0, lastActor = -1;
 static const LogEntry* lastSeenLog = NULL;
@@ -611,6 +625,11 @@ static Rectangle weaponButtonRect(int i) { return (Rectangle) { 30, (float)(ROW_
 static Rectangle deployButtonRect(void) { return (Rectangle) { 240, PANEL_Y + 4, 82, 18 }; }
 static Rectangle switchButtonRect(void) { return (Rectangle) { 326, PANEL_Y + 4, 82, 18 }; }
 static Rectangle provokeButtonRect(void) { return (Rectangle) { 412, PANEL_Y + 4, 92, 18 }; }
+// The PROVOKE button turns into INTERCEPT for a mech with Intercept Protocol and no Provocation
+static int interceptSlot(void) {
+    const Combatant* a = battleActing();
+    return a && mechEffect(a->mech, CFX_INTERCEPT) > 0 && mechEffect(a->mech, CFX_PROVOCATION) <= 0;
+}
 static Rectangle hackButtonRect(void) { return (Rectangle) { 508, PANEL_Y + 4, 72, 18 }; }
 static Rectangle nextButtonRect(void) { return (Rectangle) { 584, PANEL_Y + 4, 86, 18 }; }
 static Rectangle endTurnButtonRect(void) { return (Rectangle) { 674, PANEL_Y + 4, 96, 18 }; }
@@ -618,6 +637,7 @@ static Rectangle laneButtonRect(void) { return (Rectangle) { 552, 381, 118, 15 }
 static Rectangle linkButtonRect(void) { return (Rectangle) { 176, 293, 72, 14 }; }
 #define LINK_PANEL_Y 294
 static Rectangle flankButtonRect(void) { return (Rectangle) { 674, 381, 118, 15 }; }
+static Rectangle commandButtonRect(int i) { return (Rectangle) { 552.0f + i * 48.5f, 361, 46, 18 }; }
 static Rectangle logStripRect(void) { return (Rectangle) { 20, PANEL_Y - 22, SCREEN_W - 40, 20 }; }
 static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 302, 37, 40 }; }
 #define PICKER_X 130
@@ -625,7 +645,7 @@ static Rectangle reserveCardRect(int i) { return (Rectangle) { 552.0f + i * 40, 
 #define PICKER_ROW 46
 static int pickerRows(int* slots) {   // standing reserves; a forced deploy adds a last row to yield
     int n = battleSwitchList(slots, MAX_TEAM);
-    if (pickerDeploy && battle.phase == BP_DEPLOY) slots[n++] = -1;
+    if (pickerDeploy == 1 && battle.phase == BP_DEPLOY) slots[n++] = -1;
     return n;
 }
 static int pickerTop(int rows) { return 250 - (rows * PICKER_ROW + 80) / 2; }
@@ -700,9 +720,9 @@ static void openPicker(int deploy, int preselectSlot) {
 // Switch picker (the commanded mech swaps with a reserve) / deploy picker (a
 // reserve fills an empty position; forced when nobody is on the field)
 static void updatePicker(void) {
-    int forced = pickerDeploy && battle.phase == BP_DEPLOY;
+    int forced = pickerDeploy == 1 && battle.phase == BP_DEPLOY;
     int slots[MAX_TEAM + 1], n = pickerRows(slots);
-    int valid = pickerDeploy ? battleCanDeploy() : battleCanSwitch(NULL);
+    int valid = pickerDeploy == 1 ? battleCanDeploy() : pickerDeploy == 2 ? battleCanCommand(CMD_EMERGENCY_DEPLOY, NULL) : battleCanSwitch(NULL);
     if ((!forced && (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_X))) || !valid || n == 0) {
         if (IsKeyPressed(KEY_ESCAPE) || IsKeyPressed(KEY_X)) consumeInput();
         pickerOpen = 0;
@@ -720,7 +740,8 @@ static void updatePicker(void) {
     consumeInput();
     pickerOpen = 0;
     if (slots[pickerSel] < 0) battleYield();
-    else if (pickerDeploy) battleDeploy(slots[pickerSel]);
+    else if (pickerDeploy == 1) battleDeploy(slots[pickerSel]);
+    else if (pickerDeploy == 2) battleEmergencyDeploy(slots[pickerSel]);
     else battleSwitchTo(slots[pickerSel]);
     reselectAfterShot = 1;
 }
@@ -742,12 +763,20 @@ void uiBattleUpdate(float dt, GameState* state) {
     easeRows(dt);
     updateEffects(dt);
     BattleEvent ev;
+    int commandSound = 0;   // one chime for a command that rings several mechs
     while (battlePopEvent(&ev)) {
         int own = ev.fromPlayer ? SIDE_PLAYER : SIDE_ENEMY, other = ev.fromPlayer ? SIDE_ENEMY : SIDE_PLAYER;
         if (ev.fx == FX_SWITCH || ev.fx == FX_PROVOKE) {
             Vector2 at = slotPos(own, ev.toSlot);
             addEffect(&ev, at, at);
             sfxPlay(ev.fx == FX_SWITCH ? SFX_SWITCH : SFX_PROVOKE);
+            continue;
+        }
+        if (ev.fx == FX_COMMAND) {   // on the issuing side's mech, or (hit) on the other side's
+            Vector2 at = slotPos(ev.hit ? other : own, ev.toSlot);
+            addEffect(&ev, at, at);
+            if (!commandSound) sfxPlay(SFX_COMMAND);
+            commandSound = 1;
             continue;
         }
         if (ev.fx == FX_GUARD || ev.fx == FX_LINK) {   // between two mechs on the same side
@@ -848,6 +877,14 @@ void uiBattleUpdate(float dt, GameState* state) {
         }
         return;
     }
+    // [B] intercept (or click the PROVOKE button while it reads INTERCEPT)
+    if (IsKeyPressed(KEY_B) || (clickedOn(provokeButtonRect()) && interceptSlot())) {
+        consumeInput();
+        const char* reason = NULL;
+        if (battleCanIntercept(&reason)) battleIntercept();
+        else { snprintf(battle.log, sizeof(battle.log), "INTERCEPT: %s", reason); sfxPlay(SFX_UI_DENY); }
+        return;
+    }
     if (IsKeyPressed(KEY_P) || clickedOn(provokeButtonRect())) {
         consumeInput();
         const char* reason = NULL;
@@ -861,6 +898,20 @@ void uiBattleUpdate(float dt, GameState* state) {
         const char* reason = NULL;
         if (battleCanLink(&reason)) battleLink();
         else { snprintf(battle.log, sizeof(battle.log), "LINK: %s", reason); sfxPlay(SFX_UI_DENY); }
+        return;
+    }
+    // [1]-[5] Command Points; Emergency Deployment opens the reserve picker
+    for (int k = 0; k < NUM_COMMANDS; k++) {
+        if (!IsKeyPressed(KEY_ONE + k) && !clickedOn(commandButtonRect(k))) continue;
+        consumeInput();
+        const char* reason = NULL;
+        if (!battleCanCommand(k, &reason)) {
+            snprintf(battle.log, sizeof(battle.log), "%s: %s", commandDefs[k].name, reason);
+            sfxPlay(SFX_UI_DENY);
+        }
+        else if (k == CMD_EMERGENCY_DEPLOY) { openPicker(2, -1); sfxPlay(SFX_UI_CONFIRM); }
+        else battleCommand(k);
+        reselectAfterShot = 1;
         return;
     }
     // [F] swap lanes, [G] go out on the flank
@@ -1091,6 +1142,9 @@ static void drawEnemySlot(int pos) {
         intercepted() ? (Color) { 120, 220, 255, 255 } : (Color) { 255, 220, 80, 255 });
     else if (guarding) DrawText("GUARDS", x + 124, y + 6, 10, (Color) { 120, 220, 255, 255 });
     else if (c->provoking) DrawText("PROVOKE", x + 124, y + 6, 10, (Color) { 255, 150, 60, 255 });
+    else if (c->interceptPos >= 0) DrawText("INTERCEPT", x + 124, y + 6, 10, (Color) { 120, 220, 255, 255 });
+    else if (c->overwatch) DrawText("WATCHING", x + 124, y + 6, 10, commandDefs[CMD_OVERWATCH].color);
+    else if (battle.focusTarget[SIDE_PLAYER] == battle.side[SIDE_ENEMY].field[pos]) DrawText("FOCUSED", x + 124, y + 6, 10, commandDefs[CMD_FOCUS_FIRE].color);
     const char* arch = c->archetype >= 0 ? TextFormat(" [%s%s]", archetypes[c->archetype].boss ? "BOSS " : "", archetypes[c->archetype].name) : "";
     const char* fw = TextFormat("FW %s", firmwareLabel(m->fw.revision));
     const char* model = TextFormat("%s %s%s", mechModel(m)->name, roleName(mechRole(m)), arch);
@@ -1164,9 +1218,11 @@ static void drawPlayerSlot(int pos) {
     tipText((Rectangle) { (float)x + 64, (float)y + 60, 100, 12 },
         TextFormat("THREAT %d%s", c->threat, c->provoking ? "  (PROVOKING)" : loudest && c->threat > 0 ? "  (HIGHEST ON YOUR TEAM)" : ""),
         c->provoking ? "PROVOKING: every enemy single-target attack must aim at this mech until its next turn." : threatRules());
-    const char* status = c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED"
+    const char* status = c->overwatch ? "WATCHING" : c->switchLocked ? "LOCKED IN" : c->accPenalty > 0 || c->disabledWeapon >= 0 ? "SCRAMBLED"
         : c->jammed > 0 ? "JAMMED" : c->hazard > 0 ? "HAZARD" : c->slowed > 0 ? "SLOWED"
-        : c->fresh && mechEffect(c->mech, CFX_STEALTH) > 0 ? "UNSEEN" : pendingText(c);
+        : c->interceptPos >= 0 ? "INTERCEPT" : c->switchLock > 0 ? "LOCKED"
+        : c->fresh && mechEffect(c->mech, CFX_STEALTH) > 0 ? "UNSEEN" : c->deployed && mechEffect(c->mech, CFX_DEPLOY_BUFF) > 0 ? "AMBUSH"
+        : c->relayTurns > 0 && c->relayAccuracy ? "RELAY" : pendingText(c);
     if (status) DrawText(status, x + 166, y + 61, 10, (Color) { 200, 150, 255, 255 });
     tipText((Rectangle) { (float)x + 8, (float)y + 20, 230, 10 }, TextFormat("INTEGRITY %d/%d", s->integrity, s->maxIntegrity),
         "This mech's health. At 0 it is disabled (a recovery fee is charged) and its position stays empty until a reserve "
@@ -1181,6 +1237,9 @@ static void drawPlayerSlot(int pos) {
         : c->done ? "Already acted this phase (or arrived this round)." : "Click (or TAB) to command this mech.", perkLine(m)));
 }
 
+static void drawCommandPips(int x, int cy, int cp, Color c);
+static void drawReticle(Rectangle r, Color rc);
+
 // Enemy squad header and names: the player knows what can come in, just not when
 static void drawEnemyHeader(void) {
     int x = 8, y = 226;
@@ -1194,6 +1253,17 @@ static void drawEnemyHeader(void) {
     DrawText(TextFormat("%d/%d LEFT", battleSideStanding(SIDE_ENEMY), sd->count), x + 182, y, 12, (Color) { 255, 200, 100, 255 });
     if (battleCanHack())
         DrawText(TextFormat("HACK TARGET %d%%", (int)roundf(battleHackChance() * 100)), x, y + 14, 10, (Color) { 120, 255, 220, 255 });
+    if (!battle.testRange) {   // their Command Points
+        int catchers, income = battleCommandIncome(SIDE_ENEMY, &catchers);
+        DrawText("CP", x + 132, y + 14, 10, (Color) { 255, 150, 130, 255 });
+        drawCommandPips(x + 156, y + 19, battle.commandPoints[SIDE_ENEMY], (Color) { 255, 120, 100, 255 });
+        DrawText(income ? TextFormat("+%d", income) : "", x + 224, y + 14, 10, (Color) { 255, 150, 130, 255 });
+        tipText((Rectangle) { (float)x + 130, (float)y + 12, 118, 13 }, TextFormat("ENEMY COMMAND POINTS %d/%d", battle.commandPoints[SIDE_ENEMY], CP_MAX),
+            TextFormat("Their own pool and cost table. %s They also earn +%d for every mech of yours they disable. "
+                "Watch for FOCUS FIRE, COORDINATED STRIKES, a DEFENSIVE LINE or an OVERWATCH.", catchers
+                ? TextFormat("%d Catcher%s on their field: +%d a phase.", catchers, catchers > 1 ? "s" : "", income)
+                : "No Catcher on their field: no income.", CP_KILL_BONUS));
+    }
     int nx = x, ny = y + 28;
     for (int i = 0; i < sd->count; i++) {
         const Mech* m = &sd->mech[i];
@@ -1221,6 +1291,8 @@ static void drawReactor(void) {
     DrawRectangle(552, 244, 240, 52, (Color) { 15, 25, 45, 230 });
     DrawRectangleLines(552, 244, 240, 52, (Color) { 100, 200, 255, 220 });
     DrawText(TextFormat("REACTOR %s  %d/%d EN", c->mech->name, s->energy, s->maxEnergy), 560, 248, 10, (Color) { 150, 220, 255, 255 });
+    if (c->actionsThisTurn == 0 && mechEffect(c->mech, CFX_FIRST_ACTION_FREE) > 0)
+        DrawText("1ST ACTION FREE", 786 - MeasureText("1ST ACTION FREE", 10), 248, 10, (Color) { 120, 255, 180, 255 });
     int spacing = pips > 6 ? 22 : 28, r = 9;
     int x0 = 672 - (pips - 1) * spacing / 2;
     for (int i = 0; i < pips; i++) {
@@ -1230,9 +1302,6 @@ static void drawReactor(void) {
     tipText((Rectangle) { 552, 244, 240, 52 }, TextFormat("ENERGY %d/%d", s->energy, s->maxEnergy),
         "Each field mech has its own reactor. Each weapon costs its pips; blinking pips are what the selected weapon would "
         "spend. Energy refills at the start of your phase.");
-    DrawText(TextFormat("ROUND %d", battle.round), 552, 348, 14, (Color) { 150, 220, 255, 255 });
-    if (c->actionsThisTurn == 0 && mechEffect(c->mech, CFX_FIRST_ACTION_FREE) > 0)
-        DrawText("FIRST ACTION FREE", 640, 351, 10, (Color) { 120, 255, 180, 255 });
     const Firmware* fw = &c->mech->fw;
     int offline = 0, reversed = 0;
     for (int k = 0; k < MAX_SOCKETS; k++) {
@@ -1243,12 +1312,109 @@ static void drawReactor(void) {
     if (offline) corrupt = TextFormat("%s%d OFFLINE ", corrupt, offline);
     if (reversed) corrupt = TextFormat("%s%d REVERSED ", corrupt, reversed);
     if (c->energyTax) corrupt = TextFormat("%sEN +%d ", corrupt, c->energyTax);
-    if (c->randomTargeting) corrupt = TextFormat("%sRANDOM TARGETING", corrupt);
+    if (c->randomTargeting) corrupt = TextFormat("%sRANDOM AIM", corrupt);
     if (corrupt[0]) {
-        DrawText(TextFormat("CORRUPTED: %s", corrupt), 552, 366, 10, (Color) { 255, 110, 90, 255 });
-        tipText((Rectangle) { 552, 364, 240, 14 }, "FIRMWARE CORRUPTION",
+        DrawText(TextFormat("CORRUPT: %s", corrupt), 558, 285, 10, (Color) { 255, 110, 90, 255 });
+        tipText((Rectangle) { 552, 284, 240, 12 }, "FIRMWARE CORRUPTION",
             "OFFLINE chips do nothing; REVERSED chips do the opposite (+5 Accuracy becomes -5). EN: every weapon costs "
             "1 more Energy. RANDOM TARGETING: each shot has a 50% chance to fire a random weapon. It wears off after its next turn.");
+    }
+}
+
+// ============ COMMAND POINTS (HUD) ============
+// Diamonds for a side's pool, filled up to `cp`
+static void drawCommandPips(int x, int cy, int cp, Color c) {
+    for (int i = 0; i < CP_MAX; i++) {
+        Vector2 at = { (float)x + i * 11, (float)cy };
+        if (i < cp) DrawPoly(at, 4, 5, 0, c);
+        DrawPolyLines(at, 4, 5, 0, i < cp ? WHITE : (Color) { 80, 90, 110, 255 });
+    }
+}
+
+static const char* commandHint(int k) {
+    const Combatant* a = battleActing();
+    const Combatant* d = battleTarget();
+    switch (k) {
+    case CMD_FOCUS_FIRE: return d ? TextFormat("Target: %s.", d->mech->name) : "";
+    case CMD_COORDINATED_STRIKE: {
+        int partner = battleCoordinatedPartner();
+        return a && d && partner >= 0 ? TextFormat("%s, then %s, at %s.", a->mech->name, battleField(SIDE_PLAYER, partner)->mech->name, d->mech->name) : "";
+    }
+    case CMD_EMERGENCY_DEPLOY: return a ? TextFormat("Pulls out %s.", a->mech->name) : "";
+    default: return "";
+    }
+}
+
+// ROUND, your Command Points and the five commands, between the reserve cards
+// and the formation buttons
+static void drawCommandBar(void) {
+    int cp = battle.commandPoints[SIDE_PLAYER], catchers, income = battleCommandIncome(SIDE_PLAYER, &catchers);
+    Color gold = { 255, 210, 110, 255 };
+    DrawText(TextFormat("ROUND %d", battle.round), 552, 345, 14, (Color) { 150, 220, 255, 255 });
+    DrawText("CP", 650, 347, 10, gold);
+    drawCommandPips(674, 352, cp, gold);
+    DrawText(TextFormat("%d/%d", cp, CP_MAX), 738, 347, 10, WHITE);
+    if (income) DrawText(TextFormat("+%d", income), 770, 347, 10, (Color) { 120, 255, 180, 255 });
+    tipText((Rectangle) { 648, 344, 144, 14 }, TextFormat("COMMAND POINTS %d/%d", cp, CP_MAX),
+        TextFormat("A team pool any of your field mechs can spend in your phase ([1]-[5]). Income at the start of each phase: "
+            "+%d while a Catcher is on the field and +%d more for each Catcher there; +%d whenever you scrap an enemy. %s",
+            CP_BASE_INCOME, CP_CATCHER_INCOME, CP_KILL_BONUS, catchers ? TextFormat("Now: %d Catcher%s, +%d a phase.", catchers,
+                catchers > 1 ? "s" : "", income) : "Now: no Catcher on the field - kills only."));
+    if (battle.phase != BP_PLAYER_TURN || !battleActing()) return;
+    for (int k = 0; k < NUM_COMMANDS; k++) {
+        Rectangle r = commandButtonRect(k);
+        const char* reason = NULL;
+        int can = battleCanCommand(k, &reason), cost = commandDefs[k].cost[SIDE_PLAYER];
+        drawButton(r, commandDefs[k].tag, 10, 0, can);
+        int px = (int)(r.x + r.width / 2) - (cost * 5 - 2) / 2;
+        for (int i = 0; i < cost; i++)
+            DrawRectangle(px + i * 5, (int)r.y + 14, 3, 2, cp >= cost ? gold : (Color) { 90, 90, 100, 255 });
+        tipText(r, TextFormat("[%d] %s - %d CP", k + 1, commandDefs[k].name, cost),
+            TextFormat("%s %s%s", commandDefs[k].rule, can ? commandHint(k) : "", can ? "" : TextFormat(" Not now: %s.", reason)));
+    }
+}
+
+// Overwatch, Focus Fire and the Defensive Line on the field
+static void drawCommandMarks(void) {
+    float pulse = 0.5f + 0.5f * sinf(glowTimer * 5);
+    for (int side = 0; side < 2; side++) {
+        if (battle.defensiveLine[side]) {   // a shield wall in front of the side's formation
+            int y = side == SIDE_PLAYER ? PLAYER_FLANK_Y - 34 : ENEMY_FLANK_Y + 46;
+            Color c = commandDefs[CMD_DEFENSIVE_LINE].color;
+            DrawRectangle(276, y - 3, 250, 6, (Color) { c.r, c.g, c.b, (unsigned char)(40 + 30 * pulse) });
+            for (int x = 280; x < 524; x += 14) DrawPolyLines((Vector2) { (float)x, (float)y }, 6, 6, 0, (Color) { c.r, c.g, c.b, 150 });
+            const char* t = TextFormat("DEFENSIVE LINE -%d%%", (int)roundf(DEFENSIVE_LINE_CUT * 100));
+            DrawText(t, 524 - MeasureText(t, 10), y + 6, 10, c);
+        }
+        int focus = battle.focusTarget[side];
+        for (int p = 0; p < MAX_FIELD; p++) {
+            const Combatant* c = battleField(side, p);
+            if (!c) continue;
+            Vector2 v = slotPos(side, p);
+            if (c->overwatch) {   // corner brackets and a sight line toward the other side
+                Color oc = commandDefs[CMD_OVERWATCH].color;
+                oc.a = (unsigned char)(150 + 100 * pulse);
+                Rectangle r = spriteRect(side, p);
+                drawReticle((Rectangle) { r.x + 6, r.y + 10, r.width - 12, r.height - 20 }, oc);
+                const char* t = "OVERWATCH";
+                DrawText(t, (int)v.x - MeasureText(t, 10) / 2, (int)v.y + (side == SIDE_PLAYER ? 54 : 64), 10, oc);   // a player mech only watches outside its phase, when DONE isn't shown
+            }
+        }
+        if (focus < 0) continue;
+        int fp = -1;
+        for (int p = 0; p < MAX_FIELD; p++) if (battle.side[1 - side].field[p] == focus) fp = p;
+        if (fp < 0) continue;
+        Vector2 v = slotPos(1 - side, fp);
+        Color fc = side == SIDE_PLAYER ? commandDefs[CMD_FOCUS_FIRE].color : (Color) { 255, 90, 90, 255 };
+        float rr = 30 + 3 * pulse;
+        DrawCircleLines((int)v.x, (int)v.y, rr, fc);
+        for (int k = 0; k < 4; k++) {
+            float ang = k * PI / 2 + glowTimer;
+            DrawLineEx((Vector2) { v.x + cosf(ang) * (rr - 6), v.y + sinf(ang) * (rr - 6) },
+                (Vector2) { v.x + cosf(ang) * (rr + 6), v.y + sinf(ang) * (rr + 6) }, 2, fc);
+        }
+        const char* t = side == SIDE_PLAYER ? TextFormat("FOCUS +%d", FOCUS_FIRE_ACCURACY) : "ENEMY FOCUS";
+        DrawText(t, (int)v.x - MeasureText(t, 10) / 2, (int)v.y - 68, 10, fc);
     }
 }
 
@@ -1663,16 +1829,17 @@ static void drawPreviewPanel(const AttackPreview* p, const Weapon* w, int x, int
 
 // Switch / deploy picker: every standing reserve with what it brings in
 static void drawPicker(void) {
-    int deploying = pickerDeploy, forced = pickerDeploy && battle.phase == BP_DEPLOY;
+    int deploying = pickerDeploy == 1, emergency = pickerDeploy == 2, forced = deploying && battle.phase == BP_DEPLOY;
     int slots[MAX_TEAM + 1], n = pickerRows(slots);
     int top = pickerTop(n), h = n * PICKER_ROW + 80;
     const Combatant* out = battleFieldPlayer();
     DrawRectangle((int)-layoutX(), 0, screenW, SCREEN_H, (Color) { 0, 0, 0, 120 });
     DrawRectangle(PICKER_X, top, PICKER_W, h, (Color) { 8, 14, 28, 255 });
-    DrawRectangleLines(PICKER_X, top, PICKER_W, h, deploying ? (Color) { 255, 110, 100, 255 } : (Color) { 120, 220, 255, 255 });
+    DrawRectangleLines(PICKER_X, top, PICKER_W, h, deploying ? (Color) { 255, 110, 100, 255 }
+        : emergency ? commandDefs[CMD_EMERGENCY_DEPLOY].color : (Color) { 120, 220, 255, 255 });
     DrawText(forced ? "NO MECH ON THE FIELD - DEPLOY A RESERVE" : deploying ? "DEPLOY A RESERVE TO AN EMPTY POSITION"
-        : TextFormat("SWITCH OUT %s", out->mech->name), PICKER_X + 12, top + 10, 18,
-        forced ? (Color) { 255, 140, 120, 255 } : (Color) { 150, 230, 255, 255 });
+        : emergency ? TextFormat("EMERGENCY DEPLOYMENT: PULL OUT %s", out->mech->name) : TextFormat("SWITCH OUT %s", out->mech->name),
+        PICKER_X + 12, top + 10, 18, forced ? (Color) { 255, 140, 120, 255 } : (Color) { 150, 230, 255, 255 });
     for (int i = 0; i < n; i++) {
         Rectangle r = pickerRowRect(i, n);
         int x = (int)r.x, y = (int)r.y, sel = i == pickerSel;
@@ -1703,11 +1870,15 @@ static void drawPicker(void) {
     }
     const char* rule = deploying
         ? "Free: no Energy cost and no lockout. It takes the empty position and acts from next round."
+        : emergency ? TextFormat("%d Command Points, 0 Energy - works even when locked in. The new mech isn't locked in; it acts from next round.",
+            commandDefs[CMD_EMERGENCY_DEPLOY].cost[SIDE_PLAYER])
+        : battleSwitchFree(out) ? "EMERGENCY REDEPLOY (once a battle): 0 EN, works while locked in, and the new mech isn't locked in."
         : TextFormat("Costs %d EN - %s's remaining %d EN is lost. The new mech acts from next round.", SWITCH_ENERGY_COST,
             out->mech->name, out->mech->stats.energy);
     DrawText(rule, PICKER_X + 12, top + h - 36, 10, (Color) { 255, 220, 120, 255 });
     DrawText(deploying ? (forced ? "Damage, Heat and queued scrambles stay with each mech.   [W/S] select   [Z/CLICK] deploy"
                                  : "Damage, Heat and queued scrambles stay with each mech.   [Z/CLICK] deploy   [ESC] not now")
+                       : emergency ? "Damage, Heat and queued scrambles stay with each mech.   [W/S] select   [Z/CLICK] deploy   [ESC] cancel"
                        : "The new mech can't switch out on its next turn.   [W/S] select   [Z/CLICK] switch   [ESC] cancel",
         PICKER_X + 12, top + h - 22, 10, (Color) { 120, 200, 240, 255 });
 }
@@ -1770,6 +1941,7 @@ void uiBattleDraw(void) {
     BeginMode2D(layoutCamera());
     drawField(sx, sy);
     drawLinkMarks();
+    drawCommandMarks();
     drawEffects();
     drawParticles();
     drawDamageNums();
@@ -1782,6 +1954,7 @@ void uiBattleDraw(void) {
     drawLinkPanel();
     drawReactor();
     drawReserveRow();
+    drawCommandBar();
 
     // Log strip and bottom panel
     DrawRectangle(20, PANEL_Y - 22, SCREEN_W - 40, 20, (Color) { 10, 15, 30, 200 });
@@ -1813,12 +1986,25 @@ void uiBattleDraw(void) {
         drawButton(switchButtonRect(), "SWITCH [S]", 12, 0, canSwitch);
         const char* noProvoke = NULL;
         int canProvoke = battleCanProvoke(&noProvoke);
+        if (interceptSlot()) {
+            const char* noIntercept = NULL;
+            int canIntercept = battleCanIntercept(&noIntercept), cand = battleInterceptCandidate();
+            drawButton(provokeButtonRect(), "INTERCEPT [B]", 11, 0, canIntercept);
+            tipText(provokeButtonRect(), "INTERCEPT", canIntercept
+                ? TextFormat("%d EN, uses this mech's action: until its next turn, enemy single-target and line shots aimed at %s's "
+                    "position hit this mech instead. It guards the position, not the mech - swap a fragile reserve in behind it. "
+                    "Area and cone weapons still reach everyone. Press again to guard another ally.", INTERCEPT_ENERGY_COST,
+                    battleField(SIDE_PLAYER, cand)->mech->name)
+                : TextFormat("Can't intercept: %s.", noIntercept ? noIntercept : "-"));
+        }
+        else {
         drawButton(provokeButtonRect(), "PROVOKE [P]", 12, 0, canProvoke);
         tipText(provokeButtonRect(), "PROVOKE", canProvoke
             ? TextFormat("%d EN: Threat +%d, and every enemy single-target attack must aim at this mech until its next turn. "
                 "Area and cone weapons still hit everyone. Use it to pull fire off a damaged teammate.", battleProvokeCost(battleActing()), THREAT_PROVOKE)
             : TextFormat("Can't provoke: %s. Needs the PROVOCATION PROTOCOL chip (built for Ironclads; REDOUBT has it built in).",
                 noProvoke ? noProvoke : "-"));
+        }
         drawButton(hackButtonRect(), "HACK [C]", 12, 0, battleCanHack());
         if (actor) {   // formation, under the reactor
             int toRear = actor->lane == LANE_FRONT;
@@ -1844,7 +2030,10 @@ void uiBattleDraw(void) {
         tipText(deployButtonRect(), "DEPLOY", battleCanDeploy()
             ? "Free: a reserve takes an empty position. It doesn't act until next round."
             : "Needs an empty position (a disabled mech leaves one) and a standing reserve.");
-        tipText(switchButtonRect(), "SWITCH", canSwitch
+        tipText(switchButtonRect(), "SWITCH", canSwitch && actor && battleSwitchFree(actor)
+            ? "EMERGENCY REDEPLOY ready (once a battle): swap the mech you command for a reserve at 0 EN, even while locked in. "
+                "The incoming mech acts next round and isn't locked in. Damage, Heat and queued scrambles stay with each mech."
+            : canSwitch
             ? TextFormat("Swap the mech you command for a reserve. Costs %d EN (the rest of its Energy is lost) and is its action. "
                 "The incoming mech acts next round and can't switch out on its next turn. Damage, Heat and queued scrambles stay "
                 "with each mech.", SWITCH_ENERGY_COST)
@@ -1863,7 +2052,7 @@ void uiBattleDraw(void) {
             else if (!battleBusy()) DrawText(battleTarget() ? "No weapon on this mount." : "No target.", 402, ROW_Y, 12, (Color) { 130, 150, 175, 255 });
         }
         DrawText(battle.testRange ? "[Z] FIRE [ARROWS] WEAPON [Q/E] TARGET [TAB] NEXT [S] SWITCH [X] END [R] NEW DUMMY [ESC] LEAVE"
-                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [K] LINK [P] PROVOKE [C] HACK [X] END",
+                                  : "[Z] FIRE [ARROWS] WPN [Q/E] TARGET [TAB] NEXT [S] SWITCH [D] DEPLOY [F] LANE [G] FLANK [K] LINK [P] PROVOKE [C] HACK [1-5] CMD [X] END",
             30, ROW_Y + 134, 10, (Color) { 100, 240, 255, 255 });
     }
     else {

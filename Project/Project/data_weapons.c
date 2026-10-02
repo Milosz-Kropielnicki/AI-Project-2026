@@ -67,4 +67,6 @@ const Weapon weaponTable[NUM_WEAPONS] = {
     { "CORROSIVE SPRAY",   12, 1,  85, 1, 10, TARGET_CONE,    10, MUN_CHEMICAL,        PLAT_FLAMETHROWER,      0,  0, FX_PULSE },
     // Scramble that always lands as Firmware Corruption (chips offline / reversed, Energy costs, targeting)
     { "VIRUS UPLINK",       0, 1,  90, 3,  0, TARGET_SINGLE,  10, MUN_ELECTROMAGNETIC, PLAT_EMITTER,          60,  0, FX_JAM, 1 },
+    // Force Swap: a hit shoves the target off the field and a random reserve takes its place
+    { "SHOCK RAM",         16, 2,  80, 1, 20, TARGET_SINGLE,  16, MUN_BALLISTIC,       PLAT_BLADE,             0,  3, FX_BLADE, 0, 1 },
 };
